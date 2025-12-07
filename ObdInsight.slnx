@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".gitignore" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/ObdInsight.Core/ObdInsight.Core.csproj" Id="38973211-6598-4e52-8e45-2adae31097f1" />
+    <Project Path="src/ObdInsight.Drivers/ObdInsight.Drivers.csproj" Id="d61a7cf5-15b2-4616-8185-c670c3301568" />
+    <Project Path="src/ObdInsight/ObdInsight.csproj" Id="85a1989b-1fe0-477e-a7e7-8f96b78f5837" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="src/ObdInsight.DevTools/ObdInsight.DevTools.csproj" Id="c764fe8b-9a9f-4720-8bd1-4e8023ed8334" />
+    <Project Path="tests/OdbInsights.Tests/ObdInsights.Tests.csproj" />
+  </Folder>
+</Solution>
