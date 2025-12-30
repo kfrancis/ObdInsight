@@ -1,4 +1,5 @@
 ﻿using ObdInsight.Core;
+using ObdInsight.Core.Diagnostics;
 using ObdInsight.Core.Vehicles;
 using ObdInsight.DevTools;
 using ObdInsight.Drivers;
@@ -26,6 +27,7 @@ internal class Program
                         "Connect to Veepeak (66:1e:87:02:c2:db)",
                         "Connect to custom device",
                         "Connect with vehicle detection",
+                        "Generate Vehicle Support Report",
                         "List supported vehicles",
                         "Discover device services",
                         "Exit"
@@ -45,6 +47,9 @@ internal class Program
                     break;
                 case "Connect with vehicle detection":
                     await ConnectWithVehicleDetectionAsync(TargetMacAddress);
+                    break;
+                case "Generate Vehicle Support Report":
+                    await GenerateVehicleSupportReportAsync();
                     break;
                 case "List supported vehicles":
                     ListSupportedVehicles();
@@ -691,5 +696,274 @@ internal class Program
     {
         var cleanMac = mac.Replace(":", "").Replace("-", "");
         return Convert.ToUInt64(cleanMac, 16);
+    }
+
+    private static async Task GenerateVehicleSupportReportAsync()
+    {
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new Rule("[cyan]Vehicle Support Report Generator[/]").RuleStyle("grey"));
+        AnsiConsole.WriteLine();
+
+        AnsiConsole.MarkupLine("[yellow]This tool collects diagnostic data to help add support for new vehicles and OBD adapters.[/]");
+        AnsiConsole.MarkupLine("[grey]The report will be saved as a markdown file suitable for GitHub issues.[/]");
+        AnsiConsole.WriteLine();
+
+        // Step 1: Get user vehicle info
+        var userInfo = CollectUserVehicleInfo();
+
+        // Step 2: Get adapter MAC address
+        var macAddress = AnsiConsole.Prompt(
+            new TextPrompt<string>("[cyan]Enter OBD adapter MAC address:[/]")
+                .DefaultValue(TargetMacAddress)
+                .Validate(mac =>
+                {
+                    var clean = mac.Replace(":", "").Replace("-", "");
+                    return clean.Length == 12 && clean.All(c => Uri.IsHexDigit(c))
+                        ? ValidationResult.Success()
+                        : ValidationResult.Error("Invalid MAC address format");
+                }));
+
+        // Step 3: Select BLE profile
+        var bleProfile = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[cyan]Select BLE adapter profile:[/]")
+                .AddChoices(
+                    "Veepeak BLE+ (FFF0/FFF1/FFF2)",
+                    "Veepeak BLE+ Alt (FFE0/FFE1)",
+                    "Nordic UART Service",
+                    "Auto-detect (try all)"
+                ));
+
+        var profile = bleProfile switch
+        {
+            "Veepeak BLE+ (FFF0/FFF1/FFF2)" => BleDeviceProfile.VeepeakBle,
+            "Veepeak BLE+ Alt (FFE0/FFE1)" => BleDeviceProfile.VeepeakBleAlt,
+            "Nordic UART Service" => BleDeviceProfile.NordicUart,
+            _ => BleDeviceProfile.VeepeakBle
+        };
+
+        AnsiConsole.WriteLine();
+
+        if (!AnsiConsole.Confirm("[yellow]Ready to start diagnostic collection. Vehicle should be on (ignition on or running). Continue?[/]"))
+        {
+            return;
+        }
+
+        // Create collector
+        var collector = new DiagnosticDataCollector();
+        BleAdapterInfo? bleInfo = null;
+        ObdAdapterInfo? obdAdapterInfo = null;
+        VehicleIdentification? vehicleId = null;
+        SupportedPidsInfo? supportedPids = null;
+
+        // Progress display
+        await AnsiConsole.Progress()
+            .AutoClear(false)
+            .HideCompleted(false)
+            .Columns(
+                new TaskDescriptionColumn(),
+                new ProgressBarColumn(),
+                new PercentageColumn(),
+                new SpinnerColumn())
+            .StartAsync(async ctx =>
+            {
+                var bleTask = ctx.AddTask("[cyan]Collecting BLE adapter info...[/]");
+                var obdTask = ctx.AddTask("[cyan]Collecting OBD adapter info...[/]");
+                var vinTask = ctx.AddTask("[cyan]Reading vehicle identification...[/]");
+                var pidsTask = ctx.AddTask("[cyan]Querying supported PIDs...[/]");
+                var probeTask = ctx.AddTask("[cyan]Probing standard PIDs...[/]");
+                var evTask = ctx.AddTask("[cyan]Probing EV/extended PIDs...[/]");
+
+                // Collect BLE info
+                bleTask.StartTask();
+                bleInfo = await collector.CollectBleInfoAsync(macAddress);
+                bleTask.Value = 100;
+
+                // Connect transport
+                using var transport = new WindowsBleTransport(profile);
+                var adapter = new Elm327Adapter();
+
+                var connected = await transport.ConnectAsync(macAddress);
+                if (!connected)
+                {
+                    AnsiConsole.MarkupLine("[red]Failed to connect to BLE device![/]");
+                    return;
+                }
+
+                // Initialize adapter
+                obdTask.StartTask();
+                var initialized = await adapter.InitializeAsync(transport);
+                if (initialized)
+                {
+                    obdAdapterInfo = await collector.CollectObdAdapterInfoAsync(adapter);
+                }
+                obdTask.Value = 100;
+
+                // Collect vehicle ID
+                vinTask.StartTask();
+                vehicleId = await collector.CollectVehicleIdAsync(adapter);
+                vinTask.Value = 100;
+
+                // Collect supported PIDs
+                pidsTask.StartTask();
+                supportedPids = await collector.CollectSupportedPidsAsync(adapter);
+                pidsTask.Value = 100;
+
+                // Probe standard PIDs
+                probeTask.StartTask();
+                await collector.ProbeStandardPidsAsync(adapter, supportedPids);
+                probeTask.Value = 100;
+
+                // Probe extended PIDs
+                evTask.StartTask();
+                await collector.ProbeExtendedPidsAsync(adapter);
+                evTask.Value = 100;
+
+                await transport.DisconnectAsync();
+            });
+
+        // Build report
+        var report = collector.BuildReport(userInfo, bleInfo, obdAdapterInfo, vehicleId, supportedPids);
+
+        // Generate markdown
+        var markdown = MarkdownReportGenerator.Generate(report);
+
+        // Save to file
+        var fileName = $"vehicle_report_{userInfo.Year}_{userInfo.Make}_{userInfo.Model}_{DateTime.Now:yyyyMMdd_HHmmss}.md"
+            .Replace(" ", "_")
+            .Replace("/", "-");
+
+        var filePath = Path.Combine(Environment.CurrentDirectory, fileName);
+        await File.WriteAllTextAsync(filePath, markdown);
+
+        // Display summary
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new Rule("[green]Report Generated Successfully[/]").RuleStyle("grey"));
+        AnsiConsole.WriteLine();
+
+        // Show summary table
+        var summaryTable = new Table()
+            .Border(TableBorder.Rounded)
+            .AddColumn("Item")
+            .AddColumn("Value");
+
+        summaryTable.AddRow("Vehicle", $"{userInfo.Year} {userInfo.Make} {userInfo.Model}");
+        summaryTable.AddRow("VIN", vehicleId?.Vin != null ? MaskVin(vehicleId.Vin) : "[grey]Not available[/]");
+        summaryTable.AddRow("Adapter", obdAdapterInfo?.VersionResponse?.Trim() ?? "[grey]Unknown[/]");
+        summaryTable.AddRow("Protocol", obdAdapterInfo?.ProtocolDescription?.Trim() ?? "[grey]Unknown[/]");
+        summaryTable.AddRow("Mode 01 PIDs", $"{supportedPids?.Mode01Pids.Count ?? 0} supported");
+        summaryTable.AddRow("Report File", $"[link={filePath}]{fileName}[/]");
+
+        AnsiConsole.Write(summaryTable);
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[green]✓[/] Report saved to: [cyan]{0}[/]", filePath.EscapeMarkup());
+        AnsiConsole.WriteLine();
+
+        // Instructions
+        AnsiConsole.Write(new Panel(
+            """
+            [yellow]Next Steps:[/]
+            
+            1. Open a new issue at: [link]https://github.com/kfrancis/ObdInsight/issues/new[/]
+            2. Use the title format: [cyan]Vehicle Support: {Year} {Make} {Model}[/]
+            3. Copy the contents of the generated markdown file into the issue
+            4. Add any additional observations about your vehicle
+            
+            [grey]Thank you for helping improve ObdInsight![/]
+            """)
+            .Header("[cyan]Submit to GitHub[/]")
+            .Border(BoxBorder.Rounded));
+
+        // Offer to open file
+        if (AnsiConsole.Confirm("Open the report file now?"))
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = filePath,
+                    UseShellExecute = true
+                };
+                System.Diagnostics.Process.Start(psi);
+            }
+            catch
+            {
+                AnsiConsole.MarkupLine("[yellow]Could not open file automatically. Please open manually.[/]");
+            }
+        }
+    }
+
+    private static UserVehicleInfo CollectUserVehicleInfo()
+    {
+        AnsiConsole.MarkupLine("[cyan]Please enter your vehicle information:[/]");
+        AnsiConsole.WriteLine();
+
+        var year = AnsiConsole.Prompt(
+            new TextPrompt<int>("[cyan]Vehicle Year:[/]")
+                .DefaultValue(DateTime.Now.Year)
+                .Validate(y => y >= 1996 && y <= DateTime.Now.Year + 1
+                    ? ValidationResult.Success()
+                    : ValidationResult.Error("Year must be between 1996 and current year")));
+
+        var make = AnsiConsole.Prompt(
+            new TextPrompt<string>("[cyan]Make (e.g., Honda, Toyota, Nissan):[/]")
+                .Validate(m => !string.IsNullOrWhiteSpace(m)
+                    ? ValidationResult.Success()
+                    : ValidationResult.Error("Make is required")));
+
+        var model = AnsiConsole.Prompt(
+            new TextPrompt<string>("[cyan]Model (e.g., CR-V, Camry, Leaf):[/]")
+                .Validate(m => !string.IsNullOrWhiteSpace(m)
+                    ? ValidationResult.Success()
+                    : ValidationResult.Error("Model is required")));
+
+        var trim = AnsiConsole.Prompt(
+            new TextPrompt<string>("[cyan]Trim (optional, e.g., EX-L, XLE):[/]")
+                .AllowEmpty());
+
+        var engineType = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[cyan]Engine/Powertrain Type:[/]")
+                .AddChoices(
+                    "Gasoline",
+                    "Diesel",
+                    "Hybrid",
+                    "Plug-in Hybrid (PHEV)",
+                    "Electric (BEV)",
+                    "Other/Unknown"));
+
+        var transmission = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[cyan]Transmission Type:[/]")
+                .AddChoices(
+                    "Automatic",
+                    "CVT",
+                    "Manual",
+                    "Dual-Clutch (DCT)",
+                    "Single-Speed (EV)",
+                    "Other/Unknown"));
+
+        var notes = AnsiConsole.Prompt(
+            new TextPrompt<string>("[cyan]Additional Notes (optional, any relevant details):[/]")
+                .AllowEmpty());
+
+        return new UserVehicleInfo
+        {
+            Year = year,
+            Make = make.Trim(),
+            Model = model.Trim(),
+            Trim = string.IsNullOrWhiteSpace(trim) ? null : trim.Trim(),
+            EngineType = engineType,
+            TransmissionType = transmission,
+            AdditionalNotes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim()
+        };
+    }
+
+    private static string MaskVin(string vin)
+    {
+        if (vin.Length <= 6)
+            return new string('*', vin.Length);
+        return vin[..^6] + "******";
     }
 }
