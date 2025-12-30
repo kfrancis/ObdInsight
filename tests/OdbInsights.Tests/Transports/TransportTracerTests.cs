@@ -8,6 +8,53 @@ namespace OdbInsights.Tests.Transports;
 public class TransportTracerTests
 {
     [Test]
+    public async Task TransportTracer_DoubleStart_ThrowsException()
+    {
+        // Arrange
+        using var tracer = new TransportTracer();
+        tracer.StartRecording();
+
+        // Act & Assert
+        await Assert.That(() => tracer.StartRecording())
+            .Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task TransportTracer_EntryRecordedEvent_IsFired()
+    {
+        // Arrange
+        using var tracer = new TransportTracer();
+        var recordedEntries = new List<TraceEntry>();
+        tracer.EntryRecorded += (_, e) => recordedEntries.Add(e);
+        tracer.StartRecording();
+
+        // Act
+        tracer.RecordTx("ATZ\r");
+        tracer.RecordRx("OK\r\n>");
+        tracer.StopRecording();
+
+        // Assert
+        await Assert.That(recordedEntries).Count().IsEqualTo(2);
+        await Assert.That(recordedEntries[0].Direction).IsEqualTo(TraceDirection.Tx);
+        await Assert.That(recordedEntries[1].Direction).IsEqualTo(TraceDirection.Rx);
+    }
+
+    [Test]
+    public async Task TransportTracer_NotRecording_DoesNotAddEntries()
+    {
+        // Arrange
+        using var tracer = new TransportTracer();
+        // Note: Not starting recording
+
+        // Act
+        tracer.RecordTx("ATZ\r");
+        tracer.RecordRx("OK\r\n>");
+
+        // Assert
+        await Assert.That(tracer.CurrentSession).IsNull();
+    }
+
+    [Test]
     public async Task TransportTracer_RecordsEntries_InOrder()
     {
         // Arrange
@@ -24,7 +71,7 @@ public class TransportTracerTests
         var session = tracer.StopRecording();
 
         // Assert
-        await Assert.That(session.Entries).HasCount().EqualTo(4);
+        await Assert.That(session.Entries).Count().IsEqualTo(4);
         await Assert.That(session.Entries[0].Direction).IsEqualTo(TraceDirection.Tx);
         await Assert.That(session.Entries[0].Payload).IsEqualTo("ATZ\r");
         await Assert.That(session.Entries[1].Direction).IsEqualTo(TraceDirection.Rx);
@@ -56,6 +103,17 @@ public class TransportTracerTests
     }
 
     [Test]
+    public async Task TransportTracer_StopWithoutStart_ThrowsException()
+    {
+        // Arrange
+        using var tracer = new TransportTracer();
+
+        // Act & Assert
+        await Assert.That(() => tracer.StopRecording())
+            .Throws<InvalidOperationException>();
+    }
+
+    [Test]
     public async Task TransportTracer_UpdateMetadata_ModifiesSession()
     {
         // Arrange
@@ -77,63 +135,5 @@ public class TransportTracerTests
         // Assert
         await Assert.That(session.Metadata.Protocol).IsEqualTo("ISO 15765-4 CAN");
         await Assert.That(session.Metadata.AdapterVersion).IsEqualTo("ELM327 v1.5");
-    }
-
-    [Test]
-    public async Task TransportTracer_NotRecording_DoesNotAddEntries()
-    {
-        // Arrange
-        using var tracer = new TransportTracer();
-        // Note: Not starting recording
-
-        // Act
-        tracer.RecordTx("ATZ\r");
-        tracer.RecordRx("OK\r\n>");
-
-        // Assert
-        await Assert.That(tracer.CurrentSession).IsNull();
-    }
-
-    [Test]
-    public async Task TransportTracer_DoubleStart_ThrowsException()
-    {
-        // Arrange
-        using var tracer = new TransportTracer();
-        tracer.StartRecording();
-
-        // Act & Assert
-        await Assert.That(() => tracer.StartRecording())
-            .Throws<InvalidOperationException>();
-    }
-
-    [Test]
-    public async Task TransportTracer_StopWithoutStart_ThrowsException()
-    {
-        // Arrange
-        using var tracer = new TransportTracer();
-
-        // Act & Assert
-        await Assert.That(() => tracer.StopRecording())
-            .Throws<InvalidOperationException>();
-    }
-
-    [Test]
-    public async Task TransportTracer_EntryRecordedEvent_IsFired()
-    {
-        // Arrange
-        using var tracer = new TransportTracer();
-        var recordedEntries = new List<TraceEntry>();
-        tracer.EntryRecorded += (_, e) => recordedEntries.Add(e);
-        tracer.StartRecording();
-
-        // Act
-        tracer.RecordTx("ATZ\r");
-        tracer.RecordRx("OK\r\n>");
-        tracer.StopRecording();
-
-        // Assert
-        await Assert.That(recordedEntries).HasCount().EqualTo(2);
-        await Assert.That(recordedEntries[0].Direction).IsEqualTo(TraceDirection.Tx);
-        await Assert.That(recordedEntries[1].Direction).IsEqualTo(TraceDirection.Rx);
     }
 }

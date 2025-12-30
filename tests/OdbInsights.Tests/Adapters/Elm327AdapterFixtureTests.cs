@@ -13,83 +13,6 @@ public class Elm327AdapterFixtureTests
     private const string SampleSessionResource = "ObdInsights.Tests.TestData.sample_elm327_session.jsonl";
 
     [Test]
-    public async Task Elm327Adapter_WithSampleFixture_InitializesSuccessfully()
-    {
-        // Arrange
-        var assembly = typeof(Elm327AdapterFixtureTests).Assembly;
-        using var transport = await ReplayTransportFactory.FromResourceAsync(
-            assembly,
-            SampleSessionResource,
-            new ReplayOptions { MatchingMode = ReplayMatchingMode.Any });
-
-        await transport.ConnectAsync();
-        var adapter = new Elm327Adapter();
-
-        // Act
-        var result = await adapter.InitializeAsync(transport);
-
-        // Assert
-        await Assert.That(result).IsTrue();
-        await Assert.That(adapter.DeviceVersion).Contains("ELM327");
-        await Assert.That(adapter.ProtocolDescription).Contains("CAN");
-    }
-
-    [Test]
-    public async Task Elm327Adapter_WithSampleFixture_DetectsProtocol()
-    {
-        // Arrange
-        var assembly = typeof(Elm327AdapterFixtureTests).Assembly;
-        using var transport = await ReplayTransportFactory.FromResourceAsync(
-            assembly,
-            SampleSessionResource,
-            new ReplayOptions { MatchingMode = ReplayMatchingMode.Any });
-
-        await transport.ConnectAsync();
-        var adapter = new Elm327Adapter();
-
-        // Act
-        await adapter.InitializeAsync(transport);
-
-        // Assert
-        await Assert.That(adapter.ProtocolDescription).IsNotNull();
-        await Assert.That(adapter.ProtocolDescription).Contains("ISO 15765-4");
-    }
-
-    [Test]
-    public async Task ReplayTransport_WithSampleFixture_LoadsAllEntries()
-    {
-        // Arrange
-        var assembly = typeof(Elm327AdapterFixtureTests).Assembly;
-
-        // Act
-        using var transport = await ReplayTransportFactory.FromResourceAsync(
-            assembly,
-            SampleSessionResource);
-
-        // Assert
-        await Assert.That(transport.Session).IsNotNull();
-        await Assert.That(transport.Session.Entries.Count).IsGreaterThan(20);
-        await Assert.That(transport.Session.Metadata.DeviceName).IsEqualTo("Veepeak BLE+");
-    }
-
-    [Test]
-    public async Task ReplayTransport_WithSampleFixture_HasCorrectMetadata()
-    {
-        // Arrange
-        var assembly = typeof(Elm327AdapterFixtureTests).Assembly;
-
-        // Act
-        using var transport = await ReplayTransportFactory.FromResourceAsync(
-            assembly,
-            SampleSessionResource);
-
-        // Assert
-        await Assert.That(transport.Session.Metadata.Protocol).Contains("CAN");
-        await Assert.That(transport.Session.Metadata.AdapterVersion).Contains("ELM327");
-        await Assert.That(transport.Session.Metadata.Description).Contains("Sample");
-    }
-
-    [Test]
     public async Task DeterministicReplay_SameSessionTwice_ProducesSameResults()
     {
         // Arrange
@@ -122,5 +45,82 @@ public class Elm327AdapterFixtureTests
         // Assert - both runs produce identical results
         await Assert.That(version1).IsEqualTo(version2);
         await Assert.That(protocol1).IsEqualTo(protocol2);
+    }
+
+    [Test]
+    public async Task Elm327Adapter_WithSampleFixture_DetectsProtocol()
+    {
+        // Arrange
+        var assembly = typeof(Elm327AdapterFixtureTests).Assembly;
+        using var transport = await ReplayTransportFactory.FromResourceAsync(
+            assembly,
+            SampleSessionResource,
+            new ReplayOptions { MatchingMode = ReplayMatchingMode.Any });
+
+        await transport.ConnectAsync();
+        var adapter = new Elm327Adapter();
+
+        // Act
+        await adapter.InitializeAsync(transport);
+
+        // Assert
+        await Assert.That(adapter.ProtocolDescription).IsNotNull();
+        await Assert.That(adapter.ProtocolDescription).Contains("ISO 15765-4");
+    }
+
+    [Test]
+    public async Task Elm327Adapter_WithSampleFixture_InitializesSuccessfully()
+    {
+        // Arrange
+        var assembly = typeof(Elm327AdapterFixtureTests).Assembly;
+        using var transport = await ReplayTransportFactory.FromResourceAsync(
+            assembly,
+            SampleSessionResource,
+            new ReplayOptions { MatchingMode = ReplayMatchingMode.Any });
+
+        await transport.ConnectAsync();
+        var adapter = new Elm327Adapter();
+
+        // Act
+        var result = await adapter.InitializeAsync(transport);
+
+        // Assert
+        await Assert.That(result).IsTrue();
+        await Assert.That(adapter.DeviceVersion).Contains("ELM327");
+        await Assert.That(adapter.ProtocolDescription).Contains("CAN");
+    }
+
+    [Test]
+    public async Task ReplayTransport_WithSampleFixture_HasCorrectMetadata()
+    {
+        // Arrange
+        var assembly = typeof(Elm327AdapterFixtureTests).Assembly;
+
+        // Act
+        using var transport = await ReplayTransportFactory.FromResourceAsync(
+            assembly,
+            SampleSessionResource);
+
+        // Assert
+        await Assert.That(transport.Session.Metadata.Protocol).Contains("CAN");
+        await Assert.That(transport.Session.Metadata.AdapterVersion).Contains("ELM327");
+        await Assert.That(transport.Session.Metadata.Description).Contains("Sample");
+    }
+
+    [Test]
+    public async Task ReplayTransport_WithSampleFixture_LoadsAllEntries()
+    {
+        // Arrange
+        var assembly = typeof(Elm327AdapterFixtureTests).Assembly;
+
+        // Act
+        using var transport = await ReplayTransportFactory.FromResourceAsync(
+            assembly,
+            SampleSessionResource);
+
+        // Assert
+        await Assert.That(transport.Session).IsNotNull();
+        await Assert.That(transport.Session.Entries.Count).IsGreaterThan(20);
+        await Assert.That(transport.Session.Metadata.DeviceName).IsEqualTo("Veepeak BLE+");
     }
 }

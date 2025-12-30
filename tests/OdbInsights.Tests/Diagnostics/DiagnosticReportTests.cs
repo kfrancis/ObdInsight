@@ -2,23 +2,55 @@ using ObdInsight.Core.Diagnostics;
 
 namespace OdbInsights.Tests.Diagnostics;
 
-public class DiagnosticReportTests
+public class BleAdapterInfoTests
 {
     [Test]
-    public async Task DiagnosticReport_WithRequiredFields_CreatesSuccessfully()
+    public async Task BleAdapterInfo_DefaultServices_IsEmptyList()
     {
-        var report = new DiagnosticReport
+        var info = new BleAdapterInfo
         {
-            GeneratedAt = DateTime.UtcNow,
-            ToolVersion = "1.0.0",
-            UserVehicleInfo = CreateTestUserInfo()
+            DeviceName = "Test",
+            MacAddress = "00:00:00:00:00:00"
         };
 
-        await Assert.That(report.GeneratedAt).IsGreaterThan(DateTime.MinValue);
-        await Assert.That(report.ToolVersion).IsEqualTo("1.0.0");
-        await Assert.That(report.UserVehicleInfo.Make).IsEqualTo("Honda");
+        await Assert.That(info.Services).IsEmpty();
     }
 
+    [Test]
+    public async Task BleAdapterInfo_WithServices_ContainsCharacteristics()
+    {
+        var info = new BleAdapterInfo
+        {
+            DeviceName = "Veepeak",
+            MacAddress = "AA:BB:CC:DD:EE:FF",
+            Rssi = -65,
+            Services =
+            [
+                new BleServiceInfo
+                {
+                    ServiceUuid = Guid.NewGuid(),
+                    Characteristics =
+                    [
+                        new BleCharacteristicInfo
+                        {
+                            CharacteristicUuid = Guid.NewGuid(),
+                            Properties = ["Read", "Write", "Notify"]
+                        }
+                    ]
+                }
+            ]
+        };
+
+        await Assert.That(info.DeviceName).IsEqualTo("Veepeak");
+        await Assert.That(info.Rssi).IsEqualTo(-65);
+        await Assert.That(info.Services.Count).IsEqualTo(1);
+        await Assert.That(info.Services[0].Characteristics.Count).IsEqualTo(1);
+        await Assert.That(info.Services[0].Characteristics[0].Properties).Contains("Notify");
+    }
+}
+
+public class DiagnosticReportTests
+{
     [Test]
     public async Task DiagnosticReport_DefaultCollections_AreEmpty()
     {
@@ -47,12 +79,20 @@ public class DiagnosticReportTests
         await Assert.That(report.StandardPidResults.Count).IsGreaterThan(0);
     }
 
-    private static UserVehicleInfo CreateTestUserInfo() => new()
+    [Test]
+    public async Task DiagnosticReport_WithRequiredFields_CreatesSuccessfully()
     {
-        Year = 2022,
-        Make = "Honda",
-        Model = "CR-V"
-    };
+        var report = new DiagnosticReport
+        {
+            GeneratedAt = DateTime.UtcNow,
+            ToolVersion = "1.0.0",
+            UserVehicleInfo = CreateTestUserInfo()
+        };
+
+        await Assert.That(report.GeneratedAt).IsGreaterThan(DateTime.MinValue);
+        await Assert.That(report.ToolVersion).IsEqualTo("1.0.0");
+        await Assert.That(report.UserVehicleInfo.Make).IsEqualTo("Honda");
+    }
 
     private static DiagnosticReport CreateFullTestReport() => new()
     {
@@ -113,93 +153,13 @@ public class DiagnosticReportTests
             }
         ]
     };
-}
 
-public class UserVehicleInfoTests
-{
-    [Test]
-    public async Task UserVehicleInfo_RequiredFieldsOnly_IsValid()
+    private static UserVehicleInfo CreateTestUserInfo() => new()
     {
-        var info = new UserVehicleInfo
-        {
-            Year = 2020,
-            Make = "Toyota",
-            Model = "Camry"
-        };
-
-        await Assert.That(info.Year).IsEqualTo(2020);
-        await Assert.That(info.Make).IsEqualTo("Toyota");
-        await Assert.That(info.Model).IsEqualTo("Camry");
-        await Assert.That(info.Trim).IsNull();
-        await Assert.That(info.EngineType).IsNull();
-    }
-
-    [Test]
-    public async Task UserVehicleInfo_AllFields_ArePreserved()
-    {
-        var info = new UserVehicleInfo
-        {
-            Year = 2023,
-            Make = "Nissan",
-            Model = "Leaf",
-            Trim = "SV Plus",
-            EngineType = "Electric",
-            TransmissionType = "Single-Speed",
-            AdditionalNotes = "62kWh battery pack"
-        };
-
-        await Assert.That(info.Trim).IsEqualTo("SV Plus");
-        await Assert.That(info.EngineType).IsEqualTo("Electric");
-        await Assert.That(info.TransmissionType).IsEqualTo("Single-Speed");
-        await Assert.That(info.AdditionalNotes).IsEqualTo("62kWh battery pack");
-    }
-}
-
-public class BleAdapterInfoTests
-{
-    [Test]
-    public async Task BleAdapterInfo_WithServices_ContainsCharacteristics()
-    {
-        var info = new BleAdapterInfo
-        {
-            DeviceName = "Veepeak",
-            MacAddress = "AA:BB:CC:DD:EE:FF",
-            Rssi = -65,
-            Services =
-            [
-                new BleServiceInfo
-                {
-                    ServiceUuid = Guid.NewGuid(),
-                    Characteristics =
-                    [
-                        new BleCharacteristicInfo
-                        {
-                            CharacteristicUuid = Guid.NewGuid(),
-                            Properties = ["Read", "Write", "Notify"]
-                        }
-                    ]
-                }
-            ]
-        };
-
-        await Assert.That(info.DeviceName).IsEqualTo("Veepeak");
-        await Assert.That(info.Rssi).IsEqualTo(-65);
-        await Assert.That(info.Services.Count).IsEqualTo(1);
-        await Assert.That(info.Services[0].Characteristics.Count).IsEqualTo(1);
-        await Assert.That(info.Services[0].Characteristics[0].Properties).Contains("Notify");
-    }
-
-    [Test]
-    public async Task BleAdapterInfo_DefaultServices_IsEmptyList()
-    {
-        var info = new BleAdapterInfo
-        {
-            DeviceName = "Test",
-            MacAddress = "00:00:00:00:00:00"
-        };
-
-        await Assert.That(info.Services).IsEmpty();
-    }
+        Year = 2022,
+        Make = "Honda",
+        Model = "CR-V"
+    };
 }
 
 public class ObdAdapterInfoTests
@@ -228,35 +188,56 @@ public class ObdAdapterInfoTests
     }
 }
 
-public class VehicleIdentificationTests
+public class PidProbeResultTests
 {
     [Test]
-    public async Task VehicleIdentification_WithVin_IsValid()
+    public async Task PidProbeResult_FailedProbe_ContainsError()
     {
-        var info = new VehicleIdentification
+        var result = new PidProbeResult
         {
-            Vin = "1N4AZ0CP5HC123456",
-            RawVinResponse = "49020131 4E34415A 30435035 48433132 33343536"
+            Command = "015B",
+            Description = "Hybrid battery remaining life",
+            Success = false,
+            Error = "NO DATA",
+            ResponseTime = TimeSpan.FromMilliseconds(1000)
         };
 
-        await Assert.That(info.Vin).IsEqualTo("1N4AZ0CP5HC123456");
-        await Assert.That(info.Vin).HasLength(17);
+        await Assert.That(result.Success).IsFalse();
+        await Assert.That(result.Error).IsEqualTo("NO DATA");
+        await Assert.That(result.RawResponse).IsNull();
     }
 
     [Test]
-    public async Task VehicleIdentification_AllFieldsNullable_DefaultsToNull()
+    public async Task PidProbeResult_SuccessfulProbe_ContainsResponse()
     {
-        var info = new VehicleIdentification();
+        var result = new PidProbeResult
+        {
+            Command = "010C",
+            Description = "Engine RPM",
+            Success = true,
+            RawResponse = "410C 1AF8",
+            ParsedValue = "1726",
+            ResponseTime = TimeSpan.FromMilliseconds(45)
+        };
 
-        await Assert.That(info.Vin).IsNull();
-        await Assert.That(info.RawVinResponse).IsNull();
-        await Assert.That(info.CalibrationId).IsNull();
-        await Assert.That(info.EcuName).IsNull();
+        await Assert.That(result.Success).IsTrue();
+        await Assert.That(result.RawResponse).IsEqualTo("410C 1AF8");
+        await Assert.That(result.Error).IsNull();
+        await Assert.That(result.ResponseTime.TotalMilliseconds).IsEqualTo(45);
     }
 }
 
 public class SupportedPidsInfoTests
 {
+    [Test]
+    public async Task SupportedPidsInfo_DefaultCollections_AreEmpty()
+    {
+        var info = new SupportedPidsInfo();
+
+        await Assert.That(info.Mode01Pids).IsEmpty();
+        await Assert.That(info.Mode09Pids).IsEmpty();
+    }
+
     [Test]
     public async Task SupportedPidsInfo_WithPids_ContainsBothModes()
     {
@@ -276,73 +257,77 @@ public class SupportedPidsInfoTests
         await Assert.That(info.Mode01Pids).Contains("010C");
         await Assert.That(info.Mode09Pids).Contains("0902");
     }
+}
+
+public class UserVehicleInfoTests
+{
+    [Test]
+    public async Task UserVehicleInfo_AllFields_ArePreserved()
+    {
+        var info = new UserVehicleInfo
+        {
+            Year = 2023,
+            Make = "Nissan",
+            Model = "Leaf",
+            Trim = "SV Plus",
+            EngineType = "Electric",
+            TransmissionType = "Single-Speed",
+            AdditionalNotes = "62kWh battery pack"
+        };
+
+        await Assert.That(info.Trim).IsEqualTo("SV Plus");
+        await Assert.That(info.EngineType).IsEqualTo("Electric");
+        await Assert.That(info.TransmissionType).IsEqualTo("Single-Speed");
+        await Assert.That(info.AdditionalNotes).IsEqualTo("62kWh battery pack");
+    }
 
     [Test]
-    public async Task SupportedPidsInfo_DefaultCollections_AreEmpty()
+    public async Task UserVehicleInfo_RequiredFieldsOnly_IsValid()
     {
-        var info = new SupportedPidsInfo();
+        var info = new UserVehicleInfo
+        {
+            Year = 2020,
+            Make = "Toyota",
+            Model = "Camry"
+        };
 
-        await Assert.That(info.Mode01Pids).IsEmpty();
-        await Assert.That(info.Mode09Pids).IsEmpty();
+        await Assert.That(info.Year).IsEqualTo(2020);
+        await Assert.That(info.Make).IsEqualTo("Toyota");
+        await Assert.That(info.Model).IsEqualTo("Camry");
+        await Assert.That(info.Trim).IsNull();
+        await Assert.That(info.EngineType).IsNull();
     }
 }
 
-public class PidProbeResultTests
+public class VehicleIdentificationTests
 {
     [Test]
-    public async Task PidProbeResult_SuccessfulProbe_ContainsResponse()
+    public async Task VehicleIdentification_AllFieldsNullable_DefaultsToNull()
     {
-        var result = new PidProbeResult
-        {
-            Command = "010C",
-            Description = "Engine RPM",
-            Success = true,
-            RawResponse = "410C 1AF8",
-            ParsedValue = "1726",
-            ResponseTime = TimeSpan.FromMilliseconds(45)
-        };
+        var info = new VehicleIdentification();
 
-        await Assert.That(result.Success).IsTrue();
-        await Assert.That(result.RawResponse).IsEqualTo("410C 1AF8");
-        await Assert.That(result.Error).IsNull();
-        await Assert.That(result.ResponseTime.TotalMilliseconds).IsEqualTo(45);
+        await Assert.That(info.Vin).IsNull();
+        await Assert.That(info.RawVinResponse).IsNull();
+        await Assert.That(info.CalibrationId).IsNull();
+        await Assert.That(info.EcuName).IsNull();
     }
 
     [Test]
-    public async Task PidProbeResult_FailedProbe_ContainsError()
+    public async Task VehicleIdentification_WithVin_IsValid()
     {
-        var result = new PidProbeResult
+        var info = new VehicleIdentification
         {
-            Command = "015B",
-            Description = "Hybrid battery remaining life",
-            Success = false,
-            Error = "NO DATA",
-            ResponseTime = TimeSpan.FromMilliseconds(1000)
+            Vin = "1N4AZ0CP5HC123456",
+            RawVinResponse = "49020131 4E34415A 30435035 48433132 33343536"
         };
 
-        await Assert.That(result.Success).IsFalse();
-        await Assert.That(result.Error).IsEqualTo("NO DATA");
-        await Assert.That(result.RawResponse).IsNull();
+        await Assert.That(info.Vin).IsEqualTo("1N4AZ0CP5HC123456");
+        await Assert.That(info.Vin).Length().IsEqualTo(17);
     }
 }
 
 public class DiagnosticErrorTests
 {
-    [Test]
-    public async Task DiagnosticError_WithAllFields_IsValid()
-    {
-        var error = new DiagnosticError
-        {
-            Phase = "VIN Read",
-            Message = "Timeout waiting for response",
-            Details = "Command: 0902, Timeout: 10s"
-        };
-
-        await Assert.That(error.Phase).IsEqualTo("VIN Read");
-        await Assert.That(error.Message).IsEqualTo("Timeout waiting for response");
-        await Assert.That(error.Details).IsNotNull();
-    }
-
     [Test]
     public async Task DiagnosticError_Timestamp_DefaultsToUtcNow()
     {
@@ -356,5 +341,20 @@ public class DiagnosticErrorTests
 
         await Assert.That(error.Timestamp).IsGreaterThanOrEqualTo(before);
         await Assert.That(error.Timestamp).IsLessThanOrEqualTo(after);
+    }
+
+    [Test]
+    public async Task DiagnosticError_WithAllFields_IsValid()
+    {
+        var error = new DiagnosticError
+        {
+            Phase = "VIN Read",
+            Message = "Timeout waiting for response",
+            Details = "Command: 0902, Timeout: 10s"
+        };
+
+        await Assert.That(error.Phase).IsEqualTo("VIN Read");
+        await Assert.That(error.Message).IsEqualTo("Timeout waiting for response");
+        await Assert.That(error.Details).IsNotNull();
     }
 }

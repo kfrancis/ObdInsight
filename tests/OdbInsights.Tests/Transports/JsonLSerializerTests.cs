@@ -8,23 +8,41 @@ namespace OdbInsights.Tests.Transports;
 public class JsonLSerializerTests
 {
     [Test]
-    public async Task Serializer_RoundTrip_PreservesSession()
+    public async Task Serializer_LoadFromFile_ReturnsSession()
     {
         // Arrange
         var serializer = new JsonLTransportSessionSerializer();
-        var originalSession = CreateTestSession();
+        var session = CreateTestSession();
+        var tempFile = Path.Combine(Path.GetTempPath(), $"test_session_{Guid.NewGuid():N}.jsonl");
 
-        using var stream = new MemoryStream();
+        try
+        {
+            await serializer.SaveAsync(session, tempFile);
 
-        // Act
-        await serializer.SaveAsync(originalSession, stream);
-        stream.Position = 0;
-        var loadedSession = await serializer.LoadAsync(stream);
+            // Act
+            var loaded = await serializer.LoadAsync(tempFile);
 
-        // Assert
-        await Assert.That(loadedSession.SessionId).IsEqualTo(originalSession.SessionId);
-        await Assert.That(loadedSession.Entries).HasCount().EqualTo(originalSession.Entries.Count);
-        await Assert.That(loadedSession.Metadata.Protocol).IsEqualTo(originalSession.Metadata.Protocol);
+            // Assert
+            await Assert.That(loaded).IsNotNull();
+            await Assert.That(loaded.Entries).Count().IsEqualTo(session.Entries.Count);
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+        }
+    }
+
+    [Test]
+    public async Task Serializer_LoadMissingFile_ThrowsFileNotFound()
+    {
+        // Arrange
+        var serializer = new JsonLTransportSessionSerializer();
+        var nonExistentFile = Path.Combine(Path.GetTempPath(), $"nonexistent_{Guid.NewGuid():N}.jsonl");
+
+        // Act & Assert
+        await Assert.That(() => serializer.LoadAsync(nonExistentFile)!)
+            .Throws<FileNotFoundException>();
     }
 
     [Test]
@@ -51,6 +69,25 @@ public class JsonLSerializerTests
         }
     }
 
+    [Test]
+    public async Task Serializer_RoundTrip_PreservesSession()
+    {
+        // Arrange
+        var serializer = new JsonLTransportSessionSerializer();
+        var originalSession = CreateTestSession();
+
+        using var stream = new MemoryStream();
+
+        // Act
+        await serializer.SaveAsync(originalSession, stream);
+        stream.Position = 0;
+        var loadedSession = await serializer.LoadAsync(stream);
+
+        // Assert
+        await Assert.That(loadedSession.SessionId).IsEqualTo(originalSession.SessionId);
+        await Assert.That(loadedSession.Entries).Count().IsEqualTo(originalSession.Entries.Count);
+        await Assert.That(loadedSession.Metadata.Protocol).IsEqualTo(originalSession.Metadata.Protocol);
+    }
     [Test]
     public async Task Serializer_SaveToFile_CreatesValidFile()
     {
@@ -83,45 +120,6 @@ public class JsonLSerializerTests
                 File.Delete(tempFile);
         }
     }
-
-    [Test]
-    public async Task Serializer_LoadFromFile_ReturnsSession()
-    {
-        // Arrange
-        var serializer = new JsonLTransportSessionSerializer();
-        var session = CreateTestSession();
-        var tempFile = Path.Combine(Path.GetTempPath(), $"test_session_{Guid.NewGuid():N}.jsonl");
-
-        try
-        {
-            await serializer.SaveAsync(session, tempFile);
-
-            // Act
-            var loaded = await serializer.LoadAsync(tempFile);
-
-            // Assert
-            await Assert.That(loaded).IsNotNull();
-            await Assert.That(loaded.Entries).HasCount().EqualTo(session.Entries.Count);
-        }
-        finally
-        {
-            if (File.Exists(tempFile))
-                File.Delete(tempFile);
-        }
-    }
-
-    [Test]
-    public async Task Serializer_LoadMissingFile_ThrowsFileNotFound()
-    {
-        // Arrange
-        var serializer = new JsonLTransportSessionSerializer();
-        var nonExistentFile = Path.Combine(Path.GetTempPath(), $"nonexistent_{Guid.NewGuid():N}.jsonl");
-
-        // Act & Assert
-        await Assert.That(() => serializer.LoadAsync(nonExistentFile))
-            .Throws<FileNotFoundException>();
-    }
-
     private static TransportSession CreateTestSession()
     {
         var now = DateTimeOffset.UtcNow;
