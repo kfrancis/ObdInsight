@@ -1,22 +1,45 @@
 using System.Text.RegularExpressions;
+using ObdInsight.Core.Transports;
 
-namespace ObdInsight.Core;
+namespace ObdInsight.Core.Adapters.Elm327;
 
 /// <summary>
 /// ELM327-compatible OBD adapter implementation.
 /// Handles AT commands, protocol negotiation, and OBD-II command framing.
 /// </summary>
+/// <remarks>
+/// The ELM327 is the most common OBD-II interpreter chip. Many dongles use
+/// genuine ELM327 chips or clones (some with varying compatibility).
+/// 
+/// This adapter handles:
+/// - Initialization sequence (ATZ, ATE0, etc.)
+/// - Protocol auto-detection or manual selection
+/// - Response parsing and error detection
+/// - Multi-frame response handling
+/// </remarks>
 public partial class Elm327Adapter : IObdAdapter
 {
     private IObdTransport? _transport;
     private readonly TimeSpan _defaultTimeout = TimeSpan.FromSeconds(5);
     private readonly TimeSpan _initTimeout = TimeSpan.FromSeconds(10);
 
+    /// <inheritdoc />
     public string Name => "ELM327";
-    public string[] SupportedDeviceNames => ["OBDII", "Veepeak", "ELM327", "OBDLink", "V-LINK"];
+
+    /// <inheritdoc />
+    public string[] SupportedDeviceNames => ["OBDII", "Veepeak", "ELM327", "OBDLink", "V-LINK", "OBD"];
+
+    /// <inheritdoc />
     public bool IsInitialized { get; private set; }
 
+    /// <summary>
+    /// ELM327 firmware version string
+    /// </summary>
     public string? DeviceVersion { get; private set; }
+
+    /// <summary>
+    /// Detected OBD protocol description
+    /// </summary>
     public string? ProtocolDescription { get; private set; }
 
     /// <summary>
@@ -24,6 +47,7 @@ public partial class Elm327Adapter : IObdAdapter
     /// </summary>
     public event EventHandler<Elm327LogEventArgs>? Log;
 
+    /// <inheritdoc />
     public async Task<bool> InitializeAsync(IObdTransport transport, CancellationToken cancellationToken = default)
     {
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
@@ -99,6 +123,7 @@ public partial class Elm327Adapter : IObdAdapter
         }
     }
 
+    /// <inheritdoc />
     public async Task<ObdResponse> SendCommandAsync(ObdCommand command, CancellationToken cancellationToken = default)
     {
         if (_transport == null || !_transport.IsConnected)
@@ -152,6 +177,7 @@ public partial class Elm327Adapter : IObdAdapter
         }
     }
 
+    /// <inheritdoc />
     public async Task ResetAsync()
     {
         if (_transport?.IsConnected == true)
@@ -257,20 +283,38 @@ public partial class Elm327Adapter : IObdAdapter
     private static partial Regex VersionRegex();
 }
 
+/// <summary>
+/// Log levels for ELM327 adapter events
+/// </summary>
 public enum Elm327LogLevel
 {
+    /// <summary>Detailed debugging information</summary>
     Debug,
+    /// <summary>General information</summary>
     Info,
+    /// <summary>Potential issues</summary>
     Warning,
+    /// <summary>Errors</summary>
     Error
 }
 
+/// <summary>
+/// Event args for ELM327 log events
+/// </summary>
 public class Elm327LogEventArgs : EventArgs
 {
+    /// <summary>Log level</summary>
     public Elm327LogLevel Level { get; }
+
+    /// <summary>Log message</summary>
     public string Message { get; }
+
+    /// <summary>When the event occurred</summary>
     public DateTime Timestamp { get; }
 
+    /// <summary>
+    /// Creates a new log event
+    /// </summary>
     public Elm327LogEventArgs(Elm327LogLevel level, string message)
     {
         Level = level;

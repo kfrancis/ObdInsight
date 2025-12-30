@@ -1,5 +1,6 @@
 using System.Text;
-using ObdInsight.Core;
+using ObdInsight.Core.Transports;
+using ObdInsight.Core.Transports.Ble;
 using Plugin.BLE.Abstractions;
 using Plugin.BLE.Abstractions.Contracts;
 using Plugin.BLE.Abstractions.EventArgs;

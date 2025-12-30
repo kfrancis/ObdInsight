@@ -1,7 +1,9 @@
 ﻿using ObdInsight.Core;
+using ObdInsight.Core.Adapters;
+using ObdInsight.Core.Adapters.Elm327;
 using ObdInsight.Core.Diagnostics;
+using ObdInsight.Core.Transports.Ble;
 using ObdInsight.Core.Vehicles;
-using ObdInsight.DevTools;
 using ObdInsight.Drivers;
 using Spectre.Console;
 

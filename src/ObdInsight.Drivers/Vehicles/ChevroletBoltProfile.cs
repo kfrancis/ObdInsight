@@ -1,4 +1,4 @@
-using ObdInsight.Core;
+using ObdInsight.Core.Adapters;
 using ObdInsight.Core.Vehicles;
 
 namespace ObdInsight.Drivers.Vehicles;

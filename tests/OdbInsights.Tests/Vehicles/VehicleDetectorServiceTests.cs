@@ -1,18 +1,26 @@
-using ObdInsight.Core;
+using ObdInsight.Core.Adapters;
 using ObdInsight.Core.Vehicles;
+using ObdInsight.Drivers;
 
 namespace OdbInsights.Tests.Vehicles;
 
 public class VehicleDetectorServiceTests
 {
-    private readonly VehicleDetectorService _detector = new();
+    private readonly VehicleDetectorService _detector;
+
+    public VehicleDetectorServiceTests()
+    {
+        _detector = new VehicleDetectorService();
+        // Register all profiles from Drivers package
+        VehicleProfileRegistry.RegisterAllProfiles(_detector);
+    }
 
     [Test]
     public async Task RegisteredProfiles_ContainsBuiltInProfiles()
     {
         await Assert.That(_detector.RegisteredProfiles.Count).IsGreaterThan(0);
 
-        // Should have Nissan Leaf built-in
+        // Should have Nissan Leaf registered from Drivers package
         await Assert.That(_detector.RegisteredProfiles.Any(p => p.Name == "Nissan Leaf")).IsTrue();
     }
 
@@ -49,25 +57,27 @@ public class VehicleDetectorServiceTests
     [Test]
     public async Task RegisterProfile_AddsNewProfile()
     {
+        var detector = new VehicleDetectorService();
         var customProfile = new TestVehicleProfile("Test Vehicle", "TestMfg");
-        var initialCount = _detector.RegisteredProfiles.Count;
+        var initialCount = detector.RegisteredProfiles.Count;
 
-        _detector.RegisterProfile(customProfile);
+        detector.RegisterProfile(customProfile);
 
-        await Assert.That(_detector.RegisteredProfiles.Count).IsEqualTo(initialCount + 1);
-        await Assert.That(_detector.RegisteredProfiles.Contains(customProfile)).IsTrue();
+        await Assert.That(detector.RegisteredProfiles.Count).IsEqualTo(initialCount + 1);
+        await Assert.That(detector.RegisteredProfiles.Contains(customProfile)).IsTrue();
     }
 
     [Test]
     public async Task RegisterProfile_DuplicateProfile_DoesNotAddAgain()
     {
+        var detector = new VehicleDetectorService();
         var customProfile = new TestVehicleProfile("Unique Test", "UniqueMfg");
 
-        _detector.RegisterProfile(customProfile);
-        var countAfterFirst = _detector.RegisteredProfiles.Count;
+        detector.RegisterProfile(customProfile);
+        var countAfterFirst = detector.RegisteredProfiles.Count;
 
-        _detector.RegisterProfile(customProfile);
-        var countAfterSecond = _detector.RegisteredProfiles.Count;
+        detector.RegisterProfile(customProfile);
+        var countAfterSecond = detector.RegisteredProfiles.Count;
 
         await Assert.That(countAfterSecond).IsEqualTo(countAfterFirst);
     }
@@ -75,7 +85,8 @@ public class VehicleDetectorServiceTests
     [Test]
     public async Task RegisterProfile_NullProfile_ThrowsArgumentNullException()
     {
-        await Assert.That(() => _detector.RegisterProfile(null!))
+        var detector = new VehicleDetectorService();
+        await Assert.That(() => detector.RegisterProfile(null!))
             .Throws<ArgumentNullException>();
     }
 

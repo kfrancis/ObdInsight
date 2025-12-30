@@ -1,16 +1,35 @@
-namespace ObdInsight.Core.Vehicles;
+using ObdInsight.Core.Adapters;
+using ObdInsight.Core.Vehicles;
+
+namespace ObdInsight.Drivers.Vehicles;
 
 /// <summary>
 /// Vehicle profile for Nissan Leaf (2011-2024).
 /// Supports standard OBD-II plus Nissan-specific CAR CAN protocol for EV data.
 /// </summary>
+/// <remarks>
+/// The Nissan Leaf uses a custom CAR CAN protocol for accessing battery and EV data.
+/// This profile configures the ELM327 adapter to communicate with the Leaf's
+/// Battery Management System (BMS) at ECU address 0x79B.
+/// </remarks>
 public class NissanLeafProfile : IVehicleProfile
 {
+    /// <inheritdoc />
     public string Name => "Nissan Leaf";
+
+    /// <inheritdoc />
     public string Manufacturer => "Nissan";
+
+    /// <inheritdoc />
     public string Model => "Leaf";
+
+    /// <inheritdoc />
     public Range<int> SupportedYears => new(2011, 2024);
+
+    /// <inheritdoc />
     public VehicleProtocol Protocol => VehicleProtocol.NissanCarCan;
+
+    /// <inheritdoc />
     public bool IsElectric => true;
 
     /// <summary>
@@ -25,6 +44,7 @@ public class NissanLeafProfile : IVehicleProfile
         "SJN",    // UK-built (Sunderland)
     ];
 
+    /// <inheritdoc />
     public IReadOnlySet<VehicleDataCategory> SupportedCategories { get; } = new HashSet<VehicleDataCategory>
     {
         VehicleDataCategory.Battery,
@@ -154,6 +174,7 @@ public class NissanLeafProfile : IVehicleProfile
         }
     ];
 
+    /// <inheritdoc />
     public ObdCommand? GetCommand(VehicleDataPoint dataPoint)
     {
         // Check custom Leaf PIDs first
@@ -174,6 +195,7 @@ public class NissanLeafProfile : IVehicleProfile
         };
     }
 
+    /// <inheritdoc />
     public VehicleDataResult DecodeResponse(VehicleDataPoint dataPoint, byte[] responseBytes)
     {
         var customPid = CustomPids.FirstOrDefault(p => p.DataPoint == dataPoint);
@@ -203,6 +225,7 @@ public class NissanLeafProfile : IVehicleProfile
         };
     }
 
+    /// <inheritdoc />
     public bool MatchesVin(string vin)
     {
         if (string.IsNullOrWhiteSpace(vin) || vin.Length < 3)

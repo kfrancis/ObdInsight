@@ -1,22 +1,38 @@
+using ObdInsight.Core.Adapters;
+
 namespace ObdInsight.Core.Vehicles;
 
 /// <summary>
 /// Service for detecting vehicle type from VIN or ECU probing.
 /// </summary>
+/// <remarks>
+/// The detector uses multiple strategies to identify a vehicle:
+/// 1. VIN prefix matching (most reliable)
+/// 2. Manufacturer-specific ECU probing
+/// 3. PID fingerprinting (supported PID patterns)
+/// 4. Fallback to generic OBD-II
+/// 
+/// Register vehicle profiles from ObdInsight.Drivers using VehicleProfileRegistry.RegisterAllProfiles()
+/// </remarks>
 public class VehicleDetectorService : IVehicleDetector
 {
     private readonly List<IVehicleProfile> _profiles = [];
     private readonly StandardObdVehicleProfile _fallbackProfile = new();
 
+    /// <summary>
+    /// Creates a new vehicle detector with no pre-registered profiles.
+    /// Use VehicleProfileRegistry.RegisterAllProfiles() to add profiles from Drivers.
+    /// </summary>
     public VehicleDetectorService()
     {
-        // Register built-in profiles
-        _profiles.Add(new NissanLeafProfile());
-        // Future: Add more profiles here (Tesla, Bolt, etc.)
+        // Profiles are now registered externally via RegisterProfile()
+        // This keeps Core independent of specific vehicle implementations
     }
 
+    /// <inheritdoc />
     public IReadOnlyList<IVehicleProfile> RegisteredProfiles => _profiles;
 
+    /// <inheritdoc />
     public void RegisterProfile(IVehicleProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
@@ -28,6 +44,7 @@ public class VehicleDetectorService : IVehicleDetector
         }
     }
 
+    /// <inheritdoc />
     public IVehicleProfile? DetectFromVin(string vin)
     {
         if (string.IsNullOrWhiteSpace(vin))
@@ -49,6 +66,7 @@ public class VehicleDetectorService : IVehicleDetector
         return null;
     }
 
+    /// <inheritdoc />
     public async Task<VehicleDetectionResult> DetectFromEcuAsync(
         IObdAdapter adapter,
         CancellationToken cancellationToken = default)

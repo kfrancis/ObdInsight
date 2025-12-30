@@ -1,5 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
-using ObdInsight.Core;
+using ObdInsight.Core.Transports.Ble;
 using ObdInsight.Pages;
 using ObdInsight.Services;
 using ObdInsight.ViewModels;

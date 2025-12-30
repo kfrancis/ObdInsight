@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using ObdInsight.Core;
+using ObdInsight.Core.Transports.Ble;
 using ObdInsight.Services;
 
 namespace ObdInsight.ViewModels;

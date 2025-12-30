@@ -1,6 +1,6 @@
 using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Devices.Bluetooth;
-using ObdInsight.Core;
+using ObdInsight.Core.Transports.Ble;
 using System.Collections.Concurrent;
 
 namespace ObdInsight.DevTools;

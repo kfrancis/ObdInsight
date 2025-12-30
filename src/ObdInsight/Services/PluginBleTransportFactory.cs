@@ -1,4 +1,4 @@
-using ObdInsight.Core;
+using ObdInsight.Core.Transports.Ble;
 using Plugin.BLE;
 using Plugin.BLE.Abstractions.Contracts;
 using Plugin.BLE.Abstractions.EventArgs;
@@ -6,8 +6,7 @@ using Plugin.BLE.Abstractions.EventArgs;
 namespace ObdInsight.Services;
 
 /// <summary>
-/// Plugin.BLE-based implementation of IBleTransportFactory.
-/// Provides cross-platform BLE support for Android, iOS, macOS, and Windows.
+///
 /// </summary>
 public sealed class PluginBleTransportFactory : IBleTransportFactory
 {

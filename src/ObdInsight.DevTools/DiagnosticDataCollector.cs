@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using ObdInsight.Core;
+using ObdInsight.Core.Adapters;
 using ObdInsight.Core.Diagnostics;
 using Spectre.Console;
 

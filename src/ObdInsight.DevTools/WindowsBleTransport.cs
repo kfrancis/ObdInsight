@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
-using ObdInsight.Core;
+using ObdInsight.Core.Transports.Ble;
 
 namespace ObdInsight.DevTools;
 

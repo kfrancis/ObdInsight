@@ -1,36 +1,69 @@
-﻿using System.Text;
+using System.Text;
 
-namespace ObdInsight.Core;
+namespace ObdInsight.Core.Transports.Ble;
 
 /// <summary>
 /// Base class for BLE transport implementations.
 /// Provides common buffering and response handling logic.
 /// Platform-specific implementations derive from this.
 /// </summary>
+/// <remarks>
+/// This base class handles:
+/// - Receive buffer management (thread-safe)
+/// - Write chunking for BLE MTU limits
+/// - Connection state management
+/// - Event raising
+/// 
+/// Platform implementations (Windows, Android, iOS) must implement:
+/// - ConnectAsync (platform-specific BLE connection)
+/// - DisconnectAsync
+/// - WriteCharacteristicAsync
+/// </remarks>
 public abstract class BleTransportBase : IBleTransport
 {
     private readonly Lock _bufferLock = new();
     private readonly StringBuilder _receiveBuffer = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
+    /// <summary>
+    /// Creates a new BLE transport with the given profile
+    /// </summary>
+    /// <param name="profile">BLE device profile defining service/characteristic UUIDs</param>
     protected BleTransportBase(BleDeviceProfile profile)
     {
         Profile = profile ?? throw new ArgumentNullException(nameof(profile));
     }
 
+    /// <inheritdoc />
     public event EventHandler<BleConnectionState>? ConnectionStateChanged;
 
+    /// <inheritdoc />
     public event EventHandler<string>? DataReceived;
 
+    /// <inheritdoc />
     public event EventHandler<string>? DataSent;
 
+    /// <inheritdoc />
     public BleConnectionState ConnectionState { get; protected set; } = BleConnectionState.Disconnected;
+
+    /// <inheritdoc />
     public string DeviceAddress { get; protected set; } = string.Empty;
+
+    /// <inheritdoc />
     public abstract bool IsConnected { get; }
+
+    /// <inheritdoc />
     public string Name => Profile.Name;
+
+    /// <inheritdoc />
     public Guid ServiceUuid => Profile.ServiceUuid;
+
+    /// <summary>
+    /// The BLE device profile being used
+    /// </summary>
     protected BleDeviceProfile Profile { get; }
 
+    /// <inheritdoc />
     public Task<bool> ConnectAsync(CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(DeviceAddress))
@@ -40,21 +73,26 @@ public abstract class BleTransportBase : IBleTransport
         return ConnectAsync(DeviceAddress, cancellationToken);
     }
 
+    /// <inheritdoc />
     public abstract Task<bool> ConnectAsync(string deviceAddress, CancellationToken cancellationToken = default);
 
+    /// <inheritdoc />
     public abstract Task DisconnectAsync();
 
+    /// <inheritdoc />
     public virtual void Dispose()
     {
         _writeLock.Dispose();
         GC.SuppressFinalize(this);
     }
 
+    /// <inheritdoc />
     public async Task<string> ReadLineAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         return await ReadUntilAsync("\r", timeout, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task<string> ReadUntilAsync(string terminator, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         using var timeoutCts = new CancellationTokenSource(timeout);
@@ -92,6 +130,7 @@ public abstract class BleTransportBase : IBleTransport
         throw new OperationCanceledException(cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task WriteAsync(string data, CancellationToken cancellationToken = default)
     {
         await _writeLock.WaitAsync(cancellationToken);
@@ -139,6 +178,7 @@ public abstract class BleTransportBase : IBleTransport
     /// <summary>
     /// Called by platform implementations when data is received from BLE characteristic
     /// </summary>
+    /// <param name="data">The raw bytes received</param>
     protected void OnDataReceived(byte[] data)
     {
         var text = Encoding.ASCII.GetString(data);
@@ -154,6 +194,7 @@ public abstract class BleTransportBase : IBleTransport
     /// <summary>
     /// Update connection state and raise event
     /// </summary>
+    /// <param name="state">The new connection state</param>
     protected void SetConnectionState(BleConnectionState state)
     {
         if (ConnectionState != state)
@@ -166,6 +207,8 @@ public abstract class BleTransportBase : IBleTransport
     /// <summary>
     /// Platform-specific write implementation
     /// </summary>
+    /// <param name="data">Bytes to write to the characteristic</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     protected abstract Task WriteCharacteristicAsync(byte[] data, CancellationToken cancellationToken);
 
     private static string EscapeForDisplay(string s) =>

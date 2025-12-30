@@ -1,4 +1,5 @@
 using ObdInsight.Core.Vehicles;
+using ObdInsight.Drivers.Vehicles;
 
 namespace OdbInsights.Tests.Vehicles;
 

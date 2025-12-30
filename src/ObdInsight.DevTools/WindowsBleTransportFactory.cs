@@ -1,4 +1,4 @@
-using ObdInsight.Core;
+using ObdInsight.Core.Transports.Ble;
 
 namespace ObdInsight.DevTools;
 
