@@ -1,7 +1,5 @@
-using System.Globalization;
-using ObdInsight.Core.Adapters;
 using ObdInsight.Core.Adapters.Elm327;
-using ObdInsight.Core.Transports;
+using System.Globalization;
 
 namespace ObdInsight.Core.Vehicles;
 
@@ -227,7 +225,7 @@ public class VehicleObdService : IVehicleObdService
         );
     }
 
-    #endregion
+    #endregion IVehicleObdService Implementation
 
     #region IObdService Implementation (delegates to standard PIDs)
 
@@ -328,7 +326,7 @@ public class VehicleObdService : IVehicleObdService
         return new ObdPidResponse(pid, true, value, dataBytes, null);
     }
 
-    #endregion
+    #endregion IObdService Implementation (delegates to standard PIDs)
 
     #region Parsing Helpers
 
@@ -458,5 +456,5 @@ public class VehicleObdService : IVehicleObdService
         }
     }
 
-    #endregion
+    #endregion Parsing Helpers
 }

@@ -112,9 +112,12 @@ public class VehicleDetectorServiceTests
         public IReadOnlySet<VehicleDataCategory> SupportedCategories => new HashSet<VehicleDataCategory>();
 
         public ObdCommand? GetCommand(VehicleDataPoint dataPoint) => null;
+
         public VehicleDataResult DecodeResponse(VehicleDataPoint dataPoint, byte[] responseBytes) =>
             VehicleDataResult.Fail(dataPoint, "Test profile");
+
         public bool MatchesVin(string vin) => false;
+
         public IReadOnlyList<ObdCommand> GetInitializationCommands() => [];
     }
 }

@@ -1,7 +1,7 @@
-using Windows.Devices.Bluetooth.Advertisement;
-using Windows.Devices.Bluetooth;
 using ObdInsight.Core.Transports.Ble;
 using System.Collections.Concurrent;
+using Windows.Devices.Bluetooth;
+using Windows.Devices.Bluetooth.Advertisement;
 
 namespace ObdInsight.DevTools;
 
@@ -29,6 +29,7 @@ public sealed class WindowsBleScanner : IBleScanner
     public event EventHandler<BleScanStateChangedEventArgs>? ScanStateChanged;
 
     public bool IsScanning => _watcher.Status == BluetoothLEAdvertisementWatcherStatus.Started;
+
     public void Dispose()
     {
         StopScanAsync().GetAwaiter().GetResult();
@@ -76,7 +77,7 @@ public sealed class WindowsBleScanner : IBleScanner
         try
         {
             var address = FormatMacAddress(args.BluetoothAddress);
-            
+
             // Apply address filter
             if (_currentFilter?.DeviceAddresses?.Count > 0 &&
                 !_currentFilter.DeviceAddresses.Any(a => a.Equals(address, StringComparison.OrdinalIgnoreCase)))

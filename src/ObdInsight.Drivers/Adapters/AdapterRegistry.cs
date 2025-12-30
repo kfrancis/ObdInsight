@@ -12,7 +12,7 @@ namespace ObdInsight.Drivers.Adapters;
 /// The adapter registry serves two purposes:
 /// 1. Discovery: Find a suitable adapter for a given device name
 /// 2. Factory: Create adapter instances for communication
-/// 
+///
 /// This separation allows adding new adapter support (e.g., STN1110, OBDLink)
 /// without modifying existing code.
 /// </remarks>

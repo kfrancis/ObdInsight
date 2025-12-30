@@ -1,7 +1,6 @@
-using System.Diagnostics;
 using ObdInsight.Core.Adapters;
 using ObdInsight.Core.Diagnostics;
-using Spectre.Console;
+using System.Diagnostics;
 
 namespace ObdInsight.DevTools;
 
@@ -211,18 +210,23 @@ public class DiagnosticDataCollector
                     case "ATZ":
                         resetResponse = rawValue;
                         break;
+
                     case "ATI":
                         versionResponse = rawValue;
                         break;
+
                     case "AT@1":
                         deviceDesc = rawValue;
                         break;
+
                     case "ATRV":
                         voltage = rawValue;
                         break;
+
                     case "ATDP":
                         protocol = rawValue;
                         break;
+
                     case "ATDPN":
                         protocolNum = rawValue;
                         break;

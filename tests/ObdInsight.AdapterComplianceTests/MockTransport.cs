@@ -1,6 +1,6 @@
+using ObdInsight.Core.Transports;
 using System.Collections.Concurrent;
 using System.Text;
-using ObdInsight.Core.Transports;
 
 namespace ObdInsight.AdapterComplianceTests;
 

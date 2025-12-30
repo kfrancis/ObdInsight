@@ -1,6 +1,4 @@
-using ObdInsight.Core.Adapters;
 using ObdInsight.Core.Adapters.Elm327;
-using ObdInsight.Core.Transports;
 
 namespace ObdInsight.Core;
 

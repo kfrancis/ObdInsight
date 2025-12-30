@@ -40,7 +40,8 @@ public abstract partial class BaseViewModel : ObservableObject
     /// <summary>
     /// Called when IsBusy changes. Override to add additional behavior.
     /// </summary>
-    protected virtual void OnBusyChanged() { }
+    protected virtual void OnBusyChanged()
+    { }
 
     /// <summary>
     /// Clears any existing error message.

@@ -12,18 +12,18 @@
             Spacing="20">
 
             <!-- Connection Status Card -->
-            <Border 
+            <Border
                 Stroke="{StaticResource Primary}"
                 StrokeThickness="2"
                 StrokeShape="RoundRectangle 10"
                 Padding="15"
                 BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray900}}">
                 <VerticalStackLayout Spacing="10">
-                    <Label 
+                    <Label
                         Text="Connection Status"
                         FontAttributes="Bold"
                         FontSize="18" />
-                    <Label 
+                    <Label
                         Text="{Binding ConnectionStatus}"
                         FontSize="16"
                         TextColor="{Binding IsConnected, Converter={StaticResource BoolToColorConverter}}" />
@@ -45,8 +45,8 @@
                 IsVisible="{Binding IsNotBusy}"
                 HorizontalOptions="Fill" />
 
-            <HorizontalStackLayout 
-                Spacing="10" 
+            <HorizontalStackLayout
+                Spacing="10"
                 HorizontalOptions="Center"
                 IsVisible="{Binding IsConnected}">
                 <Button
@@ -61,7 +61,7 @@
             </HorizontalStackLayout>
 
             <!-- Loading Indicator -->
-            <ActivityIndicator 
+            <ActivityIndicator
                 IsRunning="{Binding IsBusy}"
                 IsVisible="{Binding IsBusy}"
                 HorizontalOptions="Center"
@@ -75,7 +75,7 @@
                 StrokeShape="RoundRectangle 5"
                 Padding="10"
                 BackgroundColor="#FFEEEE">
-                <Label 
+                <Label
                     Text="{Binding ErrorMessage}"
                     TextColor="Red" />
             </Border>
@@ -89,7 +89,7 @@
                 Padding="15"
                 BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray900}}">
                 <VerticalStackLayout Spacing="15">
-                    <Label 
+                    <Label
                         Text="Vehicle Data"
                         FontAttributes="Bold"
                         FontSize="18" />
@@ -97,7 +97,7 @@
                     <!-- Battery SOC -->
                     <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding BatterySoc, Converter={StaticResource NullToBoolConverter}}">
                         <Label Text="Battery SOC" VerticalOptions="Center" />
-                        <Label 
+                        <Label
                             Grid.Column="1"
                             Text="{Binding BatterySoc, StringFormat='{0:F1}%'}"
                             FontAttributes="Bold"
@@ -107,7 +107,7 @@
                     <!-- Battery Voltage -->
                     <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding BatteryVoltage, Converter={StaticResource NullToBoolConverter}}">
                         <Label Text="Battery Voltage" VerticalOptions="Center" />
-                        <Label 
+                        <Label
                             Grid.Column="1"
                             Text="{Binding BatteryVoltage, StringFormat='{0:F1} V'}"
                             FontAttributes="Bold"
@@ -117,7 +117,7 @@
                     <!-- Range Remaining -->
                     <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding RangeRemaining, Converter={StaticResource NullToBoolConverter}}">
                         <Label Text="Range Remaining" VerticalOptions="Center" />
-                        <Label 
+                        <Label
                             Grid.Column="1"
                             Text="{Binding RangeRemaining, StringFormat='{0:F0} mi'}"
                             FontAttributes="Bold"
@@ -127,7 +127,7 @@
                     <!-- Charging Status -->
                     <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding ChargingStatus, Converter={StaticResource NullToBoolConverter}}">
                         <Label Text="Charging Status" VerticalOptions="Center" />
-                        <Label 
+                        <Label
                             Grid.Column="1"
                             Text="{Binding ChargingStatus}"
                             FontAttributes="Bold"
@@ -137,7 +137,7 @@
             </Border>
 
             <!-- Welcome message when not connected -->
-            <VerticalStackLayout 
+            <VerticalStackLayout
                 IsVisible="{Binding IsConnected, Converter={StaticResource InvertedBoolConverter}}"
                 Spacing="15"
                 Padding="20">
@@ -154,8 +154,6 @@
                     HorizontalTextAlignment="Center"
                     FontSize="16" />
             </VerticalStackLayout>
-
         </VerticalStackLayout>
     </ScrollView>
-
 </ContentPage>

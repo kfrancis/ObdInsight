@@ -88,6 +88,7 @@ public class JsonLSerializerTests
         await Assert.That(loadedSession.Entries).Count().IsEqualTo(originalSession.Entries.Count);
         await Assert.That(loadedSession.Metadata.Protocol).IsEqualTo(originalSession.Metadata.Protocol);
     }
+
     [Test]
     public async Task Serializer_SaveToFile_CreatesValidFile()
     {
@@ -120,6 +121,7 @@ public class JsonLSerializerTests
                 File.Delete(tempFile);
         }
     }
+
     private static TransportSession CreateTestSession()
     {
         var now = DateTimeOffset.UtcNow;

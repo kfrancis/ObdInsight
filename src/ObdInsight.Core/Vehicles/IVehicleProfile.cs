@@ -1,5 +1,3 @@
-using ObdInsight.Core.Adapters;
-
 namespace ObdInsight.Core.Vehicles;
 
 /// <summary>
@@ -154,6 +152,7 @@ public enum VehicleDataPoint
 {
     // Standard OBD-II
     Rpm,
+
     Speed,
     CoolantTemp,
     IntakeTemp,
@@ -166,6 +165,7 @@ public enum VehicleDataPoint
 
     // EV-specific
     BatteryStateOfCharge,
+
     BatteryStateOfHealth,
     BatteryVoltage,
     BatteryCurrent,
@@ -175,10 +175,12 @@ public enum VehicleDataPoint
 
     // Range/efficiency
     RangeRemaining,
+
     EnergyConsumption,
 
     // Charging
     ChargingStatus,
+
     ChargerVoltage,
     ChargerCurrent,
     ChargePower,
@@ -186,10 +188,12 @@ public enum VehicleDataPoint
 
     // Climate
     CabinTemp,
+
     HvacPower,
 
     // Other
     Odometer,
+
     AmbientTemp
 }
 

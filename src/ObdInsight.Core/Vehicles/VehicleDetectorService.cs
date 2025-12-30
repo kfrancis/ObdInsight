@@ -1,5 +1,3 @@
-using ObdInsight.Core.Adapters;
-
 namespace ObdInsight.Core.Vehicles;
 
 /// <summary>
@@ -11,7 +9,7 @@ namespace ObdInsight.Core.Vehicles;
 /// 2. Manufacturer-specific ECU probing
 /// 3. PID fingerprinting (supported PID patterns)
 /// 4. Fallback to generic OBD-II
-/// 
+///
 /// Register vehicle profiles from ObdInsight.Drivers using VehicleProfileRegistry.RegisterAllProfiles()
 /// </remarks>
 public class VehicleDetectorService : IVehicleDetector

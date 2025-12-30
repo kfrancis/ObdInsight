@@ -9,7 +9,7 @@ namespace ObdInsight.Core.Transports.Tracing;
 /// ReplayTransport allows testing adapter and service logic without requiring
 /// physical hardware. It feeds pre-recorded Rx data when the expected Tx commands
 /// are sent, enabling fully deterministic unit tests.
-/// 
+///
 /// Matching modes:
 /// - Exact: Tx must match exactly
 /// - Prefix: Tx must start with recorded command
@@ -297,8 +297,10 @@ public enum ReplayMatchingMode
 {
     /// <summary>Commands must match exactly (after normalization)</summary>
     Exact,
+
     /// <summary>Commands must start with recorded prefix</summary>
     Prefix,
+
     /// <summary>Accept any command and return next recorded response</summary>
     Any
 }

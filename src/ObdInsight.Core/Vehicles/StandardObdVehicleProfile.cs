@@ -1,5 +1,3 @@
-using ObdInsight.Core.Adapters;
-
 namespace ObdInsight.Core.Vehicles;
 
 /// <summary>

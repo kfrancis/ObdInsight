@@ -11,11 +11,11 @@
 
         <!-- Header with scan controls -->
         <VerticalStackLayout Grid.Row="0" Spacing="10">
-            <Label 
+            <Label
                 Text="Scan for nearby OBD adapters"
                 FontSize="16"
                 HorizontalOptions="Center" />
-            
+
             <HorizontalStackLayout HorizontalOptions="Center" Spacing="10">
                 <Button
                     Text="Start Scan"
@@ -29,11 +29,11 @@
             </HorizontalStackLayout>
 
             <!-- Scanning indicator -->
-            <HorizontalStackLayout 
-                HorizontalOptions="Center" 
+            <HorizontalStackLayout
+                HorizontalOptions="Center"
                 Spacing="10"
                 IsVisible="{Binding IsScanning}">
-                <ActivityIndicator 
+                <ActivityIndicator
                     IsRunning="True"
                     Color="{StaticResource Primary}"
                     HeightRequest="20"
@@ -43,7 +43,7 @@
         </VerticalStackLayout>
 
         <!-- Device list -->
-        <CollectionView 
+        <CollectionView
             Grid.Row="1"
             ItemsSource="{Binding DiscoveredDevices}"
             SelectedItem="{Binding SelectedDevice}"
@@ -51,16 +51,16 @@
             Margin="0,15">
 
             <CollectionView.EmptyView>
-                <VerticalStackLayout 
-                    VerticalOptions="Center" 
+                <VerticalStackLayout
+                    VerticalOptions="Center"
                     HorizontalOptions="Center"
                     Spacing="10">
-                    <Label 
+                    <Label
                         Text="No devices found"
                         FontSize="18"
                         TextColor="{StaticResource Gray500}"
                         HorizontalOptions="Center" />
-                    <Label 
+                    <Label
                         Text="Tap 'Start Scan' to search for OBD adapters"
                         FontSize="14"
                         TextColor="{StaticResource Gray400}"
@@ -78,32 +78,32 @@
                         StrokeShape="RoundRectangle 8"
                         BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray900}}">
                         <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
-                            <Label 
+                            <Label
                                 Text="{Binding Name}"
                                 FontAttributes="Bold"
                                 FontSize="16" />
-                            <Label 
+                            <Label
                                 Grid.Column="1"
                                 Text="{Binding Rssi, StringFormat='{0} dBm'}"
                                 TextColor="{StaticResource Gray500}"
                                 FontSize="12"
                                 VerticalOptions="Center" />
-                            <Label 
+                            <Label
                                 Grid.Row="1"
                                 Grid.ColumnSpan="2"
                                 Text="{Binding Address}"
                                 TextColor="{StaticResource Gray500}"
                                 FontSize="12" />
-                            <HorizontalStackLayout 
+                            <HorizontalStackLayout
                                 Grid.Row="2"
                                 Grid.ColumnSpan="2"
                                 Spacing="5"
                                 Margin="0,5,0,0">
-                                <Label 
+                                <Label
                                     Text="Services:"
                                     FontSize="11"
                                     TextColor="{StaticResource Gray400}" />
-                                <Label 
+                                <Label
                                     Text="{Binding AdvertisedServices.Count}"
                                     FontSize="11"
                                     TextColor="{StaticResource Gray400}" />
@@ -136,13 +136,13 @@
                 StrokeShape="RoundRectangle 5"
                 Padding="10"
                 BackgroundColor="#FFEEEE">
-                <Label 
+                <Label
                     Text="{Binding ErrorMessage}"
                     TextColor="Red" />
             </Border>
 
             <!-- Loading indicator -->
-            <ActivityIndicator 
+            <ActivityIndicator
                 IsRunning="{Binding IsBusy}"
                 IsVisible="{Binding IsBusy}"
                 HorizontalOptions="Center"
@@ -154,7 +154,5 @@
                 HorizontalOptions="Fill"
                 IsVisible="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
         </VerticalStackLayout>
-
     </Grid>
-
 </ContentPage>

@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using ObdInsight.Core.Transports;
 
 namespace ObdInsight.Core.Adapters.Elm327;
 
@@ -10,7 +9,7 @@ namespace ObdInsight.Core.Adapters.Elm327;
 /// <remarks>
 /// The ELM327 is the most common OBD-II interpreter chip. Many dongles use
 /// genuine ELM327 chips or clones (some with varying compatibility).
-/// 
+///
 /// This adapter handles:
 /// - Initialization sequence (ATZ, ATE0, etc.)
 /// - Protocol auto-detection or manual selection
@@ -375,10 +374,13 @@ public enum Elm327LogLevel
 {
     /// <summary>Detailed debugging information</summary>
     Debug,
+
     /// <summary>General information</summary>
     Info,
+
     /// <summary>Potential issues</summary>
     Warning,
+
     /// <summary>Errors</summary>
     Error
 }

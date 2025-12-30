@@ -12,7 +12,7 @@ namespace ObdInsight.Drivers;
 /// - Custom PIDs beyond standard OBD-II
 /// - Response decoding logic
 /// - Initialization commands for specific ECU protocols
-/// 
+///
 /// Add new vehicle profiles by implementing <see cref="IVehicleProfile"/>
 /// and registering them here.
 /// </remarks>

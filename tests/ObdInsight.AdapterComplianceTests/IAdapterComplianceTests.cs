@@ -1,5 +1,4 @@
 using ObdInsight.Core.Adapters;
-using ObdInsight.Core.Transports;
 
 namespace ObdInsight.AdapterComplianceTests;
 
@@ -49,7 +48,7 @@ public interface IAdapterComplianceTests
     /// </summary>
     Task Handshake_NoVehicleConnected_StillInitializes();
 
-    #endregion
+    #endregion Handshake Sequence Tests
 
     #region Timeout Behavior Tests
 
@@ -73,7 +72,7 @@ public interface IAdapterComplianceTests
     /// </summary>
     Task Timeout_ImmediateResponse_Succeeds();
 
-    #endregion
+    #endregion Timeout Behavior Tests
 
     #region Line Ending Edge Cases
 
@@ -107,7 +106,7 @@ public interface IAdapterComplianceTests
     /// </summary>
     Task LineEnding_MultipleConsecutive_Handled();
 
-    #endregion
+    #endregion Line Ending Edge Cases
 
     #region Multi-Frame Response Tests
 
@@ -131,7 +130,7 @@ public interface IAdapterComplianceTests
     /// </summary>
     Task MultiFrame_MultipleEcuResponses_AllCaptured();
 
-    #endregion
+    #endregion Multi-Frame Response Tests
 
     #region Error Normalization Tests
 
@@ -190,7 +189,7 @@ public interface IAdapterComplianceTests
     /// </summary>
     Task Error_OkResponse_IsSuccess();
 
-    #endregion
+    #endregion Error Normalization Tests
 }
 
 /// <summary>

@@ -13,7 +13,7 @@ namespace ObdInsight.Core.Transports.Ble;
 /// - Write chunking for BLE MTU limits
 /// - Connection state management
 /// - Event raising
-/// 
+///
 /// Platform implementations (Windows, Android, iOS) must implement:
 /// - ConnectAsync (platform-specific BLE connection)
 /// - DisconnectAsync

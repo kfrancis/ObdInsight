@@ -379,5 +379,5 @@ public class NissanLeafProfile : IVehicleProfile
         return (data[4] << 16) | (data[5] << 8) | data[6];
     }
 
-    #endregion
+    #endregion Decoders
 }

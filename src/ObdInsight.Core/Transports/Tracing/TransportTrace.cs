@@ -9,6 +9,7 @@ public enum TraceDirection
 {
     /// <summary>Data sent to the transport (transmitted)</summary>
     Tx,
+
     /// <summary>Data received from the transport</summary>
     Rx
 }

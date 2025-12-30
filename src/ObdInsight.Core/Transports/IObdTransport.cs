@@ -10,7 +10,7 @@ namespace ObdInsight.Core.Transports;
 /// - Raw data transmission (write bytes/strings)
 /// - Raw data reception (read lines/terminated strings)
 /// - Connection state tracking
-/// 
+///
 /// Transports do NOT interpret OBD commands - that's the adapter's job.
 /// This separation allows testing adapters with mock transports.
 /// </remarks>

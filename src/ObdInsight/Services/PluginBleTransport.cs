@@ -1,9 +1,8 @@
-using System.Text;
-using ObdInsight.Core.Transports;
 using ObdInsight.Core.Transports.Ble;
 using Plugin.BLE.Abstractions;
 using Plugin.BLE.Abstractions.Contracts;
 using Plugin.BLE.Abstractions.EventArgs;
+using System.Text;
 
 namespace ObdInsight.Services;
 
@@ -82,7 +81,7 @@ public sealed class PluginBleTransport : IBleTransport
             else
             {
                 // Connect using known device ID
-                _device = await _adapter.ConnectToKnownDeviceAsync(deviceId, 
+                _device = await _adapter.ConnectToKnownDeviceAsync(deviceId,
                     cancellationToken: cancellationToken);
             }
 

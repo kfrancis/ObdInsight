@@ -1,5 +1,3 @@
-using ObdInsight.Core.Transports;
-
 namespace ObdInsight.Core.Adapters;
 
 /// <summary>
@@ -12,7 +10,7 @@ namespace ObdInsight.Core.Adapters;
 /// - Command framing and response parsing
 /// - Error detection and handling
 /// - Timeout management
-/// 
+///
 /// Adapters are independent of vehicle-specific logic - they only care about
 /// sending commands and receiving responses reliably.
 /// </remarks>

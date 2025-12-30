@@ -14,7 +14,7 @@ internal class Program
 {
     private const string TargetMacAddress = "66:1e:87:02:c2:db";
 
-    static async Task Main(string[] args)
+    private static async Task Main(string[] args)
     {
         AnsiConsole.Write(new FigletText("OBD DevTools").Color(Color.Cyan1));
         AnsiConsole.MarkupLine("[grey]BLE OBD-II Development Tool[/]");
@@ -42,28 +42,36 @@ internal class Program
                 case "Scan for BLE devices":
                     await ScanForDevicesAsync();
                     break;
+
                 case "Connect to Veepeak (66:1e:87:02:c2:db)":
                     await ConnectAndTestAsync(TargetMacAddress);
                     break;
+
                 case "Connect to custom device":
                     var address = AnsiConsole.Ask<string>("Enter MAC address (e.g., 66:1e:87:02:c2:db):");
                     await ConnectAndTestAsync(address);
                     break;
+
                 case "Connect with vehicle detection":
                     await ConnectWithVehicleDetectionAsync(TargetMacAddress);
                     break;
+
                 case "Record OBD session":
                     await RecordSessionAsync();
                     break;
+
                 case "Generate Vehicle Support Report":
                     await GenerateVehicleSupportReportAsync();
                     break;
+
                 case "List supported vehicles":
                     ListSupportedVehicles();
                     break;
+
                 case "Discover device services":
                     await DiscoverServicesAsync(TargetMacAddress);
                     break;
+
                 case "Exit":
                     return;
             }
@@ -453,7 +461,7 @@ internal class Program
             }
 
             var servicesResult = await device.GetGattServicesAsync(Windows.Devices.Bluetooth.BluetoothCacheMode.Uncached);
-            
+
             if (servicesResult.Status != Windows.Devices.Bluetooth.GenericAttributeProfile.GattCommunicationStatus.Success)
             {
                 AnsiConsole.MarkupLine($"[red]Failed to get services: {servicesResult.Status}[/]");
@@ -655,7 +663,7 @@ internal class Program
             .Replace("\r", "\\r")
             .Replace("\n", "\\n")
             .Replace(">", ">");
-        
+
         var color = direction == "TX" ? "blue" : "green";
         AnsiConsole.MarkupLine($"[grey]BLE[/] [{color}]{direction}[/]: [white]{escaped.EscapeMarkup()}[/]");
     }
@@ -871,12 +879,12 @@ internal class Program
         AnsiConsole.Write(new Panel(
             """
             [yellow]Next Steps:[/]
-            
+
             1. Open a new issue at: [link]https://github.com/kfrancis/ObdInsight/issues/new[/]
             2. Use the title format: [cyan]Vehicle Support: {Year} {Make} {Model}[/]
             3. Copy the contents of the generated markdown file into the issue
             4. Add any additional observations about your vehicle
-            
+
             [grey]Thank you for helping improve ObdInsight![/]
             """)
             .Header("[cyan]Submit to GitHub[/]")
@@ -1253,16 +1261,16 @@ internal class Program
         AnsiConsole.Write(new Panel(
             $"""
             [yellow]Usage in Unit Tests:[/]
-            
+
             ```csharp
             // Load and replay the session
             var transport = await ReplayTransportFactory.FromFileAsync("{fileName}");
             var adapter = new Elm327Adapter();
             await adapter.InitializeAsync(transport);
-            
+
             // Your test assertions here...
             ```
-            
+
             [grey]The trace file can be embedded as a test resource or loaded from disk.[/]
             """)
             .Header("[cyan]Next Steps[/]")

@@ -41,10 +41,13 @@ public enum BleConnectionState
 {
     /// <summary>Not connected to any device</summary>
     Disconnected,
+
     /// <summary>Connection in progress</summary>
     Connecting,
+
     /// <summary>Connected and ready</summary>
     Connected,
+
     /// <summary>Disconnection in progress</summary>
     Disconnecting
 }

@@ -19,5 +19,4 @@
             ContentTemplate="{DataTemplate pages:DevicesPage}"
             Route="devices" />
     </TabBar>
-
 </Shell>

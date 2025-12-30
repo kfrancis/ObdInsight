@@ -1,5 +1,3 @@
-using Microsoft.UI.Xaml;
-
 namespace ObdInsight.WinUI;
 
 public partial class App : MauiWinUIApplication

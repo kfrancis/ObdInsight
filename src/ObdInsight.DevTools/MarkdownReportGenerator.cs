@@ -1,5 +1,5 @@
-using System.Text;
 using ObdInsight.Core.Diagnostics;
+using System.Text;
 
 namespace ObdInsight.DevTools;
 
