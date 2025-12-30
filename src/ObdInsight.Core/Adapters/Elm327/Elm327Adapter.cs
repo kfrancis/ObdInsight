@@ -23,6 +23,27 @@ public partial class Elm327Adapter : IObdAdapter
     private readonly TimeSpan _defaultTimeout = TimeSpan.FromSeconds(5);
     private readonly TimeSpan _initTimeout = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// Known ELM327 error response patterns (case-insensitive).
+    /// </summary>
+    private static readonly string[] ErrorPatterns =
+    [
+        "NO DATA",
+        "UNABLE TO CONNECT",
+        "CAN ERROR",
+        "BUS ERROR",
+        "FB ERROR",
+        "RX ERROR",
+        "DATA ERROR",
+        "BUFFER FULL",
+        "LV RESET",
+        "LP ALERT",
+        "ACT ALERT",
+        "STOPPED",
+        "SEARCHING",
+        "ERR"
+    ];
+
     /// <inheritdoc />
     public string Name => "ELM327";
 
@@ -143,24 +164,23 @@ public partial class Elm327Adapter : IObdAdapter
                 return ObdResponse.Fail("No response", rawResponse);
             }
 
-            if (rawResponse.Contains("NO DATA"))
-            {
-                return ObdResponse.Fail("No data from ECU", rawResponse);
-            }
-
-            if (rawResponse.Contains("UNABLE TO CONNECT"))
-            {
-                return ObdResponse.Fail("Unable to connect to ECU", rawResponse);
-            }
-
-            if (rawResponse.Contains("ERROR"))
-            {
-                return ObdResponse.Fail("Command error", rawResponse);
-            }
-
-            if (rawResponse.Contains("?"))
+            // Check for "?" (unknown command)
+            if (rawResponse.Contains('?'))
             {
                 return ObdResponse.Fail("Unknown command", rawResponse);
+            }
+
+            // Check for UDS negative response (7F XX YY)
+            if (IsNegativeResponse(rawResponse))
+            {
+                return ObdResponse.Fail("Negative response from ECU", rawResponse);
+            }
+
+            // Check all known error patterns
+            var errorPattern = GetMatchingErrorPattern(rawResponse);
+            if (errorPattern != null)
+            {
+                return ObdResponse.Fail(GetErrorMessage(errorPattern), rawResponse);
             }
 
             // Parse the response based on command type
@@ -185,6 +205,65 @@ public partial class Elm327Adapter : IObdAdapter
             await SendRawCommandAsync("ATZ", _initTimeout, CancellationToken.None);
         }
         IsInitialized = false;
+    }
+
+    /// <summary>
+    /// Check if response matches any known error pattern.
+    /// </summary>
+    private static string? GetMatchingErrorPattern(string response)
+    {
+        var upperResponse = response.ToUpperInvariant();
+
+        foreach (var pattern in ErrorPatterns)
+        {
+            if (upperResponse.Contains(pattern))
+            {
+                // Special case: "BUS INIT: OK" is not an error
+                if (pattern == "BUS ERROR" && upperResponse.Contains("BUS INIT") && upperResponse.Contains("OK"))
+                {
+                    continue;
+                }
+
+                return pattern;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Check if response is a UDS negative response (7F XX YY format).
+    /// </summary>
+    private static bool IsNegativeResponse(string response)
+    {
+        // Match pattern like "7F 01 12" or "7F0112"
+        var cleaned = response.Replace(" ", "").ToUpperInvariant();
+        return NegativeResponseRegex().IsMatch(cleaned);
+    }
+
+    /// <summary>
+    /// Get user-friendly error message for error pattern.
+    /// </summary>
+    private static string GetErrorMessage(string pattern)
+    {
+        return pattern switch
+        {
+            "NO DATA" => "No data from ECU",
+            "UNABLE TO CONNECT" => "Unable to connect to ECU",
+            "CAN ERROR" => "CAN bus error",
+            "BUS ERROR" => "Bus communication error",
+            "FB ERROR" => "Flow control error",
+            "RX ERROR" => "Receive error",
+            "DATA ERROR" => "Data error",
+            "BUFFER FULL" => "Buffer overflow",
+            "LV RESET" => "Low voltage reset",
+            "LP ALERT" => "Low power alert",
+            "ACT ALERT" => "Activity alert - no bus activity",
+            "STOPPED" => "Command stopped",
+            "SEARCHING" => "Still searching for protocol",
+            "ERR" => "Adapter error",
+            _ => $"Error: {pattern}"
+        };
     }
 
     /// <summary>
@@ -220,6 +299,9 @@ public partial class Elm327Adapter : IObdAdapter
     {
         if (string.IsNullOrEmpty(response))
             return string.Empty;
+
+        // Remove null bytes (some adapters have buffer issues)
+        response = response.Replace("\0", "");
 
         // Remove the command echo if present
         var cleaned = response;
@@ -281,6 +363,9 @@ public partial class Elm327Adapter : IObdAdapter
 
     [GeneratedRegex(@"ELM\d+\s*v[\d.]+", RegexOptions.IgnoreCase)]
     private static partial Regex VersionRegex();
+
+    [GeneratedRegex(@"^7F[0-9A-F]{4}")]
+    private static partial Regex NegativeResponseRegex();
 }
 
 /// <summary>
