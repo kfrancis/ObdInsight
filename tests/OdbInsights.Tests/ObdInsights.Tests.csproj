@@ -16,4 +16,8 @@
     <ProjectReference Include="..\..\src\ObdInsight.Drivers\ObdInsight.Drivers.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="TestData\*.jsonl" />
+  </ItemGroup>
+
 </Project>
