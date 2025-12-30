@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:ObdInsight.ViewModels"
+             xmlns:core="clr-namespace:ObdInsight.Core;assembly=ObdInsight.Core"
+             x:Class="ObdInsight.Pages.DevicesPage"
+             x:DataType="vm:DevicesViewModel"
+             Title="{Binding Title}">
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="15">
+
+        <!-- Header with scan controls -->
+        <VerticalStackLayout Grid.Row="0" Spacing="10">
+            <Label 
+                Text="Scan for nearby OBD adapters"
+                FontSize="16"
+                HorizontalOptions="Center" />
+            
+            <HorizontalStackLayout HorizontalOptions="Center" Spacing="10">
+                <Button
+                    Text="Start Scan"
+                    Command="{Binding StartScanCommand}"
+                    IsVisible="{Binding IsScanning, Converter={StaticResource InvertedBoolConverter}}" />
+                <Button
+                    Text="Stop Scan"
+                    Command="{Binding StopScanCommand}"
+                    IsVisible="{Binding IsScanning}"
+                    BackgroundColor="{StaticResource Gray500}" />
+            </HorizontalStackLayout>
+
+            <!-- Scanning indicator -->
+            <HorizontalStackLayout 
+                HorizontalOptions="Center" 
+                Spacing="10"
+                IsVisible="{Binding IsScanning}">
+                <ActivityIndicator 
+                    IsRunning="True"
+                    Color="{StaticResource Primary}"
+                    HeightRequest="20"
+                    WidthRequest="20" />
+                <Label Text="Scanning for devices..." />
+            </HorizontalStackLayout>
+        </VerticalStackLayout>
+
+        <!-- Device list -->
+        <CollectionView 
+            Grid.Row="1"
+            ItemsSource="{Binding DiscoveredDevices}"
+            SelectedItem="{Binding SelectedDevice}"
+            SelectionMode="Single"
+            Margin="0,15">
+
+            <CollectionView.EmptyView>
+                <VerticalStackLayout 
+                    VerticalOptions="Center" 
+                    HorizontalOptions="Center"
+                    Spacing="10">
+                    <Label 
+                        Text="No devices found"
+                        FontSize="18"
+                        TextColor="{StaticResource Gray500}"
+                        HorizontalOptions="Center" />
+                    <Label 
+                        Text="Tap 'Start Scan' to search for OBD adapters"
+                        FontSize="14"
+                        TextColor="{StaticResource Gray400}"
+                        HorizontalOptions="Center" />
+                </VerticalStackLayout>
+            </CollectionView.EmptyView>
+
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="core:BleDeviceInfo">
+                    <Border
+                        Margin="5"
+                        Padding="15"
+                        StrokeThickness="1"
+                        Stroke="{StaticResource Gray200}"
+                        StrokeShape="RoundRectangle 8"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray900}}">
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                            <Label 
+                                Text="{Binding Name}"
+                                FontAttributes="Bold"
+                                FontSize="16" />
+                            <Label 
+                                Grid.Column="1"
+                                Text="{Binding Rssi, StringFormat='{0} dBm'}"
+                                TextColor="{StaticResource Gray500}"
+                                FontSize="12"
+                                VerticalOptions="Center" />
+                            <Label 
+                                Grid.Row="1"
+                                Grid.ColumnSpan="2"
+                                Text="{Binding Address}"
+                                TextColor="{StaticResource Gray500}"
+                                FontSize="12" />
+                            <HorizontalStackLayout 
+                                Grid.Row="2"
+                                Grid.ColumnSpan="2"
+                                Spacing="5"
+                                Margin="0,5,0,0">
+                                <Label 
+                                    Text="Services:"
+                                    FontSize="11"
+                                    TextColor="{StaticResource Gray400}" />
+                                <Label 
+                                    Text="{Binding AdvertisedServices.Count}"
+                                    FontSize="11"
+                                    TextColor="{StaticResource Gray400}" />
+                            </HorizontalStackLayout>
+                        </Grid>
+
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup Name="CommonStates">
+                                <VisualState Name="Normal" />
+                                <VisualState Name="Selected">
+                                    <VisualState.Setters>
+                                        <Setter Property="Stroke" Value="{StaticResource Primary}" />
+                                        <Setter Property="StrokeThickness" Value="2" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- Footer with connect button -->
+        <VerticalStackLayout Grid.Row="2" Spacing="10">
+            <!-- Error Display -->
+            <Border
+                IsVisible="{Binding HasError}"
+                Stroke="Red"
+                StrokeThickness="1"
+                StrokeShape="RoundRectangle 5"
+                Padding="10"
+                BackgroundColor="#FFEEEE">
+                <Label 
+                    Text="{Binding ErrorMessage}"
+                    TextColor="Red" />
+            </Border>
+
+            <!-- Loading indicator -->
+            <ActivityIndicator 
+                IsRunning="{Binding IsBusy}"
+                IsVisible="{Binding IsBusy}"
+                HorizontalOptions="Center"
+                Color="{StaticResource Primary}" />
+
+            <Button
+                Text="Connect"
+                Command="{Binding ConnectToDeviceCommand}"
+                HorizontalOptions="Fill"
+                IsVisible="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+        </VerticalStackLayout>
+
+    </Grid>
+
+</ContentPage>
