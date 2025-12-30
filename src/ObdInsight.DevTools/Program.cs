@@ -1,5 +1,7 @@
 ﻿using ObdInsight.Core;
+using ObdInsight.Core.Vehicles;
 using ObdInsight.DevTools;
+using ObdInsight.Drivers;
 using Spectre.Console;
 
 namespace ObdInsight.DevTools;
@@ -23,6 +25,8 @@ internal class Program
                         "Scan for BLE devices",
                         "Connect to Veepeak (66:1e:87:02:c2:db)",
                         "Connect to custom device",
+                        "Connect with vehicle detection",
+                        "List supported vehicles",
                         "Discover device services",
                         "Exit"
                     ));
@@ -39,6 +43,12 @@ internal class Program
                     var address = AnsiConsole.Ask<string>("Enter MAC address (e.g., 66:1e:87:02:c2:db):");
                     await ConnectAndTestAsync(address);
                     break;
+                case "Connect with vehicle detection":
+                    await ConnectWithVehicleDetectionAsync(TargetMacAddress);
+                    break;
+                case "List supported vehicles":
+                    ListSupportedVehicles();
+                    break;
                 case "Discover device services":
                     await DiscoverServicesAsync(TargetMacAddress);
                     break;
@@ -47,6 +57,326 @@ internal class Program
             }
 
             AnsiConsole.WriteLine();
+        }
+    }
+
+    private static void ListSupportedVehicles()
+    {
+        var detector = new VehicleDetectorService();
+
+        // Register additional profiles from Drivers package
+        VehicleProfileRegistry.RegisterAllProfiles(detector);
+
+        var table = new Table()
+            .Border(TableBorder.Rounded)
+            .AddColumn("Vehicle")
+            .AddColumn("Manufacturer")
+            .AddColumn("Years")
+            .AddColumn("Type")
+            .AddColumn("Protocol");
+
+        foreach (var profile in detector.RegisteredProfiles.OrderBy(p => p.Manufacturer).ThenBy(p => p.Model))
+        {
+            var vehicleType = profile.IsElectric ? "[green]EV[/]" : "[blue]ICE[/]";
+            table.AddRow(
+                profile.Name,
+                profile.Manufacturer,
+                profile.SupportedYears.ToString(),
+                vehicleType,
+                profile.Protocol.ToString()
+            );
+        }
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(table);
+        AnsiConsole.MarkupLine($"[grey]Total: {detector.RegisteredProfiles.Count} vehicle profiles[/]");
+    }
+
+    private static async Task ConnectWithVehicleDetectionAsync(string macAddress)
+    {
+        var profile = BleDeviceProfile.VeepeakBle;
+        using var transport = new WindowsBleTransport(profile);
+
+        // Create vehicle-aware service with detection
+        var detector = new VehicleDetectorService();
+        VehicleProfileRegistry.RegisterAllProfiles(detector);
+
+        var vehicleService = new VehicleObdService(detector: detector);
+
+        // Setup logging
+        transport.DataSent += (_, data) => LogBleTraffic("TX", data);
+        transport.DataReceived += (_, data) => LogBleTraffic("RX", data);
+
+        // Connect transport
+        var connected = await AnsiConsole.Status()
+            .StartAsync($"Connecting to {macAddress}...", async ctx =>
+            {
+                return await transport.ConnectAsync(macAddress);
+            });
+
+        if (!connected)
+        {
+            AnsiConsole.MarkupLine("[red]Failed to connect![/]");
+            return;
+        }
+
+        AnsiConsole.MarkupLine("[green]Connected![/]");
+
+        // Connect with vehicle detection
+        var options = new VehicleServiceOptions
+        {
+            AutoDetectVehicle = true,
+            DetectionTimeout = TimeSpan.FromSeconds(30)
+        };
+
+        var initialized = await AnsiConsole.Status()
+            .StartAsync("Detecting vehicle...", async ctx =>
+            {
+                return await vehicleService.ConnectAsync(transport, options);
+            });
+
+        if (initialized)
+        {
+            var vehicleProfile = vehicleService.VehicleProfile;
+            AnsiConsole.MarkupLine($"[green]Detected:[/] {vehicleProfile.Name}");
+            AnsiConsole.MarkupLine($"[grey]Protocol:[/] {vehicleProfile.Protocol}");
+            AnsiConsole.MarkupLine($"[grey]EV:[/] {(vehicleProfile.IsElectric ? "Yes" : "No")}");
+
+            // Run vehicle-specific command loop
+            await RunVehicleCommandLoopAsync(transport, vehicleService);
+        }
+        else
+        {
+            AnsiConsole.MarkupLine("[yellow]Failed to initialize vehicle service[/]");
+        }
+
+        await transport.DisconnectAsync();
+        AnsiConsole.MarkupLine("[grey]Disconnected[/]");
+    }
+
+    private static async Task RunVehicleCommandLoopAsync(WindowsBleTransport transport, VehicleObdService service)
+    {
+        var profile = service.VehicleProfile;
+
+        while (transport.IsConnected)
+        {
+            var choices = new List<string>
+            {
+                "Get VIN",
+                "Get Speed",
+                "Read DTCs"
+            };
+
+            // Add EV-specific options if supported
+            if (profile.IsElectric)
+            {
+                choices.InsertRange(1, new[]
+                {
+                    "Get Battery SOC",
+                    "Get Battery SOH",
+                    "Get Battery Voltage",
+                    "Get Full Battery Info",
+                    "Get Range Remaining",
+                    "Get Charging Status"
+                });
+            }
+            else
+            {
+                // ICE-specific options
+                choices.InsertRange(1, new[]
+                {
+                    "Get RPM",
+                    "Get Coolant Temp",
+                    "Get Throttle Position",
+                    "Get Fuel Level"
+                });
+            }
+
+            choices.Add("Query custom data point");
+            choices.Add("Back to main menu");
+
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"[cyan]{profile.Name} - Select command:[/]")
+                    .AddChoices(choices));
+
+            try
+            {
+                switch (choice)
+                {
+                    case "Get VIN":
+                        var vin = await service.GetVinAsync();
+                        DisplayResult("VIN", vin);
+
+                        if (vin != null)
+                        {
+                            var vinInfo = VinInfo.Parse(vin);
+                            if (vinInfo != null)
+                            {
+                                AnsiConsole.MarkupLine($"  [grey]Manufacturer:[/] {vinInfo.Manufacturer ?? "Unknown"}");
+                                AnsiConsole.MarkupLine($"  [grey]Country:[/] {vinInfo.Country ?? "Unknown"}");
+                                AnsiConsole.MarkupLine($"  [grey]Model Year:[/] {vinInfo.ModelYear?.ToString() ?? "Unknown"}");
+                            }
+                        }
+                        break;
+
+                    case "Get Speed":
+                        var speed = await service.GetSpeedKphAsync();
+                        DisplayResult("Speed", speed, "km/h");
+                        break;
+
+                    case "Get RPM":
+                        var rpm = await service.GetRpmAsync();
+                        DisplayResult("RPM", rpm, "rpm");
+                        break;
+
+                    case "Get Coolant Temp":
+                        var coolant = await service.GetCoolantTempCelsiusAsync();
+                        DisplayResult("Coolant Temp", coolant, "°C");
+                        break;
+
+                    case "Get Throttle Position":
+                        var throttle = await service.GetThrottlePositionPercentAsync();
+                        DisplayResult("Throttle", throttle, "%");
+                        break;
+
+                    case "Get Fuel Level":
+                        var fuel = await service.GetFuelLevelPercentAsync();
+                        DisplayResult("Fuel Level", fuel, "%");
+                        break;
+
+                    case "Get Battery SOC":
+                        var soc = await service.GetBatterySocAsync();
+                        DisplayResult("Battery SOC", soc, "%");
+                        break;
+
+                    case "Get Battery SOH":
+                        var soh = await service.GetBatterySohAsync();
+                        DisplayResult("Battery SOH", soh, "%");
+                        break;
+
+                    case "Get Battery Voltage":
+                        var voltage = await service.GetBatteryVoltageAsync();
+                        DisplayResult("Battery Voltage", voltage, "V");
+                        break;
+
+                    case "Get Range Remaining":
+                        var range = await service.GetRangeRemainingAsync();
+                        DisplayResult("Range", range, "km");
+                        break;
+
+                    case "Get Charging Status":
+                        var chargingStatus = await service.GetChargingStatusAsync();
+                        DisplayResult("Charging Status", chargingStatus);
+                        break;
+
+                    case "Get Full Battery Info":
+                        await DisplayBatteryInfoAsync(service);
+                        break;
+
+                    case "Read DTCs":
+                        var dtcs = await service.GetDtcCodesAsync();
+                        if (dtcs.Count > 0)
+                        {
+                            AnsiConsole.MarkupLine($"[red]Found {dtcs.Count} DTC(s):[/]");
+                            foreach (var dtc in dtcs)
+                                AnsiConsole.MarkupLine($"  - {dtc}");
+                        }
+                        else
+                        {
+                            AnsiConsole.MarkupLine("[green]No DTCs stored[/]");
+                        }
+                        break;
+
+                    case "Query custom data point":
+                        await QueryCustomDataPointAsync(service);
+                        break;
+
+                    case "Back to main menu":
+                        return;
+                }
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Error: {ex.Message}[/]");
+            }
+
+            AnsiConsole.WriteLine();
+        }
+    }
+
+    private static async Task DisplayBatteryInfoAsync(VehicleObdService service)
+    {
+        var info = await service.GetBatteryInfoAsync();
+
+        if (info == null)
+        {
+            AnsiConsole.MarkupLine("[yellow]Could not retrieve battery info[/]");
+            return;
+        }
+
+        var table = new Table()
+            .Border(TableBorder.Rounded)
+            .AddColumn("Property")
+            .AddColumn("Value");
+
+        table.AddRow("State of Charge", $"{info.StateOfCharge:F1}%");
+        table.AddRow("State of Health", $"{info.StateOfHealth:F1}%");
+        table.AddRow("Voltage", $"{info.Voltage:F1} V");
+        table.AddRow("Current", $"{info.Current:F1} A");
+        table.AddRow("Power", $"{info.PowerKw:F2} kW");
+        table.AddRow("Temperature", $"{info.Temperature:F1} °C");
+        table.AddRow("Capacity", $"{info.Capacity:F1} Ah");
+        table.AddRow("Range Remaining", $"{info.RangeRemaining:F1} km");
+        table.AddRow("Charging Status", info.ChargingStatus);
+        table.AddRow("Is Charging", info.IsCharging ? "[green]Yes[/]" : "[grey]No[/]");
+
+        AnsiConsole.Write(table);
+    }
+
+    private static async Task QueryCustomDataPointAsync(IVehicleObdService service)
+    {
+        var supportedPoints = Enum.GetValues<VehicleDataPoint>()
+            .Where(dp => service.IsDataPointSupported(dp))
+            .Select(dp => dp.ToString())
+            .ToList();
+
+        if (supportedPoints.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No supported data points found[/]");
+            return;
+        }
+
+        var choice = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[cyan]Select data point:[/]")
+                .AddChoices(supportedPoints));
+
+        if (Enum.TryParse<VehicleDataPoint>(choice, out var dataPoint))
+        {
+            var result = await service.GetDataAsync(dataPoint);
+
+            if (result.Success)
+            {
+                AnsiConsole.MarkupLine($"[green]{result.DataPoint}:[/] {result.Value} {result.Unit}");
+            }
+            else
+            {
+                AnsiConsole.MarkupLine($"[red]Failed:[/] {result.Error}");
+            }
+        }
+    }
+
+    private static void DisplayResult<T>(string label, T? value, string unit = "")
+    {
+        if (value != null)
+        {
+            var unitStr = string.IsNullOrEmpty(unit) ? "" : $" {unit}";
+            AnsiConsole.MarkupLine($"[green]{label}:[/] {value}{unitStr}");
+        }
+        else
+        {
+            AnsiConsole.MarkupLine($"[yellow]Could not read {label}[/]");
         }
     }
 

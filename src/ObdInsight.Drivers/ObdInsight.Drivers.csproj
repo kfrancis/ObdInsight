@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\ObdInsight.Core\ObdInsight.Core.csproj" />
+  </ItemGroup>
+
 </Project>
