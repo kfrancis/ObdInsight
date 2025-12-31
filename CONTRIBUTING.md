@@ -101,7 +101,7 @@ dotnet test /p:CollectCoverage=true
 
 ### C# Style Guidelines
 
-- Follow [C# Coding Conventions](https://docs.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/coding-conventions)
+- Follow [C# Coding Conventions](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/coding-conventions)
 - Use meaningful variable and method names
 - Write clear, concise comments for complex logic
 - Keep methods focused and small

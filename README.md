@@ -93,8 +93,10 @@ graph TB
 │  ┌──────────────────────┐    ┌──────────────────────┐      │
 │  │  Adapters/           │    │  Vehicles/           │      │
 │  │  - AdapterRegistry   │    │  - NissanLeafProfile │      │
-│  │                      │    │  - ChevroletBolt...  │      │
-│  │                      │    │  - VehicleProfile... │      │
+│  │                      │    │  - ChevroletBolt     │      │
+│  │                      │    │    Profile           │      │
+│  │                      │    │  - VehicleProfile    │      │
+│  │                      │    │    Registry          │      │
 │  └──────────────────────┘    └──────────────────────┘      │
 └─────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────┐
@@ -103,8 +105,8 @@ graph TB
 │  │  Adapters/           │    │  Vehicles/           │      │
 │  │  - IObdAdapter       │    │  - IVehicleProfile   │      │
 │  │  - ObdCommand        │    │  - IVehicleDetector  │      │
-│  │  - Elm327/           │    │  - StandardObdVehicle│      │
-│  │    - Elm327Adapter   │    │    Profile           │      │
+│  │  - Elm327/           │    │  - StandardObdVeh    │      │
+│  │    - Elm327Adapter   │    │    icleProfile       │      │
 │  │                      │    │  - VehicleDataPoint  │      │
 │  └──────────────────────┘    └──────────────────────┘      │
 │  ┌──────────────────────┐                                   │
