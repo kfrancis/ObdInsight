@@ -1,8 +1,22 @@
 # ObdInsight
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![.NET MAUI](https://img.shields.io/badge/.NET%20MAUI-9.0-512BD4)](https://dotnet.microsoft.com/apps/maui)
+
 A modern, open-source OBD-II diagnostic application for Android and iOS built with .NET MAUI. 
 
 ObdInsight addresses the poor user experience of existing OBD apps by providing a clean, responsive interface backed by a robust, testable architecture. The pluggable driver system makes it easy to add support for new Bluetooth and WiFi OBD dongles without modifying the core application.
+
+## Table of Contents
+
+- [Why ObdInsight?](#why-obdinsight)
+- [Architecture](#architecture)
+- [Getting Started](#getting-started)
+- [Adding New Vehicle Support](#adding-new-vehicle-support)
+- [Adding New Adapter Support](#adding-new-adapter-support)
+- [Requesting New Vehicle or Adapter Support](#requesting-new-vehicle-or-adapter-support)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Why ObdInsight?
 
@@ -21,38 +35,91 @@ ObdInsight uses a layered architecture that clearly separates:
 
 This separation means you can add support for a new OBD dongle without touching vehicle code, and add support for new vehicles without modifying adapter logic.
 
+```mermaid
+graph TB
+    subgraph "ObdInsight (MAUI App)"
+        UI[User Interface]
+    end
+    
+    subgraph "ObdInsight.Drivers"
+        AdapterReg[Adapters/<br/>- AdapterRegistry]
+        VehicleReg[Vehicles/<br/>- NissanLeafProfile<br/>- ChevroletBoltProfile<br/>- VehicleProfileRegistry]
+    end
+    
+    subgraph "ObdInsight.Core"
+        subgraph Adapters
+            IAdapter[IObdAdapter]
+            ObdCmd[ObdCommand]
+            Elm327[Elm327/<br/>- Elm327Adapter]
+        end
+        
+        subgraph Vehicles
+            IVehicle[IVehicleProfile]
+            IDetector[IVehicleDetector]
+            StdProfile[StandardObdVehicleProfile]
+            VehicleData[VehicleDataPoint]
+        end
+        
+        subgraph Transports
+            ITransport[IObdTransport]
+            IBle[Ble/<br/>- IBleTransport<br/>- BleDeviceProfile<br/>- BleTransportBase]
+        end
+    end
+    
+    subgraph "ObdInsight.DevTools"
+        DevTools[Windows-only BLE debugging<br/>and report generation]
+    end
+    
+    UI --> AdapterReg
+    UI --> VehicleReg
+    AdapterReg --> IAdapter
+    VehicleReg --> IVehicle
+    IAdapter --> ObdCmd
+    IAdapter --> Elm327
+    IVehicle --> VehicleData
+    ObdCmd --> ITransport
+    Elm327 --> ITransport
+    ITransport --> IBle
 ```
-???????????????????????????????????????????????????????????????????
-?                    ObdInsight (MAUI App)                        ?
-???????????????????????????????????????????????????????????????????
-?                    ObdInsight.Drivers                           ?
-?  ????????????????????????    ????????????????????????          ?
-?  ?  Adapters/           ?    ?  Vehicles/           ?          ?
-?  ?  - AdapterRegistry   ?    ?  - NissanLeafProfile ?          ?
-?  ?                      ?    ?  - ChevroletBoltProfile?        ?
-?  ?                      ?    ?  - VehicleProfileRegistry?      ?
-?  ????????????????????????    ????????????????????????          ?
-???????????????????????????????????????????????????????????????????
-?                    ObdInsight.Core                              ?
-?  ????????????????????????    ????????????????????????          ?
-?  ?  Adapters/           ?    ?  Vehicles/           ?          ?
-?  ?  - IObdAdapter       ?    ?  - IVehicleProfile   ?          ?
-?  ?  - ObdCommand        ?    ?  - IVehicleDetector  ?          ?
-?  ?  - Elm327/           ?    ?  - StandardObdVehicleProfile ?  ?
-?  ?    - Elm327Adapter   ?    ?  - VehicleDataPoint  ?          ?
-?  ????????????????????????    ????????????????????????          ?
-?  ????????????????????????                                      ?
-?  ?  Transports/         ?                                      ?
-?  ?  - IObdTransport     ?                                      ?
-?  ?  - Ble/              ?                                      ?
-?  ?    - IBleTransport   ?                                      ?
-?  ?    - BleDeviceProfile?                                      ?
-?  ?    - BleTransportBase?                                      ?
-?  ????????????????????????                                      ?
-???????????????????????????????????????????????????????????????????
-?                    ObdInsight.DevTools                          ?
-?  (Windows-only BLE debugging and report generation)            ?
-???????????????????????????????????????????????????????????????????
+
+**Alternative: ASCII Diagram (for environments without Mermaid support)**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 ObdInsight (MAUI App)                       │
+└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                 ObdInsight.Drivers                          │
+│  ┌──────────────────────┐    ┌──────────────────────┐      │
+│  │  Adapters/           │    │  Vehicles/           │      │
+│  │  - AdapterRegistry   │    │  - NissanLeafProfile │      │
+│  │                      │    │  - ChevroletBolt...  │      │
+│  │                      │    │  - VehicleProfile... │      │
+│  └──────────────────────┘    └──────────────────────┘      │
+└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                 ObdInsight.Core                             │
+│  ┌──────────────────────┐    ┌──────────────────────┐      │
+│  │  Adapters/           │    │  Vehicles/           │      │
+│  │  - IObdAdapter       │    │  - IVehicleProfile   │      │
+│  │  - ObdCommand        │    │  - IVehicleDetector  │      │
+│  │  - Elm327/           │    │  - StandardObdVehicle│      │
+│  │    - Elm327Adapter   │    │    Profile           │      │
+│  │                      │    │  - VehicleDataPoint  │      │
+│  └──────────────────────┘    └──────────────────────┘      │
+│  ┌──────────────────────┐                                   │
+│  │  Transports/         │                                   │
+│  │  - IObdTransport     │                                   │
+│  │  - Ble/              │                                   │
+│  │    - IBleTransport   │                                   │
+│  │    - BleDeviceProfile│                                   │
+│  │    - BleTransportBase│                                   │
+│  └──────────────────────┘                                   │
+└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                 ObdInsight.DevTools                         │
+│  (Windows-only BLE debugging and report generation)         │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ### Key Components
@@ -64,6 +131,43 @@ This separation means you can add support for a new OBD dongle without touching 
 | `ObdInsight.Core.Vehicles` | Vehicle profiles and data decoding |
 | `ObdInsight.Drivers.Adapters` | Adapter registry and factory |
 | `ObdInsight.Drivers.Vehicles` | Built-in vehicle profiles |
+
+## Getting Started
+
+### Prerequisites
+
+- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- For mobile development:
+  - **Android**: Android SDK (API 21+)
+  - **iOS**: Xcode 14+ (macOS only)
+- For DevTools (Windows only):
+  - Windows 10/11 with Bluetooth Low Energy support
+- OBD-II Bluetooth adapter (ELM327-compatible recommended)
+- Vehicle with OBD-II port (1996+ for US vehicles)
+
+### Building the Project
+
+```bash
+# Clone the repository
+git clone https://github.com/kfrancis/ObdInsight.git
+cd ObdInsight
+
+# Restore dependencies
+dotnet restore
+
+# Build the solution
+dotnet build
+
+# Run on Android (requires Android device/emulator)
+dotnet build -t:Run -f net9.0-android
+
+# Run on iOS (requires macOS with Xcode)
+dotnet build -t:Run -f net9.0-ios
+
+# Run DevTools (Windows only)
+cd src/ObdInsight.DevTools
+dotnet run
+```
 
 ## Adding New Vehicle Support
 
@@ -191,5 +295,32 @@ Contributions are welcome! Areas where help is especially appreciated:
 - **OBD Adapters**: Add support for new BLE/WiFi adapters
 - **Testing**: Generate diagnostic reports for vehicles you own
 - **Documentation**: Improve guides and API documentation
+- **UI/UX**: Enhance the mobile app interface and user experience
+- **Bug Fixes**: Report and fix issues
 
-See the [Contributing Guide](CONTRIBUTING.md) for more details.
+See the [Contributing Guide](CONTRIBUTING.md) for detailed guidelines on how to contribute.
+
+### Quick Start for Contributors
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Run tests and ensure builds pass
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to your branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- Built with [.NET MAUI](https://dotnet.microsoft.com/apps/maui)
+- Supports ELM327 and compatible OBD-II adapters
+- Community-driven vehicle profile database
+
+## Support
+
+- **Issues**: Report bugs or request features via [GitHub Issues](https://github.com/kfrancis/ObdInsight/issues)
+- **Discussions**: Join the conversation in [GitHub Discussions](https://github.com/kfrancis/ObdInsight/discussions)
