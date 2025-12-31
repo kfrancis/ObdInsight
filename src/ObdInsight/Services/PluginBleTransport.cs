@@ -9,7 +9,7 @@ namespace ObdInsight.Services;
 /// <summary>
 /// Plugin.BLE-based BLE transport implementation for OBD communication.
 /// </summary>
-public sealed class PluginBleTransport : IBleTransport
+public partial class PluginBleTransport : IBleTransport
 {
     private readonly IAdapter _adapter;
     private readonly BleDeviceProfile _profile;
@@ -17,10 +17,10 @@ public sealed class PluginBleTransport : IBleTransport
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
     private IDevice? _device;
+    private bool _disposed;
+    private ICharacteristic? _notifyCharacteristic;
     private IService? _service;
     private ICharacteristic? _writeCharacteristic;
-    private ICharacteristic? _notifyCharacteristic;
-    private bool _disposed;
 
     public PluginBleTransport(IAdapter adapter, BleDeviceProfile profile)
     {
@@ -29,16 +29,13 @@ public sealed class PluginBleTransport : IBleTransport
     }
 
     /// <inheritdoc/>
-    public string Name => _profile.Name;
+    public event EventHandler<BleConnectionState>? ConnectionStateChanged;
 
     /// <inheritdoc/>
-    public string DeviceAddress => _device?.Id.ToString() ?? string.Empty;
+    public event EventHandler<string>? DataReceived;
 
     /// <inheritdoc/>
-    public Guid ServiceUuid => _profile.ServiceUuid;
-
-    /// <inheritdoc/>
-    public bool IsConnected => _device?.State == DeviceState.Connected;
+    public event EventHandler<string>? DataSent;
 
     /// <inheritdoc/>
     public BleConnectionState ConnectionState => _device?.State switch
@@ -51,13 +48,16 @@ public sealed class PluginBleTransport : IBleTransport
     };
 
     /// <inheritdoc/>
-    public event EventHandler<string>? DataReceived;
+    public string DeviceAddress => _device?.Id.ToString() ?? string.Empty;
 
     /// <inheritdoc/>
-    public event EventHandler<string>? DataSent;
+    public bool IsConnected => _device?.State == DeviceState.Connected;
 
     /// <inheritdoc/>
-    public event EventHandler<BleConnectionState>? ConnectionStateChanged;
+    public string Name => _profile.Name;
+
+    /// <inheritdoc/>
+    public Guid ServiceUuid => _profile.ServiceUuid;
 
     /// <inheritdoc/>
     public Task<bool> ConnectAsync(CancellationToken cancellationToken = default)
@@ -103,8 +103,8 @@ public sealed class PluginBleTransport : IBleTransport
             }
 
             // Get characteristics
-            _writeCharacteristic = await _service.GetCharacteristicAsync(_profile.WriteCharacteristicUuid);
-            _notifyCharacteristic = await _service.GetCharacteristicAsync(_profile.NotifyCharacteristicUuid);
+            _writeCharacteristic = await _service.GetCharacteristicAsync(_profile.WriteCharacteristicUuid, cancellationToken);
+            _notifyCharacteristic = await _service.GetCharacteristicAsync(_profile.NotifyCharacteristicUuid, cancellationToken);
 
             if (_writeCharacteristic is null || _notifyCharacteristic is null)
             {
@@ -126,6 +126,121 @@ public sealed class PluginBleTransport : IBleTransport
         {
             ConnectionStateChanged?.Invoke(this, BleConnectionState.Disconnected);
             throw;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task DisconnectAsync()
+    {
+        ConnectionStateChanged?.Invoke(this, BleConnectionState.Disconnecting);
+
+        if (_notifyCharacteristic is not null)
+        {
+            _notifyCharacteristic.ValueUpdated -= OnCharacteristicValueUpdated;
+            try
+            {
+                await _notifyCharacteristic.StopUpdatesAsync();
+            }
+            catch
+            {
+                // Ignore errors during cleanup
+            }
+        }
+
+        if (_device is not null)
+        {
+            try
+            {
+                await _adapter.DisconnectDeviceAsync(_device);
+            }
+            catch
+            {
+                // Ignore errors during cleanup
+            }
+        }
+
+        _service = null;
+        _writeCharacteristic = null;
+        _notifyCharacteristic = null;
+        _device = null;
+
+        ConnectionStateChanged?.Invoke(this, BleConnectionState.Disconnected);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        DisconnectAsync().GetAwaiter().GetResult();
+        _writeLock.Dispose();
+    }
+
+    /// <inheritdoc/>
+    public async Task<string> ReadLineAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        return await ReadUntilAsync("\r", timeout, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<string> ReadUntilAsync(string terminator, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(timeout);
+
+        while (!cts.Token.IsCancellationRequested)
+        {
+            lock (_receiveBuffer)
+            {
+                var bufferContent = _receiveBuffer.ToString();
+                var terminatorIndex = bufferContent.IndexOf(terminator, StringComparison.Ordinal);
+
+                if (terminatorIndex >= 0)
+                {
+                    var result = bufferContent[..(terminatorIndex + terminator.Length)];
+                    _receiveBuffer.Remove(0, terminatorIndex + terminator.Length);
+                    return result;
+                }
+            }
+
+            await Task.Delay(10, cts.Token);
+        }
+
+        throw new TimeoutException($"Timeout waiting for terminator '{terminator}'");
+    }
+
+    /// <inheritdoc/>
+    public async Task WriteAsync(string data, CancellationToken cancellationToken = default)
+    {
+        if (_writeCharacteristic is null)
+            throw new InvalidOperationException("Not connected.");
+
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            var bytes = Encoding.ASCII.GetBytes(data);
+
+            // Split into chunks if needed
+            var maxSize = _profile.MaxWriteSize;
+            for (int i = 0; i < bytes.Length; i += maxSize)
+            {
+                var chunk = bytes.Skip(i).Take(maxSize).ToArray();
+
+                if (_profile.WriteWithResponse)
+                {
+                    await _writeCharacteristic.WriteAsync(chunk, cancellationToken);
+                }
+                else
+                {
+                    await _writeCharacteristic.WriteAsync(chunk, cancellationToken);
+                }
+            }
+
+            DataSent?.Invoke(this, data);
+        }
+        finally
+        {
+            _writeLock.Release();
         }
     }
 
@@ -168,112 +283,6 @@ public sealed class PluginBleTransport : IBleTransport
         }
     }
 
-    /// <inheritdoc/>
-    public async Task DisconnectAsync()
-    {
-        ConnectionStateChanged?.Invoke(this, BleConnectionState.Disconnecting);
-
-        if (_notifyCharacteristic is not null)
-        {
-            _notifyCharacteristic.ValueUpdated -= OnCharacteristicValueUpdated;
-            try
-            {
-                await _notifyCharacteristic.StopUpdatesAsync();
-            }
-            catch
-            {
-                // Ignore errors during cleanup
-            }
-        }
-
-        if (_device is not null)
-        {
-            try
-            {
-                await _adapter.DisconnectDeviceAsync(_device);
-            }
-            catch
-            {
-                // Ignore errors during cleanup
-            }
-        }
-
-        _service = null;
-        _writeCharacteristic = null;
-        _notifyCharacteristic = null;
-        _device = null;
-
-        ConnectionStateChanged?.Invoke(this, BleConnectionState.Disconnected);
-    }
-
-    /// <inheritdoc/>
-    public async Task WriteAsync(string data, CancellationToken cancellationToken = default)
-    {
-        if (_writeCharacteristic is null)
-            throw new InvalidOperationException("Not connected.");
-
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            var bytes = Encoding.ASCII.GetBytes(data);
-
-            // Split into chunks if needed
-            var maxSize = _profile.MaxWriteSize;
-            for (int i = 0; i < bytes.Length; i += maxSize)
-            {
-                var chunk = bytes.Skip(i).Take(maxSize).ToArray();
-
-                if (_profile.WriteWithResponse)
-                {
-                    await _writeCharacteristic.WriteAsync(chunk, cancellationToken);
-                }
-                else
-                {
-                    await _writeCharacteristic.WriteAsync(chunk, cancellationToken);
-                }
-            }
-
-            DataSent?.Invoke(this, data);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-    }
-
-    /// <inheritdoc/>
-    public async Task<string> ReadLineAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
-    {
-        return await ReadUntilAsync("\r", timeout, cancellationToken);
-    }
-
-    /// <inheritdoc/>
-    public async Task<string> ReadUntilAsync(string terminator, TimeSpan timeout, CancellationToken cancellationToken = default)
-    {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(timeout);
-
-        while (!cts.Token.IsCancellationRequested)
-        {
-            lock (_receiveBuffer)
-            {
-                var bufferContent = _receiveBuffer.ToString();
-                var terminatorIndex = bufferContent.IndexOf(terminator, StringComparison.Ordinal);
-
-                if (terminatorIndex >= 0)
-                {
-                    var result = bufferContent[..(terminatorIndex + terminator.Length)];
-                    _receiveBuffer.Remove(0, terminatorIndex + terminator.Length);
-                    return result;
-                }
-            }
-
-            await Task.Delay(10, cts.Token);
-        }
-
-        throw new TimeoutException($"Timeout waiting for terminator '{terminator}'");
-    }
-
     private void OnCharacteristicValueUpdated(object? sender, CharacteristicUpdatedEventArgs e)
     {
         var data = Encoding.ASCII.GetString(e.Characteristic.Value);
@@ -284,14 +293,5 @@ public sealed class PluginBleTransport : IBleTransport
         }
 
         DataReceived?.Invoke(this, data);
-    }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-
-        DisconnectAsync().GetAwaiter().GetResult();
-        _writeLock.Dispose();
     }
 }

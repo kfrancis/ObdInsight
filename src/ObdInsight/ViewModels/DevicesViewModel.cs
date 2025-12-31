@@ -3,17 +3,46 @@ using CommunityToolkit.Mvvm.Input;
 using ObdInsight.Core.Transports.Ble;
 using ObdInsight.Services;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 
 namespace ObdInsight.ViewModels;
 
 /// <summary>
 /// ViewModel for the BLE device scanning and selection page.
 /// </summary>
-public partial class DevicesViewModel : BaseViewModel
+public partial class DevicesViewModel : BaseViewModel, IDisposable
 {
-    private readonly INavigationService _navigationService;
+    /// <summary>
+    /// Known OBD adapter name patterns
+    /// </summary>
+    private static readonly string[] KnownObdNamePatterns =
+    [
+        "VEEPEAK", "OBD", "ELM", "OBDII", "OBD2", "VLINK", "KONNWEI", "BAFX"
+    ];
+
+    /// <summary>
+    /// Known OBD adapter service UUIDs for highlighting likely devices
+    /// </summary>
+    private static readonly HashSet<Guid> KnownObdServiceUuids = new(
+    [
+        BleDeviceProfile.VeepeakBle.ServiceUuid,
+        BleDeviceProfile.VeepeakBleAlt.ServiceUuid,
+        BleDeviceProfile.NordicUart.ServiceUuid,
+        BleDeviceProfile.ObdLinkMx.ServiceUuid
+    ]);
+
     private readonly IBleTransportFactory _bleTransportFactory;
+    private readonly INavigationService _navigationService;
+    private readonly object _scanLock = new();
+    private bool _isStopping;
     private IBleScanner? _scanner;
+    private CancellationTokenSource? _scanTimeoutCts;
+
+    [ObservableProperty]
+    private bool _isBluetoothAvailable;
+
+    [ObservableProperty]
+    private bool _isBluetoothOn;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartScanCommand))]
@@ -22,16 +51,17 @@ public partial class DevicesViewModel : BaseViewModel
     private bool _isScanning;
 
     [ObservableProperty]
+    private string _scanStatus = string.Empty;
+
+    [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectToDeviceCommand))]
-    private BleDeviceInfo? _selectedDevice;
+    private DeviceListItem? _selectedDevice;
 
+    /// <summary>
+    /// Debug log messages for troubleshooting
+    /// </summary>
     [ObservableProperty]
-    private bool _isBluetoothAvailable;
-
-    [ObservableProperty]
-    private bool _isBluetoothOn;
-
-    public ObservableCollection<BleDeviceInfo> DiscoveredDevices { get; } = [];
+    private string _debugLog = string.Empty;
 
     public DevicesViewModel(INavigationService navigationService, IBleTransportFactory bleTransportFactory)
     {
@@ -42,84 +72,110 @@ public partial class DevicesViewModel : BaseViewModel
         _bleTransportFactory = bleTransportFactory;
         Title = "Select Device";
 
-        // Check Bluetooth status
+        Log("DevicesViewModel initialized");
+
+        // Check Bluetooth status and subscribe to state changes
         if (_bleTransportFactory is PluginBleTransportFactory pluginFactory)
         {
-            IsBluetoothAvailable = pluginFactory.IsAvailable;
-            IsBluetoothOn = pluginFactory.IsOn;
+            UpdateBluetoothStatus(pluginFactory);
+            
+            // Subscribe to Plugin.BLE state changes
+            Plugin.BLE.CrossBluetoothLE.Current.StateChanged += OnBluetoothStateChanged;
+            Log($"Bluetooth status: Available={IsBluetoothAvailable}, On={IsBluetoothOn}");
         }
         else
         {
             IsBluetoothAvailable = true;
             IsBluetoothOn = true;
+            Log("Using non-Plugin factory, assuming Bluetooth available");
         }
     }
 
-    /// <summary>
-    /// Starts scanning for BLE OBD devices.
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanStartScan))]
-    private async Task StartScanAsync()
+    private void OnBluetoothStateChanged(object? sender, Plugin.BLE.Abstractions.EventArgs.BluetoothStateChangedArgs e)
     {
-        if (!IsBluetoothAvailable)
+        MainThread.BeginInvokeOnMainThread(() =>
         {
-            SetError("Bluetooth is not available on this device.");
-            return;
-        }
-
-        if (!IsBluetoothOn)
-        {
-            SetError("Please enable Bluetooth to scan for devices.");
-            return;
-        }
-
-        await ExecuteBusyAsync(async () =>
-        {
-            DiscoveredDevices.Clear();
-            _scanner = _bleTransportFactory.CreateScanner();
-            _scanner.DeviceDiscovered += OnDeviceDiscovered;
-            _scanner.ScanStateChanged += OnScanStateChanged;
-
-            IsScanning = true;
-
-            // Filter for common OBD adapter service UUIDs
-            var filter = new BleScanFilter(
-                ServiceUuids:
-                [
-                    BleDeviceProfile.VeepeakBle.ServiceUuid,
-                    BleDeviceProfile.VeepeakBleAlt.ServiceUuid,
-                    BleDeviceProfile.NordicUart.ServiceUuid
-                ],
-                MinRssi: -80
-            );
-
-            await _scanner.StartScanAsync(filter);
-
-            // Auto-stop after 15 seconds
-            await Task.Delay(TimeSpan.FromSeconds(15));
-            if (IsScanning)
+            Log($"Bluetooth state changed: {e.OldState} -> {e.NewState}");
+            if (_bleTransportFactory is PluginBleTransportFactory pluginFactory)
             {
-                await StopScanAsync();
+                UpdateBluetoothStatus(pluginFactory);
             }
         });
+    }
+
+    private void UpdateBluetoothStatus(PluginBleTransportFactory pluginFactory)
+    {
+        var wasAvailable = IsBluetoothAvailable;
+        var wasOn = IsBluetoothOn;
+
+        IsBluetoothAvailable = pluginFactory.IsAvailable;
+        IsBluetoothOn = pluginFactory.IsOn;
+
+        Log($"UpdateBluetoothStatus: Available={IsBluetoothAvailable}, On={IsBluetoothOn}");
+
+        // Notify command to re-evaluate CanExecute when state changes
+        if (wasAvailable != IsBluetoothAvailable || wasOn != IsBluetoothOn)
+        {
+            StartScanCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    public ObservableCollection<DeviceListItem> DiscoveredDevices { get; } = [];
+
+    /// <inheritdoc/>
+    protected override void OnBusyChanged()
+    {
+        base.OnBusyChanged();
+        Log($"IsBusy changed to: {IsBusy}");
+        StartScanCommand.NotifyCanExecuteChanged();
+        ConnectToDeviceCommand.NotifyCanExecuteChanged();
+    }
+
+    private static bool IsLikelyObdAdapter(BleDeviceInfo device)
+    {
+        // Check if device advertises known OBD services
+        if (device.AdvertisedServices.Any(s => KnownObdServiceUuids.Contains(s)))
+            return true;
+
+        // Check if device name matches known patterns
+        var name = device.Name?.ToUpperInvariant() ?? string.Empty;
+        return KnownObdNamePatterns.Any(pattern => name.Contains(pattern, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool CanConnect()
+    {
+        var canConnect = SelectedDevice is not null && !IsBusy && !IsScanning;
+        Log($"CanConnect check: SelectedDevice={SelectedDevice?.Device.Name ?? "null"}, IsBusy={IsBusy}, IsScanning={IsScanning}, Result={canConnect}");
+        return canConnect;
     }
 
     private bool CanStartScan() => !IsScanning && !IsBusy && IsBluetoothAvailable && IsBluetoothOn;
 
     /// <summary>
-    /// Stops the current BLE scan.
+    /// Cleans up scanner resources without triggering re-entry.
     /// </summary>
-    [RelayCommand(CanExecute = nameof(IsScanning))]
-    private async Task StopScanAsync()
+    private async Task CleanupScannerAsync()
     {
-        if (_scanner is not null)
+        var scanner = _scanner;
+        _scanner = null;
+
+        if (scanner is not null)
         {
-            await _scanner.StopScanAsync();
-            _scanner.DeviceDiscovered -= OnDeviceDiscovered;
-            _scanner.ScanStateChanged -= OnScanStateChanged;
-            _scanner.Dispose();
-            _scanner = null;
+            scanner.DeviceDiscovered -= OnDeviceDiscovered;
+            scanner.ScanStateChanged -= OnScanStateChanged;
+
+            try
+            {
+                await scanner.StopScanAsync();
+            }
+            catch
+            {
+                // Ignore errors during cleanup
+            }
+
+            scanner.Dispose();
         }
+
         IsScanning = false;
     }
 
@@ -129,36 +185,130 @@ public partial class DevicesViewModel : BaseViewModel
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private async Task ConnectToDeviceAsync()
     {
-        if (SelectedDevice is null) return;
+        Log("ConnectToDeviceAsync called");
+        
+        if (SelectedDevice is null)
+        {
+            Log("ERROR: SelectedDevice is null, aborting connect");
+            return;
+        }
+
+        Log($"Attempting to connect to: {SelectedDevice.Device.Name} ({SelectedDevice.Device.Address})");
 
         await ExecuteBusyAsync(async () =>
         {
-            // Stop scanning if still active
-            if (IsScanning)
+            try
             {
-                await StopScanAsync();
+                Log("Starting connection process...");
+                
+                // Stop scanning if still active
+                if (IsScanning)
+                {
+                    Log("Stopping active scan before connecting...");
+                    await StopScanAsync();
+                }
+
+                // Determine which BLE profile to use based on advertised services
+                var profile = DetermineDeviceProfile(SelectedDevice.Device);
+                Log($"Using BLE profile: {profile.Name} (Service: {profile.ServiceUuid})");
+
+                // Create transport and attempt connection
+                Log("Creating BLE transport...");
+                var transport = _bleTransportFactory.CreateTransport(profile);
+                
+                Log($"Connecting to device address: {SelectedDevice.Device.Address}");
+                ScanStatus = $"Connecting to {SelectedDevice.Device.Name}...";
+
+                // Attempt connection with timeout
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                
+                bool connected;
+                try
+                {
+                    connected = await transport.ConnectAsync(SelectedDevice.Device.Address, cts.Token);
+                    Log($"Connection result: {connected}");
+                }
+                catch (Exception ex)
+                {
+                    Log($"Connection exception: {ex.GetType().Name}: {ex.Message}");
+                    throw;
+                }
+
+                if (!connected)
+                {
+                    Log("Connection returned false - device may not support expected services");
+                    SetError($"Failed to connect to {SelectedDevice.Device.Name}. Make sure the device is powered on and in range.");
+                    transport.Dispose();
+                    return;
+                }
+
+                Log("Connection successful! Preparing navigation parameters...");
+                ScanStatus = $"Connected to {SelectedDevice.Device.Name}";
+
+                // Navigate back to main page with connection info
+                var navParams = new Dictionary<string, object>
+                {
+                    ["DeviceName"] = SelectedDevice.Device.Name,
+                    ["DeviceAddress"] = SelectedDevice.Device.Address,
+                    ["Transport"] = transport // Pass the connected transport
+                };
+
+                Log($"Navigating to main page with params: DeviceName={SelectedDevice.Device.Name}, Address={SelectedDevice.Device.Address}");
+                
+                try
+                {
+                    await _navigationService.NavigateToAsync("..", navParams);
+                    Log("Navigation completed successfully");
+                }
+                catch (Exception navEx)
+                {
+                    Log($"Navigation exception: {navEx.GetType().Name}: {navEx.Message}");
+                    // Don't dispose transport if navigation fails - caller may still need it
+                    throw;
+                }
             }
-
-            // TODO: Implement actual connection logic with IBleTransport
-            await Task.Delay(500); // Placeholder for connection
-
-            // Navigate back to main page with connection info
-            await _navigationService.NavigateToAsync("..", new Dictionary<string, object>
+            catch (OperationCanceledException)
             {
-                ["DeviceName"] = SelectedDevice.Name,
-                ["DeviceAddress"] = SelectedDevice.Address
-            });
+                Log("Connection timed out after 30 seconds");
+                SetError("Connection timed out. Please try again.");
+            }
+            catch (Exception ex)
+            {
+                Log($"Connection failed with exception: {ex.GetType().Name}: {ex.Message}");
+                Log($"Stack trace: {ex.StackTrace}");
+                SetError($"Connection failed: {ex.Message}");
+            }
         });
+
+        Log("ConnectToDeviceAsync completed");
     }
 
-    private bool CanConnect() => SelectedDevice is not null && !IsBusy && !IsScanning;
-
-    /// <inheritdoc/>
-    protected override void OnBusyChanged()
+    /// <summary>
+    /// Determines the best BLE profile to use for a device based on its advertised services.
+    /// </summary>
+    private static BleDeviceProfile DetermineDeviceProfile(BleDeviceInfo device)
     {
-        base.OnBusyChanged();
-        StartScanCommand.NotifyCanExecuteChanged();
-        ConnectToDeviceCommand.NotifyCanExecuteChanged();
+        // Check advertised services to pick the right profile
+        foreach (var serviceUuid in device.AdvertisedServices)
+        {
+            var matchingProfile = BleDeviceProfile.FindByServiceUuid(serviceUuid);
+            if (matchingProfile is not null)
+            {
+                return matchingProfile;
+            }
+        }
+
+        // Default to Veepeak profile for OBD-named devices
+        var upperName = device.Name?.ToUpperInvariant() ?? string.Empty;
+        
+        if (upperName.Contains("VEEPEAK"))
+            return BleDeviceProfile.VeepeakBle;
+        
+        if (upperName.Contains("OBDLINK") || upperName.Contains("OBD LINK"))
+            return BleDeviceProfile.ObdLinkMx;
+
+        // Default fallback
+        return BleDeviceProfile.VeepeakBle;
     }
 
     private void OnDeviceDiscovered(object? sender, BleDeviceDiscoveredEventArgs e)
@@ -167,10 +317,38 @@ public partial class DevicesViewModel : BaseViewModel
         MainThread.BeginInvokeOnMainThread(() =>
         {
             // Avoid duplicates
-            if (!DiscoveredDevices.Any(d => d.Address == e.Device.Address))
+            if (DiscoveredDevices.Any(d => d.Device.Address == e.Device.Address))
+                return;
+
+            var isLikelyObd = IsLikelyObdAdapter(e.Device);
+            var item = new DeviceListItem(e.Device, isLikelyObd);
+
+            Log($"Device discovered: {e.Device.Name} ({e.Device.Address}) RSSI={e.Device.Rssi} OBD={isLikelyObd}");
+
+            // Insert in sorted order: likely OBD first, then by signal strength (strongest first)
+            var insertIndex = 0;
+            foreach (var existing in DiscoveredDevices)
             {
-                DiscoveredDevices.Add(e.Device);
+                // Likely OBD adapters always come before non-OBD devices
+                if (isLikelyObd && !existing.IsLikelyObdAdapter)
+                    break;
+
+                // Non-OBD devices go after all OBD devices
+                if (!isLikelyObd && existing.IsLikelyObdAdapter)
+                {
+                    insertIndex++;
+                    continue;
+                }
+
+                // Within the same category, sort by signal strength (higher RSSI = stronger)
+                if (e.Device.Rssi > existing.Device.Rssi)
+                    break;
+
+                insertIndex++;
             }
+
+            DiscoveredDevices.Insert(insertIndex, item);
+            ScanStatus = $"Found {DiscoveredDevices.Count} device(s)";
         });
     }
 
@@ -178,7 +356,208 @@ public partial class DevicesViewModel : BaseViewModel
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
+            Log($"Scan state changed: IsScanning={e.IsScanning}");
             IsScanning = e.IsScanning;
+            if (!e.IsScanning)
+            {
+                ScanStatus = DiscoveredDevices.Count > 0
+                    ? $"Scan complete - {DiscoveredDevices.Count} device(s) found"
+                    : "Scan complete - No devices found";
+            }
         });
     }
+
+    /// <summary>
+    /// Starts scanning for BLE devices (no filter - shows all devices).
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanStartScan))]
+    private async Task StartScanAsync()
+    {
+        Log("StartScanAsync called");
+        
+        if (!IsBluetoothAvailable)
+        {
+            Log("ERROR: Bluetooth not available");
+            SetError("Bluetooth is not available on this device.");
+            return;
+        }
+
+        if (!IsBluetoothOn)
+        {
+            Log("ERROR: Bluetooth not enabled");
+            SetError("Please enable Bluetooth to scan for devices.");
+            return;
+        }
+
+        ClearError();
+        DiscoveredDevices.Clear();
+        ScanStatus = "Scanning for devices...";
+
+        Log("Creating scanner...");
+        _scanner = _bleTransportFactory.CreateScanner();
+        _scanner.DeviceDiscovered += OnDeviceDiscovered;
+        _scanner.ScanStateChanged += OnScanStateChanged;
+
+        IsScanning = true;
+        _isStopping = false;
+        _scanTimeoutCts = new CancellationTokenSource();
+        var timeoutToken = _scanTimeoutCts.Token;
+
+        try
+        {
+            // No filter - show all BLE devices, let user choose
+            // Only apply a minimum RSSI to filter out very weak signals
+            var filter = new BleScanFilter(MinRssi: -90);
+
+            Log("Starting BLE scan with RSSI filter: -90");
+            await _scanner.StartScanAsync(filter);
+
+            // Auto-stop after 15 seconds, but don't block the UI
+            Log("Scan started, will auto-stop in 15 seconds");
+            await Task.Delay(TimeSpan.FromSeconds(15), timeoutToken);
+
+            // Timeout reached, stop scanning
+            Log("Scan timeout reached, stopping...");
+            await StopScanAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            Log("Scan was cancelled (manual stop before timeout)");
+            // Scan was stopped manually before timeout - that's expected
+        }
+        catch (ObjectDisposedException)
+        {
+            Log("CTS was disposed during stop");
+            // CTS was disposed during stop - that's expected
+        }
+        catch (Exception ex)
+        {
+            Log($"Scan failed with exception: {ex.GetType().Name}: {ex.Message}");
+            SetError($"Scan failed: {ex.Message}");
+            await CleanupScannerAsync();
+        }
+    }
+
+    /// <summary>
+    /// Stops the current BLE scan.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(IsScanning))]
+    private async Task StopScanAsync()
+    {
+        Log("StopScanAsync called");
+        
+        // Prevent re-entry
+        lock (_scanLock)
+        {
+            if (_isStopping)
+            {
+                Log("Already stopping, ignoring duplicate call");
+                return;
+            }
+            _isStopping = true;
+        }
+
+        try
+        {
+            // Cancel the timeout task first
+            var cts = _scanTimeoutCts;
+            _scanTimeoutCts = null;
+
+            if (cts is not null)
+            {
+                try
+                {
+                    cts.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Already disposed
+                }
+
+                cts.Dispose();
+            }
+
+            await CleanupScannerAsync();
+
+            ScanStatus = DiscoveredDevices.Count > 0
+                ? $"Scan stopped - {DiscoveredDevices.Count} device(s) found"
+                : "Scan stopped";
+                
+            Log($"Scan stopped. {DiscoveredDevices.Count} device(s) found");
+        }
+        finally
+        {
+            _isStopping = false;
+        }
+    }
+
+    /// <summary>
+    /// Logs a debug message (also writes to Debug output)
+    /// </summary>
+    private void Log(string message)
+    {
+        var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+        var logLine = $"[{timestamp}] {message}";
+        
+        Debug.WriteLine($"[DevicesVM] {logLine}");
+        
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            // Keep last 50 lines to avoid memory issues
+            // Access the backing field directly to avoid potential source generator timing issues
+            var lines = _debugLog.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            if (lines.Length > 50)
+            {
+                _debugLog = string.Join("\n", lines.Skip(lines.Length - 50)) + "\n" + logLine;
+            }
+            else
+            {
+                _debugLog = string.IsNullOrEmpty(_debugLog) ? logLine : _debugLog + "\n" + logLine;
+            }
+            OnPropertyChanged(nameof(DebugLog));
+        });
+    }
+
+    /// <summary>
+    /// Clean up resources and unsubscribe from events
+    /// </summary>
+    public void Dispose()
+    {
+        Log("Dispose called");
+        
+        // Unsubscribe from Bluetooth state changes
+        if (_bleTransportFactory is PluginBleTransportFactory)
+        {
+            Plugin.BLE.CrossBluetoothLE.Current.StateChanged -= OnBluetoothStateChanged;
+        }
+
+        // Clean up scanner if still active
+        CleanupScannerAsync().GetAwaiter().GetResult();
+    }
+}
+
+/// <summary>
+/// Wrapper for BLE device info with additional UI properties
+/// </summary>
+public partial class DeviceListItem : ObservableObject
+{
+    public DeviceListItem(BleDeviceInfo device, bool isLikelyObdAdapter)
+    {
+        Device = device;
+        IsLikelyObdAdapter = isLikelyObdAdapter;
+    }
+
+    /// <summary>
+    /// Display badge for likely OBD adapters
+    /// </summary>
+    public string Badge => IsLikelyObdAdapter ? "OBD" : string.Empty;
+
+    /// <summary>
+    /// Border color - highlight likely OBD adapters
+    /// </summary>
+    public Color BorderColor => IsLikelyObdAdapter ? Colors.Green : Colors.Transparent;
+
+    public BleDeviceInfo Device { get; }
+
+    public bool IsLikelyObdAdapter { get; }
 }

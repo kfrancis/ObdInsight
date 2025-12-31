@@ -80,6 +80,341 @@ internal class Program
         }
     }
 
+    private static async Task RecordSessionAsync()
+    {
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new Rule("[cyan]Record OBD Session[/]").RuleStyle("grey"));
+        AnsiConsole.WriteLine();
+
+        AnsiConsole.MarkupLine("[yellow]This tool records all OBD communication for replay in unit tests.[/]");
+        AnsiConsole.MarkupLine("[grey]The trace file will be saved in JSONL format.[/]");
+        AnsiConsole.WriteLine();
+
+        // Get MAC address
+        var macAddress = AnsiConsole.Prompt(
+            new TextPrompt<string>("[cyan]Enter OBD adapter MAC address:[/]")
+                .DefaultValue(TargetMacAddress)
+                .Validate(mac =>
+                {
+                    var clean = mac.Replace(":", "").Replace("-", "");
+                    return clean.Length == 12 && clean.All(c => Uri.IsHexDigit(c))
+                        ? ValidationResult.Success()
+                        : ValidationResult.Error("Invalid MAC address format");
+                }));
+
+        // Get session description
+        var description = AnsiConsole.Prompt(
+            new TextPrompt<string>("[cyan]Session description (optional):[/]")
+                .AllowEmpty());
+
+        // Select BLE profile
+        var bleProfile = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[cyan]Select BLE adapter profile:[/]")
+                .AddChoices(
+                    "Veepeak BLE+ (FFF0/FFF1/FFF2)",
+                    "Veepeak BLE+ Alt (FFE0/FFE1)",
+                    "Nordic UART Service"
+                ));
+
+        var profile = bleProfile switch
+        {
+            "Veepeak BLE+ (FFF0/FFF1/FFF2)" => BleDeviceProfile.VeepeakBle,
+            "Veepeak BLE+ Alt (FFE0/FFE1)" => BleDeviceProfile.VeepeakBleAlt,
+            "Nordic UART Service" => BleDeviceProfile.NordicUart,
+            _ => BleDeviceProfile.VeepeakBle
+        };
+
+        AnsiConsole.WriteLine();
+
+        // Create transport with recording
+        using var baseTransport = new WindowsBleTransport(profile);
+        var tracer = new TransportTracer();
+        using var transport = new RecordingTransportDecorator(baseTransport, tracer);
+
+        // Setup live traffic logging
+        transport.DataSent += (_, data) => LogBleTraffic("TX", data);
+        transport.DataReceived += (_, data) => LogBleTraffic("RX", data);
+
+        // Connect
+        var connected = await AnsiConsole.Status()
+            .StartAsync($"Connecting to {macAddress}...", async ctx =>
+            {
+                return await baseTransport.ConnectAsync(macAddress);
+            });
+
+        if (!connected)
+        {
+            AnsiConsole.MarkupLine("[red]Failed to connect![/]");
+            return;
+        }
+
+        AnsiConsole.MarkupLine("[green]Connected![/]");
+
+        // Start recording
+        var sessionMetadata = new TraceSessionMetadata
+        {
+            StartedAt = DateTimeOffset.UtcNow,
+            TransportType = baseTransport.GetType().Name,
+            DeviceAddress = macAddress,
+            DeviceName = profile.Name,
+            Description = string.IsNullOrWhiteSpace(description) ? null : description
+        };
+        transport.StartRecording(sessionMetadata);
+
+        AnsiConsole.MarkupLine("[yellow]Recording started. All commands will be traced.[/]");
+        AnsiConsole.WriteLine();
+
+        // Run command loop with recording
+        var adapter = new Elm327Adapter();
+        adapter.Log += (_, e) => LogAdapter(e);
+
+        var initialized = await AnsiConsole.Status()
+            .StartAsync("Initializing ELM327 adapter...", async ctx =>
+            {
+                return await adapter.InitializeAsync(transport);
+            });
+
+        if (initialized)
+        {
+            // Update metadata with detected protocol
+            transport.Tracer.UpdateMetadata(m => m with
+            {
+                Protocol = adapter.ProtocolDescription,
+                AdapterVersion = adapter.DeviceVersion,
+                EchoEnabled = false,
+                HeadersEnabled = false
+            });
+
+            AnsiConsole.MarkupLine("[green]Adapter ready![/]");
+        }
+        else
+        {
+            AnsiConsole.MarkupLine("[yellow]Adapter initialization completed with warnings[/]");
+        }
+
+        // Interactive session
+        await RunRecordingCommandLoopAsync(transport, adapter);
+
+        // Stop recording
+        var session = transport.StopRecording();
+
+        // Disconnect
+        await baseTransport.DisconnectAsync();
+        AnsiConsole.MarkupLine("[grey]Disconnected[/]");
+
+        // Save the recording
+        await SaveRecordedSessionAsync(session);
+    }
+
+    private static async Task SaveRecordedSessionAsync(TransportSession session)
+    {
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new Rule("[green]Recording Complete[/]").RuleStyle("grey"));
+        AnsiConsole.WriteLine();
+
+        // Display summary
+        var summaryTable = new Table()
+            .Border(TableBorder.Rounded)
+            .AddColumn("Property")
+            .AddColumn("Value");
+
+        summaryTable.AddRow("Session ID", session.SessionId);
+        summaryTable.AddRow("Duration", session.Duration.ToString(@"mm\:ss\.fff"));
+        summaryTable.AddRow("Total Entries", session.EntryCount.ToString());
+        summaryTable.AddRow("Bytes TX", session.TotalBytesTx.ToString());
+        summaryTable.AddRow("Bytes RX", session.TotalBytesRx.ToString());
+        summaryTable.AddRow("Protocol", session.Metadata.Protocol ?? "[grey]Unknown[/]");
+        summaryTable.AddRow("Adapter", session.Metadata.AdapterVersion ?? "[grey]Unknown[/]");
+
+        AnsiConsole.Write(summaryTable);
+        AnsiConsole.WriteLine();
+
+        // Generate filename
+        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        var defaultName = $"obd_session_{timestamp}.jsonl";
+
+        var fileName = AnsiConsole.Prompt(
+            new TextPrompt<string>("[cyan]Save as:[/]")
+                .DefaultValue(defaultName));
+
+        if (!fileName.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase))
+            fileName += ".jsonl";
+
+        var filePath = Path.Combine(Environment.CurrentDirectory, fileName);
+
+        // Save
+        var serializer = new JsonLTransportSessionSerializer();
+        await serializer.SaveAsync(session, filePath);
+
+        AnsiConsole.MarkupLine($"[green]✓[/] Session saved to: [cyan]{filePath.EscapeMarkup()}[/]");
+        AnsiConsole.WriteLine();
+
+        // Show usage instructions
+        AnsiConsole.Write(new Panel(
+            $"""
+            [yellow]Usage in Unit Tests:[/]
+
+            ```csharp
+            // Load and replay the session
+            var transport = await ReplayTransportFactory.FromFileAsync("{fileName}");
+            var adapter = new Elm327Adapter();
+            await adapter.InitializeAsync(transport);
+
+            // Your test assertions here...
+            ```
+
+            [grey]The trace file can be embedded as a test resource or loaded from disk.[/]
+            """)
+            .Header("[cyan]Next Steps[/]")
+            .Border(BoxBorder.Rounded));
+
+        // Offer to open file location
+        if (AnsiConsole.Confirm("Open file location?", defaultValue: false))
+        {
+            try
+            {
+                var directory = Path.GetDirectoryName(filePath);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "explorer.exe",
+                        Arguments = $"/select,\"{filePath}\"",
+                        UseShellExecute = true
+                    };
+                    System.Diagnostics.Process.Start(psi);
+                }
+            }
+            catch
+            {
+                AnsiConsole.MarkupLine("[yellow]Could not open file location.[/]");
+            }
+        }
+    }
+
+    private static async Task RunRecordingCommandLoopAsync(RecordingTransportDecorator transport, Elm327Adapter adapter)
+    {
+        var service = new ObdService(adapter);
+
+        while (transport.InnerTransport.IsConnected)
+        {
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[cyan]Command (recording):[/]")
+                    .AddChoices(
+                        "Send ATZ (Reset)",
+                        "Send ATI (Version)",
+                        "Send 0100 (Supported PIDs)",
+                        "Get RPM",
+                        "Get Speed",
+                        "Get Coolant Temp",
+                        "Get VIN",
+                        "Send custom command",
+                        "Read DTCs",
+                        "Stop recording"
+                    ));
+
+            try
+            {
+                switch (choice)
+                {
+                    case "Send ATZ (Reset)":
+                        await SendAndDisplayAsync(adapter, "ATZ", TimeSpan.FromSeconds(5));
+                        break;
+
+                    case "Send ATI (Version)":
+                        await SendAndDisplayAsync(adapter, "ATI", TimeSpan.FromSeconds(2));
+                        break;
+
+                    case "Send 0100 (Supported PIDs)":
+                        await SendAndDisplayAsync(adapter, "0100", TimeSpan.FromSeconds(5));
+                        break;
+
+                    case "Get RPM":
+                        var rpm = await service.GetRpmAsync();
+                        if (rpm.HasValue)
+                            AnsiConsole.MarkupLine($"[green]RPM:[/] {rpm} rpm");
+                        else
+                            AnsiConsole.MarkupLine("[yellow]Could not read RPM (is vehicle running?)[/]");
+                        break;
+
+                    case "Get Speed":
+                        var speed = await service.GetSpeedKphAsync();
+                        if (speed.HasValue)
+                            AnsiConsole.MarkupLine($"[green]Speed:[/] {speed} km/h");
+                        else
+                            AnsiConsole.MarkupLine("[yellow]Could not read speed[/]");
+                        break;
+
+                    case "Get Coolant Temp":
+                        var temp = await service.GetCoolantTempCelsiusAsync();
+                        if (temp.HasValue)
+                            AnsiConsole.MarkupLine($"[green]Coolant Temp:[/] {temp:F1} °C");
+                        else
+                            AnsiConsole.MarkupLine("[yellow]Could not read coolant temp[/]");
+                        break;
+
+                    case "Get VIN":
+                        await SendAndDisplayAsync(adapter, "0902", TimeSpan.FromSeconds(10));
+                        break;
+
+                    case "Send custom command":
+                        var cmd = AnsiConsole.Ask<string>("Enter command:");
+                        await SendAndDisplayAsync(adapter, cmd, TimeSpan.FromSeconds(5));
+                        break;
+
+                    case "Read DTCs":
+                        var dtcs = await service.GetDtcCodesAsync();
+                        if (dtcs.Count > 0)
+                        {
+                            AnsiConsole.MarkupLine($"[red]Found {dtcs.Count} DTC(s):[/]");
+                            foreach (var dtc in dtcs)
+                                AnsiConsole.MarkupLine($"  - {dtc}");
+                        }
+                        else
+                        {
+                            AnsiConsole.MarkupLine("[green]No DTCs stored[/]");
+                        }
+                        break;
+
+                    case "Stop recording":
+                        return;
+                }
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Error: {ex.Message}[/]");
+            }
+
+            AnsiConsole.WriteLine();
+
+
+
+
+
+            // Show recording stats
+            var currentSession = transport.Tracer.CurrentSession;
+            if (currentSession != null)
+            {
+                AnsiConsole.MarkupLine($"[grey]Recorded: {currentSession.EntryCount} entries, {currentSession.TotalBytesTx} TX / {currentSession.TotalBytesRx} RX bytes[/]");
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+        }
+    }
+
     private static void ListSupportedVehicles()
     {
         var detector = new VehicleDetectorService();
@@ -764,84 +1099,154 @@ internal class Program
             return;
         }
 
-        // Create collector
-        var collector = new DiagnosticDataCollector();
+        // Create collector using Core library
+        var collector = new Core.Diagnostics.DiagnosticDataCollector();
         BleAdapterInfo? bleInfo = null;
         ObdAdapterInfo? obdAdapterInfo = null;
         VehicleIdentification? vehicleId = null;
         SupportedPidsInfo? supportedPids = null;
 
-        // Progress display
-        await AnsiConsole.Progress()
-            .AutoClear(false)
-            .HideCompleted(false)
-            .Columns(
-                new TaskDescriptionColumn(),
-                new ProgressBarColumn(),
-                new PercentageColumn(),
-                new SpinnerColumn())
-            .StartAsync(async ctx =>
+        // Create progress reporter that writes to console in real-time
+        var progress = new Progress<DiagnosticProgress>(p =>
+        {
+            var statusColor = p.LastOperationSuccess switch
             {
-                var bleTask = ctx.AddTask("[cyan]Collecting BLE adapter info...[/]");
-                var obdTask = ctx.AddTask("[cyan]Collecting OBD adapter info...[/]");
-                var vinTask = ctx.AddTask("[cyan]Reading vehicle identification...[/]");
-                var pidsTask = ctx.AddTask("[cyan]Querying supported PIDs...[/]");
-                var probeTask = ctx.AddTask("[cyan]Probing standard PIDs...[/]");
-                var evTask = ctx.AddTask("[cyan]Probing EV/extended PIDs...[/]");
+                true => "green",
+                false => "red",
+                null => "grey"
+            };
 
-                // Collect BLE info
-                bleTask.StartTask();
-                bleInfo = await collector.CollectBleInfoAsync(macAddress);
-                bleTask.Value = 100;
+            var phaseIcon = p.Phase switch
+            {
+                DiagnosticPhase.Complete => "[green]✓[/]",
+                DiagnosticPhase.Failed => "[red]✗[/]",
+                _ => "[cyan]>[/]"
+            };
 
-                // Connect transport
-                using var transport = new WindowsBleTransport(profile);
-                var adapter = new Elm327Adapter();
+            // Show current operation with progress
+            var progressPct = (p.OverallProgress * 100).ToString("F0");
+            var itemProgress = p.ItemsTotal > 0 ? $"[{p.ItemsCompleted}/{p.ItemsTotal}]" : "";
 
-                var connected = await transport.ConnectAsync(macAddress);
-                if (!connected)
-                {
-                    AnsiConsole.MarkupLine("[red]Failed to connect to BLE device![/]");
-                    return;
-                }
+            AnsiConsole.MarkupLine($"{phaseIcon} [{statusColor}]{p.Message}[/] [grey]{itemProgress} ({progressPct}%)[/]");
 
-                // Initialize adapter
-                obdTask.StartTask();
-                var initialized = await adapter.InitializeAsync(transport);
-                if (initialized)
-                {
-                    obdAdapterInfo = await collector.CollectObdAdapterInfoAsync(adapter);
-                }
-                obdTask.Value = 100;
+            // Show response for PID probes
+            if (!string.IsNullOrEmpty(p.LastResponse) && p.CurrentItem != null)
+            {
+                var truncated = p.LastResponse.Length > 50 ? p.LastResponse[..47] + "..." : p.LastResponse;
+                var escaped = truncated.Replace("\r", "").Replace("\n", " ").EscapeMarkup();
+                AnsiConsole.MarkupLine($"   [grey]Response: {escaped}[/]");
+            }
+        });
 
-                // Collect vehicle ID
-                vinTask.StartTask();
-                vehicleId = await collector.CollectVehicleIdAsync(adapter);
-                vinTask.Value = 100;
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new Rule("[cyan]Starting Collection[/]").RuleStyle("grey"));
+        AnsiConsole.WriteLine();
 
-                // Collect supported PIDs
-                pidsTask.StartTask();
-                supportedPids = await collector.CollectSupportedPidsAsync(adapter);
-                pidsTask.Value = 100;
+        try
+        {
+            // Phase 1: Collect BLE info (Windows-specific)
+            AnsiConsole.MarkupLine("[cyan]Phase 1: Collecting BLE adapter info...[/]");
+            bleInfo = await CollectBleInfoAsync(macAddress);
+            if (bleInfo != null)
+            {
+                collector.AddNote($"Connected to {bleInfo.DeviceName} ({bleInfo.MacAddress})");
+                collector.AddNote($"Found {bleInfo.Services.Count} BLE services with {bleInfo.Services.Sum(s => s.Characteristics.Count)} characteristics");
+                AnsiConsole.MarkupLine($"[green]✓[/] Found {bleInfo.Services.Count} BLE services");
+            }
 
-                // Probe standard PIDs
-                probeTask.StartTask();
-                await collector.ProbeStandardPidsAsync(adapter, supportedPids);
-                probeTask.Value = 100;
+            // Phase 2: Connect transport and initialize adapter
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[cyan]Phase 2: Connecting to OBD adapter...[/]");
 
-                // Probe extended PIDs
-                evTask.StartTask();
-                await collector.ProbeExtendedPidsAsync(adapter);
-                evTask.Value = 100;
+            using var transport = new WindowsBleTransport(profile);
 
-                await transport.DisconnectAsync();
-            });
+            // Setup traffic logging
+            transport.DataSent += (_, data) => LogBleTraffic("TX", data);
+            transport.DataReceived += (_, data) => LogBleTraffic("RX", data);
 
-        // Build report
+            var connected = await transport.ConnectAsync(macAddress);
+            if (!connected)
+            {
+                AnsiConsole.MarkupLine("[red]✗ Failed to connect to BLE device![/]");
+                collector.AddError("Connection", "Failed to establish BLE connection");
+                // Still generate report with what we have
+                goto GenerateReport;
+            }
+
+            AnsiConsole.MarkupLine("[green]✓[/] BLE connection established");
+
+            // Initialize ELM327 adapter
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[cyan]Phase 3: Initializing ELM327 adapter...[/]");
+
+            var adapter = new Elm327Adapter();
+            adapter.Log += (_, e) => LogAdapter(e);
+
+            var initialized = await adapter.InitializeAsync(transport);
+            if (!initialized)
+            {
+                AnsiConsole.MarkupLine("[yellow]⚠ Adapter initialization completed with warnings[/]");
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("[green]✓[/] Adapter initialized successfully");
+            }
+
+            // Phase 4: Collect adapter info
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[cyan]Phase 4: Collecting OBD adapter info...[/]");
+            obdAdapterInfo = await collector.CollectObdAdapterInfoAsync(adapter, progress);
+            AnsiConsole.MarkupLine($"[green]✓[/] Adapter: {obdAdapterInfo.VersionResponse?.Trim() ?? "Unknown"}");
+
+            // Phase 5: Collect vehicle ID
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[cyan]Phase 5: Reading vehicle identification...[/]");
+            vehicleId = await collector.CollectVehicleIdAsync(adapter, progress);
+            if (!string.IsNullOrEmpty(vehicleId.Vin))
+            {
+                AnsiConsole.MarkupLine($"[green]✓[/] VIN: {MaskVin(vehicleId.Vin)}");
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("[yellow]⚠[/] VIN not available");
+            }
+
+            // Phase 6: Collect supported PIDs
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[cyan]Phase 6: Querying supported PIDs...[/]");
+            supportedPids = await collector.CollectSupportedPidsAsync(adapter, progress);
+            AnsiConsole.MarkupLine($"[green]✓[/] Found {supportedPids.Mode01Pids.Count} Mode 01 PIDs, {supportedPids.Mode09Pids.Count} Mode 09 PIDs");
+
+            // Phase 7: Probe standard PIDs
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[cyan]Phase 7: Probing standard PIDs...[/]");
+            AnsiConsole.MarkupLine("[grey]This may take a few minutes...[/]");
+            await collector.ProbeStandardPidsAsync(adapter, supportedPids, progress);
+
+            // Phase 8: Probe extended PIDs
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[cyan]Phase 8: Probing extended/EV PIDs...[/]");
+            await collector.ProbeExtendedPidsAsync(adapter, progress);
+
+            await transport.DisconnectAsync();
+            AnsiConsole.MarkupLine("[grey]Disconnected from adapter[/]");
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Error during collection: {ex.Message}[/]");
+            collector.AddError("Collection", ex.Message, ex.ToString());
+        }
+
+GenerateReport:
+// Build and save report
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new Rule("[cyan]Generating Report[/]").RuleStyle("grey"));
+        AnsiConsole.WriteLine();
+
         var report = collector.BuildReport(userInfo, bleInfo, obdAdapterInfo, vehicleId, supportedPids);
 
-        // Generate markdown
-        var markdown = MarkdownReportGenerator.Generate(report);
+        // Generate markdown using Core library
+        var markdown = Core.Diagnostics.MarkdownReportGenerator.Generate(report);
 
         // Save to file
         var fileName = $"vehicle_report_{userInfo.Year}_{userInfo.Make}_{userInfo.Model}_{DateTime.Now:yyyyMMdd_HHmmss}.md"
@@ -867,6 +1272,9 @@ internal class Program
         summaryTable.AddRow("Adapter", obdAdapterInfo?.VersionResponse?.Trim() ?? "[grey]Unknown[/]");
         summaryTable.AddRow("Protocol", obdAdapterInfo?.ProtocolDescription?.Trim() ?? "[grey]Unknown[/]");
         summaryTable.AddRow("Mode 01 PIDs", $"{supportedPids?.Mode01Pids.Count ?? 0} supported");
+        summaryTable.AddRow("Standard PIDs Probed", $"{report.StandardPidResults.Count(r => r.Success)}/{report.StandardPidResults.Count} successful");
+        summaryTable.AddRow("Extended PIDs Probed", $"{report.ExtendedPidResults.Count(r => r.Success)}/{report.ExtendedPidResults.Count} successful");
+        summaryTable.AddRow("Errors", report.Errors.Count > 0 ? $"[red]{report.Errors.Count}[/]" : "[green]0[/]");
         summaryTable.AddRow("Report File", $"[link={filePath}]{fileName}[/]");
 
         AnsiConsole.Write(summaryTable);
@@ -874,6 +1282,17 @@ internal class Program
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[green]✓[/] Report saved to: [cyan]{0}[/]", filePath.EscapeMarkup());
         AnsiConsole.WriteLine();
+
+        // Show errors if any
+        if (report.Errors.Count > 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]Errors encountered during collection:[/]");
+            foreach (var error in report.Errors)
+            {
+                AnsiConsole.MarkupLine($"  [red]•[/] {error.Phase}: {error.Message}");
+            }
+            AnsiConsole.WriteLine();
+        }
 
         // Instructions
         AnsiConsole.Write(new Panel(
@@ -906,6 +1325,83 @@ internal class Program
             {
                 AnsiConsole.MarkupLine("[yellow]Could not open file automatically. Please open manually.[/]");
             }
+        }
+    }
+
+    private static string MaskVin(string vin)
+    {
+        if (vin.Length <= 6)
+            return new string('*', vin.Length);
+        return vin[..^6] + "******";
+    }
+
+    /// <summary>
+    /// Collects BLE adapter information (Windows-specific implementation)
+    /// </summary>
+    private static async Task<BleAdapterInfo?> CollectBleInfoAsync(string macAddress)
+    {
+        try
+        {
+            var mac = ParseMacAddress(macAddress);
+            using var device = await Windows.Devices.Bluetooth.BluetoothLEDevice.FromBluetoothAddressAsync(mac);
+
+            if (device == null)
+            {
+                AnsiConsole.MarkupLine("[red]Failed to connect to BLE device for service discovery[/]");
+                return null;
+            }
+
+            var servicesResult = await device.GetGattServicesAsync(
+                Windows.Devices.Bluetooth.BluetoothCacheMode.Uncached);
+
+            if (servicesResult.Status != Windows.Devices.Bluetooth.GenericAttributeProfile.GattCommunicationStatus.Success)
+            {
+                AnsiConsole.MarkupLine($"[red]Failed to get services: {servicesResult.Status}[/]");
+                return null;
+            }
+
+            var services = new List<BleServiceInfo>();
+
+            foreach (var service in servicesResult.Services)
+            {
+                var characteristics = new List<BleCharacteristicInfo>();
+
+                var charsResult = await service.GetCharacteristicsAsync(
+                    Windows.Devices.Bluetooth.BluetoothCacheMode.Uncached);
+
+                if (charsResult.Status == Windows.Devices.Bluetooth.GenericAttributeProfile.GattCommunicationStatus.Success)
+                {
+                    foreach (var characteristic in charsResult.Characteristics)
+                    {
+                        var props = GetPropertyStrings(characteristic.CharacteristicProperties).ToList();
+                        characteristics.Add(new BleCharacteristicInfo
+                        {
+                            CharacteristicUuid = characteristic.Uuid,
+                            Properties = props
+                        });
+                    }
+                }
+
+                services.Add(new BleServiceInfo
+                {
+                    ServiceUuid = service.Uuid,
+                    Characteristics = characteristics
+                });
+
+                service.Dispose();
+            }
+
+            return new BleAdapterInfo
+            {
+                DeviceName = device.Name ?? "Unknown",
+                MacAddress = macAddress,
+                Services = services
+            };
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]BLE discovery error: {ex.Message}[/]");
+            return null;
         }
     }
 
@@ -973,330 +1469,5 @@ internal class Program
             TransmissionType = transmission,
             AdditionalNotes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim()
         };
-    }
-
-    private static string MaskVin(string vin)
-    {
-        if (vin.Length <= 6)
-            return new string('*', vin.Length);
-        return vin[..^6] + "******";
-    }
-
-    private static async Task RecordSessionAsync()
-    {
-        AnsiConsole.WriteLine();
-        AnsiConsole.Write(new Rule("[cyan]Record OBD Session[/]").RuleStyle("grey"));
-        AnsiConsole.WriteLine();
-
-        AnsiConsole.MarkupLine("[yellow]This tool records all OBD communication for replay in unit tests.[/]");
-        AnsiConsole.MarkupLine("[grey]The trace file will be saved in JSONL format.[/]");
-        AnsiConsole.WriteLine();
-
-        // Get MAC address
-        var macAddress = AnsiConsole.Prompt(
-            new TextPrompt<string>("[cyan]Enter OBD adapter MAC address:[/]")
-                .DefaultValue(TargetMacAddress)
-                .Validate(mac =>
-                {
-                    var clean = mac.Replace(":", "").Replace("-", "");
-                    return clean.Length == 12 && clean.All(c => Uri.IsHexDigit(c))
-                        ? ValidationResult.Success()
-                        : ValidationResult.Error("Invalid MAC address format");
-                }));
-
-        // Get session description
-        var description = AnsiConsole.Prompt(
-            new TextPrompt<string>("[cyan]Session description (optional):[/]")
-                .AllowEmpty());
-
-        // Select BLE profile
-        var bleProfile = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("[cyan]Select BLE adapter profile:[/]")
-                .AddChoices(
-                    "Veepeak BLE+ (FFF0/FFF1/FFF2)",
-                    "Veepeak BLE+ Alt (FFE0/FFE1)",
-                    "Nordic UART Service"
-                ));
-
-        var profile = bleProfile switch
-        {
-            "Veepeak BLE+ (FFF0/FFF1/FFF2)" => BleDeviceProfile.VeepeakBle,
-            "Veepeak BLE+ Alt (FFE0/FFE1)" => BleDeviceProfile.VeepeakBleAlt,
-            "Nordic UART Service" => BleDeviceProfile.NordicUart,
-            _ => BleDeviceProfile.VeepeakBle
-        };
-
-        AnsiConsole.WriteLine();
-
-        // Create transport with recording
-        using var baseTransport = new WindowsBleTransport(profile);
-        var tracer = new TransportTracer();
-        using var transport = new RecordingTransportDecorator(baseTransport, tracer);
-
-        // Setup live traffic logging
-        transport.DataSent += (_, data) => LogBleTraffic("TX", data);
-        transport.DataReceived += (_, data) => LogBleTraffic("RX", data);
-
-        // Connect
-        var connected = await AnsiConsole.Status()
-            .StartAsync($"Connecting to {macAddress}...", async ctx =>
-            {
-                return await baseTransport.ConnectAsync(macAddress);
-            });
-
-        if (!connected)
-        {
-            AnsiConsole.MarkupLine("[red]Failed to connect![/]");
-            return;
-        }
-
-        AnsiConsole.MarkupLine("[green]Connected![/]");
-
-        // Start recording
-        var sessionMetadata = new TraceSessionMetadata
-        {
-            StartedAt = DateTimeOffset.UtcNow,
-            TransportType = baseTransport.GetType().Name,
-            DeviceAddress = macAddress,
-            DeviceName = profile.Name,
-            Description = string.IsNullOrWhiteSpace(description) ? null : description
-        };
-        transport.StartRecording(sessionMetadata);
-
-        AnsiConsole.MarkupLine("[yellow]Recording started. All commands will be traced.[/]");
-        AnsiConsole.WriteLine();
-
-        // Run command loop with recording
-        var adapter = new Elm327Adapter();
-        adapter.Log += (_, e) => LogAdapter(e);
-
-        var initialized = await AnsiConsole.Status()
-            .StartAsync("Initializing ELM327 adapter...", async ctx =>
-            {
-                return await adapter.InitializeAsync(transport);
-            });
-
-        if (initialized)
-        {
-            // Update metadata with detected protocol
-            transport.Tracer.UpdateMetadata(m => m with
-            {
-                Protocol = adapter.ProtocolDescription,
-                AdapterVersion = adapter.DeviceVersion,
-                EchoEnabled = false,
-                HeadersEnabled = false
-            });
-
-            AnsiConsole.MarkupLine("[green]Adapter ready![/]");
-        }
-        else
-        {
-            AnsiConsole.MarkupLine("[yellow]Adapter initialization completed with warnings[/]");
-        }
-
-        // Interactive session
-        await RunRecordingCommandLoopAsync(transport, adapter);
-
-        // Stop recording
-        var session = transport.StopRecording();
-
-        // Disconnect
-        await baseTransport.DisconnectAsync();
-        AnsiConsole.MarkupLine("[grey]Disconnected[/]");
-
-        // Save the recording
-        await SaveRecordedSessionAsync(session);
-    }
-
-    private static async Task RunRecordingCommandLoopAsync(RecordingTransportDecorator transport, Elm327Adapter adapter)
-    {
-        var service = new ObdService(adapter);
-
-        while (transport.InnerTransport.IsConnected)
-        {
-            var choice = AnsiConsole.Prompt(
-                new SelectionPrompt<string>()
-                    .Title("[cyan]Command (recording):[/]")
-                    .AddChoices(
-                        "Send ATZ (Reset)",
-                        "Send ATI (Version)",
-                        "Send 0100 (Supported PIDs)",
-                        "Get RPM",
-                        "Get Speed",
-                        "Get Coolant Temp",
-                        "Get VIN",
-                        "Send custom command",
-                        "Read DTCs",
-                        "Stop recording"
-                    ));
-
-            try
-            {
-                switch (choice)
-                {
-                    case "Send ATZ (Reset)":
-                        await SendAndDisplayAsync(adapter, "ATZ", TimeSpan.FromSeconds(5));
-                        break;
-
-                    case "Send ATI (Version)":
-                        await SendAndDisplayAsync(adapter, "ATI", TimeSpan.FromSeconds(2));
-                        break;
-
-                    case "Send 0100 (Supported PIDs)":
-                        await SendAndDisplayAsync(adapter, "0100", TimeSpan.FromSeconds(5));
-                        break;
-
-                    case "Get RPM":
-                        var rpm = await service.GetRpmAsync();
-                        if (rpm.HasValue)
-                            AnsiConsole.MarkupLine($"[green]RPM:[/] {rpm} rpm");
-                        else
-                            AnsiConsole.MarkupLine("[yellow]Could not read RPM (is vehicle running?)[/]");
-                        break;
-
-                    case "Get Speed":
-                        var speed = await service.GetSpeedKphAsync();
-                        if (speed.HasValue)
-                            AnsiConsole.MarkupLine($"[green]Speed:[/] {speed} km/h");
-                        else
-                            AnsiConsole.MarkupLine("[yellow]Could not read speed[/]");
-                        break;
-
-                    case "Get Coolant Temp":
-                        var temp = await service.GetCoolantTempCelsiusAsync();
-                        if (temp.HasValue)
-                            AnsiConsole.MarkupLine($"[green]Coolant Temp:[/] {temp:F1} °C");
-                        else
-                            AnsiConsole.MarkupLine("[yellow]Could not read coolant temp[/]");
-                        break;
-
-                    case "Get VIN":
-                        await SendAndDisplayAsync(adapter, "0902", TimeSpan.FromSeconds(10));
-                        break;
-
-                    case "Send custom command":
-                        var cmd = AnsiConsole.Ask<string>("Enter command:");
-                        await SendAndDisplayAsync(adapter, cmd, TimeSpan.FromSeconds(5));
-                        break;
-
-                    case "Read DTCs":
-                        var dtcs = await service.GetDtcCodesAsync();
-                        if (dtcs.Count > 0)
-                        {
-                            AnsiConsole.MarkupLine($"[red]Found {dtcs.Count} DTC(s):[/]");
-                            foreach (var dtc in dtcs)
-                                AnsiConsole.MarkupLine($"  - {dtc}");
-                        }
-                        else
-                        {
-                            AnsiConsole.MarkupLine("[green]No DTCs stored[/]");
-                        }
-                        break;
-
-                    case "Stop recording":
-                        return;
-                }
-            }
-            catch (Exception ex)
-            {
-                AnsiConsole.MarkupLine($"[red]Error: {ex.Message}[/]");
-            }
-
-            AnsiConsole.WriteLine();
-
-            // Show recording stats
-            var currentSession = transport.Tracer.CurrentSession;
-            if (currentSession != null)
-            {
-                AnsiConsole.MarkupLine($"[grey]Recorded: {currentSession.EntryCount} entries, {currentSession.TotalBytesTx} TX / {currentSession.TotalBytesRx} RX bytes[/]");
-            }
-        }
-    }
-
-    private static async Task SaveRecordedSessionAsync(TransportSession session)
-    {
-        AnsiConsole.WriteLine();
-        AnsiConsole.Write(new Rule("[green]Recording Complete[/]").RuleStyle("grey"));
-        AnsiConsole.WriteLine();
-
-        // Display summary
-        var summaryTable = new Table()
-            .Border(TableBorder.Rounded)
-            .AddColumn("Property")
-            .AddColumn("Value");
-
-        summaryTable.AddRow("Session ID", session.SessionId);
-        summaryTable.AddRow("Duration", session.Duration.ToString(@"mm\:ss\.fff"));
-        summaryTable.AddRow("Total Entries", session.EntryCount.ToString());
-        summaryTable.AddRow("Bytes TX", session.TotalBytesTx.ToString());
-        summaryTable.AddRow("Bytes RX", session.TotalBytesRx.ToString());
-        summaryTable.AddRow("Protocol", session.Metadata.Protocol ?? "[grey]Unknown[/]");
-        summaryTable.AddRow("Adapter", session.Metadata.AdapterVersion ?? "[grey]Unknown[/]");
-
-        AnsiConsole.Write(summaryTable);
-        AnsiConsole.WriteLine();
-
-        // Generate filename
-        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        var defaultName = $"obd_session_{timestamp}.jsonl";
-
-        var fileName = AnsiConsole.Prompt(
-            new TextPrompt<string>("[cyan]Save as:[/]")
-                .DefaultValue(defaultName));
-
-        if (!fileName.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase))
-            fileName += ".jsonl";
-
-        var filePath = Path.Combine(Environment.CurrentDirectory, fileName);
-
-        // Save
-        var serializer = new JsonLTransportSessionSerializer();
-        await serializer.SaveAsync(session, filePath);
-
-        AnsiConsole.MarkupLine($"[green]✓[/] Session saved to: [cyan]{filePath.EscapeMarkup()}[/]");
-        AnsiConsole.WriteLine();
-
-        // Show usage instructions
-        AnsiConsole.Write(new Panel(
-            $"""
-            [yellow]Usage in Unit Tests:[/]
-
-            ```csharp
-            // Load and replay the session
-            var transport = await ReplayTransportFactory.FromFileAsync("{fileName}");
-            var adapter = new Elm327Adapter();
-            await adapter.InitializeAsync(transport);
-
-            // Your test assertions here...
-            ```
-
-            [grey]The trace file can be embedded as a test resource or loaded from disk.[/]
-            """)
-            .Header("[cyan]Next Steps[/]")
-            .Border(BoxBorder.Rounded));
-
-        // Offer to open file location
-        if (AnsiConsole.Confirm("Open file location?", defaultValue: false))
-        {
-            try
-            {
-                var directory = Path.GetDirectoryName(filePath);
-                if (!string.IsNullOrEmpty(directory))
-                {
-                    var psi = new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "explorer.exe",
-                        Arguments = $"/select,\"{filePath}\"",
-                        UseShellExecute = true
-                    };
-                    System.Diagnostics.Process.Start(psi);
-                }
-            }
-            catch
-            {
-                AnsiConsole.MarkupLine("[yellow]Could not open file location.[/]");
-            }
-        }
     }
 }

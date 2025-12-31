@@ -108,7 +108,7 @@ public sealed class PluginBleScanner : IBleScanner
         if (filter?.ServiceUuids?.Count > 0)
         {
             await _adapter.StartScanningForDevicesAsync(
-                serviceUuids: filter.ServiceUuids.Select(u => u).ToArray(),
+                serviceUuids: [.. filter.ServiceUuids.Select(u => u)],
                 deviceFilter: deviceFilter,
                 allowDuplicatesKey: false,
                 cancellationToken: cancellationToken);

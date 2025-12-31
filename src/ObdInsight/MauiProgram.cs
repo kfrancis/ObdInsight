@@ -27,10 +27,12 @@ namespace ObdInsight
             builder.Services.AddSingleton<MainViewModel>();
             builder.Services.AddTransient<DevicesViewModel>();
             builder.Services.AddTransient<VehicleViewModel>();
+            builder.Services.AddTransient<DiagnosticReportViewModel>();
 
             // Register Pages
             builder.Services.AddSingleton<MainPage>();
             builder.Services.AddTransient<DevicesPage>();
+            builder.Services.AddTransient<DiagnosticReportPage>();
 
 #if DEBUG
             builder.Logging.AddDebug();

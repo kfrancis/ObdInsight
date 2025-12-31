@@ -18,5 +18,10 @@
             Title="Devices"
             ContentTemplate="{DataTemplate pages:DevicesPage}"
             Route="devices" />
+
+        <ShellContent
+            Title="Diagnostics"
+            ContentTemplate="{DataTemplate pages:DiagnosticReportPage}"
+            Route="diagnostics" />
     </TabBar>
 </Shell>

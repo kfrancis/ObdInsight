@@ -8,5 +8,10 @@ public partial class DevicesPage : ContentPage
     {
         InitializeComponent();
         BindingContext = viewModel;
+
+#if !DEBUG
+        // Hide debug panel in Release builds
+        DebugPanel.IsVisible = false;
+#endif
     }
 }

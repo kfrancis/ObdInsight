@@ -1,0 +1,340 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:ObdInsight.ViewModels"
+             xmlns:ble="clr-namespace:ObdInsight.Core.Transports.Ble;assembly=ObdInsight.Core"
+             x:Class="ObdInsight.Pages.DiagnosticReportPage"
+             x:DataType="vm:DiagnosticReportViewModel"
+             Title="{Binding Title}">
+
+    <ContentPage.Resources>
+        <Style x:Key="SectionLabel" TargetType="Label">
+            <Setter Property="FontAttributes" Value="Bold" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="Margin" Value="0,10,0,5" />
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="Label">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="TextColor" Value="{StaticResource Gray500}" />
+        </Style>
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="15">
+
+        <!-- Header: Device & Progress -->
+        <VerticalStackLayout Grid.Row="0" Spacing="10">
+
+            <!-- Device Selection -->
+            <Border
+                Stroke="{StaticResource Gray200}"
+                StrokeThickness="1"
+                StrokeShape="RoundRectangle 8"
+                Padding="15"
+                IsVisible="{Binding IsCollecting, Converter={StaticResource InvertedBoolConverter}}">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                    <Label Text="Selected Device" Style="{StaticResource SectionLabel}" />
+                    <Button
+                        Grid.Column="1"
+                        Text="Select"
+                        Command="{Binding SelectDeviceCommand}"
+                        Padding="10,5"
+                        FontSize="12" />
+
+                    <Label
+                        Grid.Row="1"
+                        Grid.ColumnSpan="2"
+                        Text="{Binding SelectedDeviceName, TargetNullValue='No device selected'}"
+                        FontAttributes="Bold"
+                        FontSize="16" />
+                    <Label
+                        Grid.Row="2"
+                        Grid.ColumnSpan="2"
+                        Text="{Binding SelectedDeviceAddress}"
+                        Style="{StaticResource FieldLabel}" />
+                </Grid>
+            </Border>
+
+            <!-- Progress Section (visible during collection) -->
+            <Border
+                IsVisible="{Binding IsCollecting}"
+                Stroke="{StaticResource Primary}"
+                StrokeThickness="2"
+                StrokeShape="RoundRectangle 10"
+                Padding="15"
+                BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray900}}">
+                <VerticalStackLayout Spacing="10">
+
+                    <!-- Phase indicator -->
+                    <Label
+                        Text="{Binding PhaseDescription}"
+                        FontAttributes="Bold"
+                        FontSize="18"
+                        HorizontalOptions="Center" />
+
+                    <!-- Overall progress bar -->
+                    <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+                        <ProgressBar
+                            Progress="{Binding OverallProgress}"
+                            ProgressColor="{StaticResource Primary}"
+                            HeightRequest="8" />
+                        <Label
+                            Grid.Column="1"
+                            Text="{Binding OverallProgress, StringFormat='{0:P0}'}"
+                            FontSize="12"
+                            Margin="10,0,0,0" />
+                        <Label
+                            Grid.Row="1"
+                            Text="Overall Progress"
+                            Style="{StaticResource FieldLabel}" />
+                    </Grid>
+
+                    <!-- Phase progress bar -->
+                    <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+                        <ProgressBar
+                            Progress="{Binding PhaseProgress}"
+                            ProgressColor="{StaticResource Secondary}"
+                            HeightRequest="6" />
+                        <Label
+                            Grid.Column="1"
+                            Text="{Binding ItemsCompleted, StringFormat='{0}'}"
+                            FontSize="12"
+                            Margin="10,0,0,0" />
+                        <Label
+                            Grid.Row="1"
+                            Text="{Binding CurrentOperation}"
+                            Style="{StaticResource FieldLabel}"
+                            LineBreakMode="TailTruncation" />
+                    </Grid>
+
+                    <!-- Items counter -->
+                    <HorizontalStackLayout Spacing="5" HorizontalOptions="Center">
+                        <Label Text="{Binding ItemsCompleted}" FontAttributes="Bold" />
+                        <Label Text="/" />
+                        <Label Text="{Binding ItemsTotal}" />
+                        <Label Text="items" Style="{StaticResource FieldLabel}" />
+                    </HorizontalStackLayout>
+
+                    <!-- Current item being probed -->
+                    <Border
+                        IsVisible="{Binding CurrentItem, Converter={StaticResource NullToBoolConverter}}"
+                        Stroke="{StaticResource Gray200}"
+                        StrokeShape="RoundRectangle 5"
+                        Padding="10"
+                        BackgroundColor="{AppThemeBinding Light=#F5F5F5, Dark=#333333}">
+                        <VerticalStackLayout Spacing="5">
+                            <HorizontalStackLayout Spacing="10">
+                                <Label Text="Current:" Style="{StaticResource FieldLabel}" />
+                                <Label
+                                    Text="{Binding CurrentItem}"
+                                    FontAttributes="Bold"
+                                    FontFamily="Consolas" />
+                            </HorizontalStackLayout>
+                            <HorizontalStackLayout Spacing="10">
+                                <Label Text="Response:" Style="{StaticResource FieldLabel}" />
+                                <Label
+                                    Text="{Binding LastResponse, TargetNullValue='...'}"
+                                    FontFamily="Consolas"
+                                    LineBreakMode="TailTruncation"
+                                    MaxLines="1" />
+                            </HorizontalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- Cancel button -->
+                    <Button
+                        Text="Cancel"
+                        Command="{Binding CancelCollectionCommand}"
+                        BackgroundColor="{StaticResource Gray500}"
+                        HorizontalOptions="Center" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Completion message -->
+            <Border
+                IsVisible="{Binding IsComplete}"
+                Stroke="Green"
+                StrokeThickness="2"
+                StrokeShape="RoundRectangle 10"
+                Padding="15"
+                BackgroundColor="#E8F5E9">
+                <VerticalStackLayout Spacing="10">
+                    <Label
+                        Text="? Report Generated Successfully"
+                        FontAttributes="Bold"
+                        FontSize="18"
+                        TextColor="Green"
+                        HorizontalOptions="Center" />
+                    <Label
+                        Text="{Binding ReportFilePath}"
+                        FontSize="12"
+                        TextColor="{StaticResource Gray600}"
+                        LineBreakMode="MiddleTruncation"
+                        HorizontalOptions="Center" />
+                    <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
+                        <Button
+                            Text="Share Report"
+                            Command="{Binding ShareReportCommand}" />
+                        <Button
+                            Text="Open"
+                            Command="{Binding OpenReportCommand}"
+                            BackgroundColor="{StaticResource Secondary}" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+
+        <!-- Main Content: Vehicle Info Form or Log -->
+        <ScrollView Grid.Row="1" Margin="0,10">
+            <VerticalStackLayout Spacing="10">
+
+                <!-- Vehicle Info Form (hidden during collection) -->
+                <Border
+                    IsVisible="{Binding IsCollecting, Converter={StaticResource InvertedBoolConverter}}"
+                    Stroke="{StaticResource Gray200}"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 8"
+                    Padding="15">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="Vehicle Information" Style="{StaticResource SectionLabel}" />
+
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+                            <VerticalStackLayout>
+                                <Label Text="Year" Style="{StaticResource FieldLabel}" />
+                                <Entry
+                                    Text="{Binding VehicleYear}"
+                                    Keyboard="Numeric"
+                                    Placeholder="2024" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Grid.Column="1">
+                                <Label Text="Make" Style="{StaticResource FieldLabel}" />
+                                <Entry
+                                    Text="{Binding VehicleMake}"
+                                    Placeholder="e.g., Nissan" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Grid.Row="1">
+                                <Label Text="Model" Style="{StaticResource FieldLabel}" />
+                                <Entry
+                                    Text="{Binding VehicleModel}"
+                                    Placeholder="e.g., Leaf" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Grid.Row="1" Grid.Column="1">
+                                <Label Text="Trim (optional)" Style="{StaticResource FieldLabel}" />
+                                <Entry
+                                    Text="{Binding VehicleTrim}"
+                                    Placeholder="e.g., SL" />
+                            </VerticalStackLayout>
+                        </Grid>
+
+                        <VerticalStackLayout>
+                            <Label Text="Engine/Powertrain" Style="{StaticResource FieldLabel}" />
+                            <Picker
+                                ItemsSource="{Binding EngineTypes}"
+                                SelectedItem="{Binding EngineType}" />
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout>
+                            <Label Text="Transmission" Style="{StaticResource FieldLabel}" />
+                            <Picker
+                                ItemsSource="{Binding TransmissionTypes}"
+                                SelectedItem="{Binding TransmissionType}" />
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout>
+                            <Label Text="BLE Profile" Style="{StaticResource FieldLabel}" />
+                            <Picker
+                                ItemsSource="{Binding AvailableProfiles}"
+                                SelectedItem="{Binding SelectedProfile}"
+                                ItemDisplayBinding="{Binding Name}" />
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout>
+                            <Label Text="Additional Notes (optional)" Style="{StaticResource FieldLabel}" />
+                            <Editor
+                                Text="{Binding AdditionalNotes}"
+                                Placeholder="Any relevant details about your vehicle..."
+                                HeightRequest="80"
+                                AutoSize="TextChanges" />
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Live Log (visible during/after collection) -->
+                <Border
+                    IsVisible="{Binding LogEntries.Count, Converter={StaticResource NullToBoolConverter}}"
+                    Stroke="{StaticResource Gray200}"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 8"
+                    Padding="10">
+                    <VerticalStackLayout>
+                        <Label Text="Activity Log" Style="{StaticResource SectionLabel}" />
+                        <CollectionView
+                            ItemsSource="{Binding LogEntries}"
+                            HeightRequest="300"
+                            SelectionMode="None">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DiagnosticLogEntry">
+                                    <Grid ColumnDefinitions="70,40,*" Padding="2">
+                                        <Label
+                                            Text="{Binding FormattedTime}"
+                                            FontSize="10"
+                                            FontFamily="Consolas"
+                                            TextColor="{StaticResource Gray400}" />
+                                        <Label
+                                            Grid.Column="1"
+                                            Text="{Binding Level}"
+                                            FontSize="10"
+                                            FontFamily="Consolas"
+                                            FontAttributes="Bold"
+                                            TextColor="{Binding LevelColor}" />
+                                        <Label
+                                            Grid.Column="2"
+                                            Text="{Binding Message}"
+                                            FontSize="11"
+                                            FontFamily="Consolas"
+                                            LineBreakMode="TailTruncation"
+                                            MaxLines="2" />
+                                    </Grid>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </VerticalStackLayout>
+                </Border>
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Footer: Start Button -->
+        <VerticalStackLayout Grid.Row="2" Spacing="10">
+            <!-- Error Display -->
+            <Border
+                IsVisible="{Binding HasError}"
+                Stroke="Red"
+                StrokeThickness="1"
+                StrokeShape="RoundRectangle 5"
+                Padding="10"
+                BackgroundColor="#FFEEEE">
+                <Label
+                    Text="{Binding ErrorMessage}"
+                    TextColor="Red" />
+            </Border>
+
+            <!-- Start Button -->
+            <Button
+                Text="Start Diagnostic Collection"
+                Command="{Binding StartCollectionCommand}"
+                IsVisible="{Binding IsCollecting, Converter={StaticResource InvertedBoolConverter}}"
+                HorizontalOptions="Fill"
+                FontAttributes="Bold"
+                HeightRequest="50" />
+
+            <!-- Instructions -->
+            <Label
+                IsVisible="{Binding IsCollecting, Converter={StaticResource InvertedBoolConverter}}"
+                Text="Make sure your vehicle is on (ignition on or running) before starting."
+                FontSize="12"
+                TextColor="{StaticResource Gray500}"
+                HorizontalTextAlignment="Center" />
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

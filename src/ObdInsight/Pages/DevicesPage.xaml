@@ -2,17 +2,16 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:ObdInsight.ViewModels"
-             xmlns:core="clr-namespace:ObdInsight.Core;assembly=ObdInsight.Core"
              x:Class="ObdInsight.Pages.DevicesPage"
              x:DataType="vm:DevicesViewModel"
              Title="{Binding Title}">
 
-    <Grid RowDefinitions="Auto,*,Auto" Padding="15">
+    <Grid RowDefinitions="Auto,*,Auto,Auto" Padding="15">
 
         <!-- Header with scan controls -->
         <VerticalStackLayout Grid.Row="0" Spacing="10">
             <Label
-                Text="Scan for nearby OBD adapters"
+                Text="Scan for nearby BLE devices"
                 FontSize="16"
                 HorizontalOptions="Center" />
 
@@ -28,6 +27,14 @@
                     BackgroundColor="{StaticResource Gray500}" />
             </HorizontalStackLayout>
 
+            <!-- Status text -->
+            <Label
+                Text="{Binding ScanStatus}"
+                FontSize="12"
+                TextColor="{StaticResource Gray500}"
+                HorizontalOptions="Center"
+                IsVisible="{Binding ScanStatus, Converter={StaticResource NullToBoolConverter}}" />
+
             <!-- Scanning indicator -->
             <HorizontalStackLayout
                 HorizontalOptions="Center"
@@ -38,7 +45,7 @@
                     Color="{StaticResource Primary}"
                     HeightRequest="20"
                     WidthRequest="20" />
-                <Label Text="Scanning for devices..." />
+                <Label Text="Scanning..." />
             </HorizontalStackLayout>
         </VerticalStackLayout>
 
@@ -61,37 +68,57 @@
                         TextColor="{StaticResource Gray500}"
                         HorizontalOptions="Center" />
                     <Label
-                        Text="Tap 'Start Scan' to search for OBD adapters"
+                        Text="Tap 'Start Scan' to search for BLE devices"
                         FontSize="14"
+                        TextColor="{StaticResource Gray400}"
+                        HorizontalOptions="Center" />
+                    <Label
+                        Text="Likely OBD adapters will be highlighted in green"
+                        FontSize="12"
                         TextColor="{StaticResource Gray400}"
                         HorizontalOptions="Center" />
                 </VerticalStackLayout>
             </CollectionView.EmptyView>
 
             <CollectionView.ItemTemplate>
-                <DataTemplate x:DataType="core:BleDeviceInfo">
+                <DataTemplate x:DataType="vm:DeviceListItem">
                     <Border
                         Margin="5"
                         Padding="15"
-                        StrokeThickness="1"
-                        Stroke="{StaticResource Gray200}"
+                        StrokeThickness="{Binding IsLikelyObdAdapter, Converter={StaticResource BoolToStrokeThicknessConverter}}"
+                        Stroke="{Binding BorderColor}"
                         StrokeShape="RoundRectangle 8"
                         BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray900}}">
                         <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
-                            <Label
-                                Text="{Binding Name}"
-                                FontAttributes="Bold"
-                                FontSize="16" />
+                            <HorizontalStackLayout Spacing="8">
+                                <Label
+                                    Text="{Binding Device.Name}"
+                                    FontAttributes="Bold"
+                                    FontSize="16" />
+                                <!-- OBD Badge for likely adapters -->
+                                <Border
+                                    IsVisible="{Binding IsLikelyObdAdapter}"
+                                    BackgroundColor="Green"
+                                    StrokeThickness="0"
+                                    StrokeShape="RoundRectangle 4"
+                                    Padding="6,2">
+                                    <Label
+                                        Text="OBD"
+                                        TextColor="White"
+                                        FontSize="10"
+                                        FontAttributes="Bold" />
+                                </Border>
+                            </HorizontalStackLayout>
                             <Label
                                 Grid.Column="1"
-                                Text="{Binding Rssi, StringFormat='{0} dBm'}"
+                                Text="{Binding Device.Rssi, StringFormat='{0} dBm'}"
                                 TextColor="{StaticResource Gray500}"
                                 FontSize="12"
                                 VerticalOptions="Center" />
                             <Label
                                 Grid.Row="1"
                                 Grid.ColumnSpan="2"
-                                Text="{Binding Address}"
+                                Text="{Binding Device.Address}"
                                 TextColor="{StaticResource Gray500}"
                                 FontSize="12" />
                             <HorizontalStackLayout
@@ -104,7 +131,7 @@
                                     FontSize="11"
                                     TextColor="{StaticResource Gray400}" />
                                 <Label
-                                    Text="{Binding AdvertisedServices.Count}"
+                                    Text="{Binding Device.AdvertisedServices.Count}"
                                     FontSize="11"
                                     TextColor="{StaticResource Gray400}" />
                             </HorizontalStackLayout>
@@ -154,5 +181,26 @@
                 HorizontalOptions="Fill"
                 IsVisible="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
         </VerticalStackLayout>
+
+        <!-- Debug Log Panel - Shows connection debugging info -->
+        <Border 
+            x:Name="DebugPanel"
+            Grid.Row="3" 
+            Stroke="{StaticResource Gray400}"
+            StrokeThickness="1"
+            StrokeShape="RoundRectangle 5"
+            Padding="8"
+            Margin="0,10,0,0"
+            HeightRequest="150"
+            BackgroundColor="{AppThemeBinding Light=#F5F5F5, Dark=#1A1A1A}">
+            <ScrollView x:Name="DebugScrollView">
+                <Label 
+                    x:Name="DebugLogLabel"
+                    Text="{Binding DebugLog}"
+                    FontSize="10"
+                    TextColor="{StaticResource Gray600}"
+                    LineBreakMode="WordWrap" />
+            </ScrollView>
+        </Border>
     </Grid>
 </ContentPage>

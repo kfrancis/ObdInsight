@@ -15,6 +15,7 @@
             <converters:BoolToColorConverter x:Key="BoolToColorConverter" />
             <converters:NullToBoolConverter x:Key="NullToBoolConverter" />
             <converters:InvertedBoolConverter x:Key="InvertedBoolConverter" />
+            <converters:BoolToStrokeThicknessConverter x:Key="BoolToStrokeThicknessConverter" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

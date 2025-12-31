@@ -1,11 +1,12 @@
 using ObdInsight.Core.Adapters;
-using ObdInsight.Core.Diagnostics;
+using ObdInsight.Core.Transports.Ble;
 using System.Diagnostics;
 
-namespace ObdInsight.DevTools;
+namespace ObdInsight.Core.Diagnostics;
 
 /// <summary>
 /// Collects comprehensive diagnostic data from a vehicle/adapter for generating support reports.
+/// Platform-agnostic implementation - BLE discovery must be provided by the caller.
 /// </summary>
 public class DiagnosticDataCollector
 {
@@ -14,8 +15,12 @@ public class DiagnosticDataCollector
     private readonly List<PidProbeResult> _standardPidResults = [];
     private readonly List<PidProbeResult> _extendedPidResults = [];
 
+    private IProgress<DiagnosticProgress>? _progress;
+    private int _totalPhases;
+    private int _currentPhaseIndex;
+
     /// <summary>
-    /// Standard Mode 01 PIDs to probe (beyond the supported PIDs query)
+    /// Standard Mode 01 PIDs to probe
     /// </summary>
     private static readonly (string Command, string Description)[] StandardMode01Pids =
     [
@@ -62,7 +67,7 @@ public class DiagnosticDataCollector
     ];
 
     /// <summary>
-    /// Mode 09 PIDs to probe (vehicle information)
+    /// Mode 09 PIDs to probe
     /// </summary>
     private static readonly (string Command, string Description)[] Mode09Pids =
     [
@@ -98,93 +103,21 @@ public class DiagnosticDataCollector
         ("ATRV", "Voltage reading"),
         ("ATDP", "Describe protocol"),
         ("ATDPN", "Describe protocol by number"),
-        ("ATAL", "Allow long messages"),
-        ("ATSP0", "Set protocol to auto"),
-        ("ATST32", "Set timeout"),
     ];
-
-    public event EventHandler<string>? StatusUpdate;
-
-    /// <summary>
-    /// Collects BLE adapter information including GATT services
-    /// </summary>
-    public async Task<BleAdapterInfo?> CollectBleInfoAsync(string macAddress)
-    {
-        try
-        {
-            RaiseStatus("Discovering BLE services...");
-
-            var mac = ParseMacAddress(macAddress);
-            using var device = await Windows.Devices.Bluetooth.BluetoothLEDevice.FromBluetoothAddressAsync(mac);
-
-            if (device == null)
-            {
-                AddError("BLE Discovery", "Failed to connect to BLE device");
-                return null;
-            }
-
-            var servicesResult = await device.GetGattServicesAsync(
-                Windows.Devices.Bluetooth.BluetoothCacheMode.Uncached);
-
-            if (servicesResult.Status != Windows.Devices.Bluetooth.GenericAttributeProfile.GattCommunicationStatus.Success)
-            {
-                AddError("BLE Discovery", $"Failed to get services: {servicesResult.Status}");
-                return null;
-            }
-
-            var services = new List<BleServiceInfo>();
-
-            foreach (var service in servicesResult.Services)
-            {
-                var characteristics = new List<BleCharacteristicInfo>();
-
-                var charsResult = await service.GetCharacteristicsAsync(
-                    Windows.Devices.Bluetooth.BluetoothCacheMode.Uncached);
-
-                if (charsResult.Status == Windows.Devices.Bluetooth.GenericAttributeProfile.GattCommunicationStatus.Success)
-                {
-                    foreach (var characteristic in charsResult.Characteristics)
-                    {
-                        var props = GetPropertyStrings(characteristic.CharacteristicProperties).ToList();
-                        characteristics.Add(new BleCharacteristicInfo
-                        {
-                            CharacteristicUuid = characteristic.Uuid,
-                            Properties = props
-                        });
-                    }
-                }
-
-                services.Add(new BleServiceInfo
-                {
-                    ServiceUuid = service.Uuid,
-                    Characteristics = characteristics
-                });
-
-                service.Dispose();
-            }
-
-            AddNote($"Found {services.Count} BLE services with {services.Sum(s => s.Characteristics.Count)} characteristics");
-
-            return new BleAdapterInfo
-            {
-                DeviceName = device.Name ?? "Unknown",
-                MacAddress = macAddress,
-                Services = services
-            };
-        }
-        catch (Exception ex)
-        {
-            AddError("BLE Discovery", ex.Message, ex.ToString());
-            return null;
-        }
-    }
 
     /// <summary>
     /// Collects OBD adapter information (ELM327 version, etc.)
     /// </summary>
-    public async Task<ObdAdapterInfo> CollectObdAdapterInfoAsync(IObdAdapter adapter)
+    public async Task<ObdAdapterInfo> CollectObdAdapterInfoAsync(
+        IObdAdapter adapter,
+        IProgress<DiagnosticProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
-        RaiseStatus("Probing OBD adapter...");
+        _progress = progress;
+        _currentPhaseIndex = 0;
+        _totalPhases = 1;
+
+        ReportProgress(DiagnosticPhase.AdapterInfo, "Probing OBD adapter...", 0, 0, AtCommands.Length);
 
         var rawResponses = new Dictionary<string, string>();
         string? resetResponse = null;
@@ -194,51 +127,81 @@ public class DiagnosticDataCollector
         string? protocol = null;
         string? protocolNum = null;
 
-        foreach (var (command, description) in AtCommands)
+        for (var i = 0; i < AtCommands.Length; i++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var (command, description) = AtCommands[i];
+
+            ReportProgress(
+                DiagnosticPhase.AdapterInfo,
+                $"Sending {command} ({description})...",
+                (double)i / AtCommands.Length,
+                i,
+                AtCommands.Length,
+                command);
+
             try
             {
-                RaiseStatus($"Sending {command}...");
                 var response = await adapter.SendCommandAsync(
-                    new ObdCommand(command, TimeSpan.FromSeconds(5)));
+                    new ObdCommand(command, TimeSpan.FromSeconds(5)),
+                    cancellationToken);
 
                 var rawValue = response.RawResponse ?? response.Value ?? "";
                 rawResponses[command] = rawValue;
+
+                ReportProgress(
+                    DiagnosticPhase.AdapterInfo,
+                    $"{command}: {TruncateResponse(rawValue)}",
+                    (double)(i + 1) / AtCommands.Length,
+                    i + 1,
+                    AtCommands.Length,
+                    command,
+                    rawValue,
+                    response.Success);
 
                 switch (command)
                 {
                     case "ATZ":
                         resetResponse = rawValue;
                         break;
-
                     case "ATI":
                         versionResponse = rawValue;
                         break;
-
                     case "AT@1":
                         deviceDesc = rawValue;
                         break;
-
                     case "ATRV":
                         voltage = rawValue;
                         break;
-
                     case "ATDP":
                         protocol = rawValue;
                         break;
-
                     case "ATDPN":
                         protocolNum = rawValue;
                         break;
                 }
 
-                // Small delay between commands
-                await Task.Delay(100);
+                await Task.Delay(100, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
                 rawResponses[command] = $"ERROR: {ex.Message}";
                 AddError("AT Command", $"Failed to send {command}: {ex.Message}");
+
+                ReportProgress(
+                    DiagnosticPhase.AdapterInfo,
+                    $"{command}: ERROR - {ex.Message}",
+                    (double)(i + 1) / AtCommands.Length,
+                    i + 1,
+                    AtCommands.Length,
+                    command,
+                    ex.Message,
+                    false);
             }
         }
 
@@ -259,9 +222,13 @@ public class DiagnosticDataCollector
     /// <summary>
     /// Collects vehicle identification (VIN, calibration, ECU name)
     /// </summary>
-    public async Task<VehicleIdentification> CollectVehicleIdAsync(IObdAdapter adapter)
+    public async Task<VehicleIdentification> CollectVehicleIdAsync(
+        IObdAdapter adapter,
+        IProgress<DiagnosticProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
-        RaiseStatus("Reading vehicle identification...");
+        _progress = progress;
+        ReportProgress(DiagnosticPhase.VehicleId, "Reading vehicle identification...", 0, 0, 3);
 
         string? vin = null;
         string? rawVin = null;
@@ -269,10 +236,12 @@ public class DiagnosticDataCollector
         string? ecuName = null;
 
         // VIN (Mode 09 PID 02)
+        ReportProgress(DiagnosticPhase.VehicleId, "Reading VIN (0902)...", 0, 0, 3, "0902");
         try
         {
             var response = await adapter.SendCommandAsync(
-                new ObdCommand("0902", TimeSpan.FromSeconds(10)));
+                new ObdCommand("0902", TimeSpan.FromSeconds(10)),
+                cancellationToken);
             rawVin = response.RawResponse ?? response.Value;
 
             if (response.Success && !string.IsNullOrEmpty(response.Value))
@@ -283,35 +252,62 @@ public class DiagnosticDataCollector
                     AddNote($"VIN detected: {vin}");
                 }
             }
+
+            ReportProgress(DiagnosticPhase.VehicleId, $"VIN: {vin ?? "Not available"}", 0.33, 1, 3, "0902", rawVin, vin != null);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             AddError("VIN Read", ex.Message);
+            ReportProgress(DiagnosticPhase.VehicleId, $"VIN: ERROR - {ex.Message}", 0.33, 1, 3, "0902", ex.Message, false);
         }
 
         // Calibration ID (Mode 09 PID 04)
+        ReportProgress(DiagnosticPhase.VehicleId, "Reading Calibration ID (0904)...", 0.33, 1, 3, "0904");
         try
         {
             var response = await adapter.SendCommandAsync(
-                new ObdCommand("0904", TimeSpan.FromSeconds(5)));
+                new ObdCommand("0904", TimeSpan.FromSeconds(5)),
+                cancellationToken);
             if (response.Success)
             {
                 calibId = response.RawResponse ?? response.Value;
             }
+            ReportProgress(DiagnosticPhase.VehicleId, $"Calibration ID: {TruncateResponse(calibId)}", 0.66, 2, 3, "0904", calibId, response.Success);
         }
-        catch { /* Optional */ }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Optional - don't report as error
+        }
 
         // ECU Name (Mode 09 PID 0A)
+        ReportProgress(DiagnosticPhase.VehicleId, "Reading ECU Name (090A)...", 0.66, 2, 3, "090A");
         try
         {
             var response = await adapter.SendCommandAsync(
-                new ObdCommand("090A", TimeSpan.FromSeconds(5)));
+                new ObdCommand("090A", TimeSpan.FromSeconds(5)),
+                cancellationToken);
             if (response.Success)
             {
                 ecuName = response.RawResponse ?? response.Value;
             }
+            ReportProgress(DiagnosticPhase.VehicleId, $"ECU Name: {TruncateResponse(ecuName)}", 1.0, 3, 3, "090A", ecuName, response.Success);
         }
-        catch { /* Optional */ }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Optional
+        }
 
         return new VehicleIdentification
         {
@@ -325,28 +321,56 @@ public class DiagnosticDataCollector
     /// <summary>
     /// Collects supported PIDs information
     /// </summary>
-    public async Task<SupportedPidsInfo> CollectSupportedPidsAsync(IObdAdapter adapter)
+    public async Task<SupportedPidsInfo> CollectSupportedPidsAsync(
+        IObdAdapter adapter,
+        IProgress<DiagnosticProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
-        RaiseStatus("Querying supported PIDs...");
+        _progress = progress;
+        ReportProgress(DiagnosticPhase.SupportedPids, "Querying supported PIDs...", 0, 0, 8);
 
         var mode01Pids = new List<string>();
         var mode09Pids = new List<string>();
         var rawResponses = new Dictionary<string, string>();
 
-        // Mode 01 supported PIDs (query in ranges)
-        foreach (var pidQuery in new[] { "0100", "0120", "0140", "0160", "0180", "01A0", "01C0" })
+        var pidQueries = new[] { "0100", "0120", "0140", "0160", "0180", "01A0", "01C0" };
+        var queryIndex = 0;
+
+        // Mode 01 supported PIDs
+        foreach (var pidQuery in pidQueries)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            ReportProgress(
+                DiagnosticPhase.SupportedPids,
+                $"Querying Mode 01 PIDs ({pidQuery})...",
+                (double)queryIndex / 8,
+                queryIndex,
+                8,
+                pidQuery);
+
             try
             {
                 var response = await adapter.SendCommandAsync(
-                    new ObdCommand(pidQuery, TimeSpan.FromSeconds(5)));
+                    new ObdCommand(pidQuery, TimeSpan.FromSeconds(5)),
+                    cancellationToken);
 
                 rawResponses[pidQuery] = response.RawResponse ?? response.Value ?? "";
 
                 if (response.Success && !string.IsNullOrEmpty(response.Value))
                 {
-                    var pids = ParseSupportedPidsBitmap(response.Value, pidQuery);
+                    var pids = ParseSupportedPidsBitmap(response.Value, pidQuery).ToList();
                     mode01Pids.AddRange(pids);
+
+                    ReportProgress(
+                        DiagnosticPhase.SupportedPids,
+                        $"{pidQuery}: Found {pids.Count} PIDs",
+                        (double)(queryIndex + 1) / 8,
+                        queryIndex + 1,
+                        8,
+                        pidQuery,
+                        $"{pids.Count} PIDs",
+                        true);
 
                     // If this range doesn't include the next range query, stop
                     var nextQuery = $"01{(byte.Parse(pidQuery[2..], System.Globalization.NumberStyles.HexNumber) + 0x20):X2}";
@@ -355,30 +379,73 @@ public class DiagnosticDataCollector
                 }
                 else
                 {
-                    break; // No more PIDs supported
+                    ReportProgress(
+                        DiagnosticPhase.SupportedPids,
+                        $"{pidQuery}: No response",
+                        (double)(queryIndex + 1) / 8,
+                        queryIndex + 1,
+                        8,
+                        pidQuery,
+                        response.RawResponse,
+                        false);
+                    break;
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
                 AddError("PID Query", $"Failed {pidQuery}: {ex.Message}");
+                ReportProgress(
+                    DiagnosticPhase.SupportedPids,
+                    $"{pidQuery}: ERROR - {ex.Message}",
+                    (double)(queryIndex + 1) / 8,
+                    queryIndex + 1,
+                    8,
+                    pidQuery,
+                    ex.Message,
+                    false);
                 break;
             }
+
+            queryIndex++;
         }
 
         // Mode 09 supported PIDs
+        ReportProgress(DiagnosticPhase.SupportedPids, "Querying Mode 09 PIDs (0900)...", 0.875, 7, 8, "0900");
         try
         {
             var response = await adapter.SendCommandAsync(
-                new ObdCommand("0900", TimeSpan.FromSeconds(5)));
+                new ObdCommand("0900", TimeSpan.FromSeconds(5)),
+                cancellationToken);
 
             rawResponses["0900"] = response.RawResponse ?? response.Value ?? "";
 
             if (response.Success && !string.IsNullOrEmpty(response.Value))
             {
-                mode09Pids.AddRange(ParseSupportedPidsBitmap(response.Value, "0900"));
+                var pids = ParseSupportedPidsBitmap(response.Value, "0900").ToList();
+                mode09Pids.AddRange(pids);
+                ReportProgress(
+                    DiagnosticPhase.SupportedPids,
+                    $"0900: Found {pids.Count} Mode 09 PIDs",
+                    1.0,
+                    8,
+                    8,
+                    "0900",
+                    $"{pids.Count} PIDs",
+                    true);
             }
         }
-        catch { /* Optional */ }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Optional
+        }
 
         AddNote($"Found {mode01Pids.Count} Mode 01 PIDs and {mode09Pids.Count} Mode 09 PIDs supported");
 
@@ -393,23 +460,40 @@ public class DiagnosticDataCollector
     /// <summary>
     /// Probes all standard PIDs and records responses
     /// </summary>
-    public async Task ProbeStandardPidsAsync(IObdAdapter adapter, SupportedPidsInfo supportedPids)
+    public async Task ProbeStandardPidsAsync(
+        IObdAdapter adapter,
+        SupportedPidsInfo? supportedPids,
+        IProgress<DiagnosticProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
-        RaiseStatus("Probing standard PIDs...");
+        _progress = progress;
+        _standardPidResults.Clear();
 
         var allPids = StandardMode01Pids.Concat(Mode09Pids).ToList();
-        var count = 0;
+        var totalPids = allPids.Count;
 
-        foreach (var (command, description) in allPids)
+        ReportProgress(DiagnosticPhase.StandardPidProbe, $"Probing {totalPids} standard PIDs...", 0, 0, totalPids);
+
+        for (var i = 0; i < allPids.Count; i++)
         {
-            count++;
-            RaiseStatus($"Probing {command} ({count}/{allPids.Count})...");
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var (command, description) = allPids[i];
+
+            ReportProgress(
+                DiagnosticPhase.StandardPidProbe,
+                $"[{i + 1}/{totalPids}] Probing {command} ({description})...",
+                (double)i / totalPids,
+                i,
+                totalPids,
+                command);
 
             var sw = Stopwatch.StartNew();
             try
             {
                 var response = await adapter.SendCommandAsync(
-                    new ObdCommand(command, TimeSpan.FromSeconds(5)));
+                    new ObdCommand(command, TimeSpan.FromSeconds(5)),
+                    cancellationToken);
 
                 sw.Stop();
 
@@ -425,6 +509,20 @@ public class DiagnosticDataCollector
                 };
 
                 _standardPidResults.Add(result);
+
+                ReportProgress(
+                    DiagnosticPhase.StandardPidProbe,
+                    $"[{i + 1}/{totalPids}] {command}: {(response.Success ? TruncateResponse(response.RawResponse) : "NO DATA")} ({sw.ElapsedMilliseconds}ms)",
+                    (double)(i + 1) / totalPids,
+                    i + 1,
+                    totalPids,
+                    command,
+                    response.RawResponse,
+                    response.Success);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -437,10 +535,19 @@ public class DiagnosticDataCollector
                     Error = ex.Message,
                     ResponseTime = sw.Elapsed
                 });
+
+                ReportProgress(
+                    DiagnosticPhase.StandardPidProbe,
+                    $"[{i + 1}/{totalPids}] {command}: ERROR - {ex.Message}",
+                    (double)(i + 1) / totalPids,
+                    i + 1,
+                    totalPids,
+                    command,
+                    ex.Message,
+                    false);
             }
 
-            // Small delay between probes
-            await Task.Delay(50);
+            await Task.Delay(50, cancellationToken);
         }
 
         var successCount = _standardPidResults.Count(r => r.Success);
@@ -450,19 +557,37 @@ public class DiagnosticDataCollector
     /// <summary>
     /// Probes extended/manufacturer-specific PIDs for EV detection
     /// </summary>
-    public async Task ProbeExtendedPidsAsync(IObdAdapter adapter)
+    public async Task ProbeExtendedPidsAsync(
+        IObdAdapter adapter,
+        IProgress<DiagnosticProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
-        RaiseStatus("Probing extended/EV PIDs...");
+        _progress = progress;
+        _extendedPidResults.Clear();
 
-        foreach (var (command, description) in EvProbePids)
+        var totalPids = EvProbePids.Length;
+        ReportProgress(DiagnosticPhase.ExtendedPidProbe, $"Probing {totalPids} extended/EV PIDs...", 0, 0, totalPids);
+
+        for (var i = 0; i < EvProbePids.Length; i++)
         {
-            RaiseStatus($"Probing {command}...");
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var (command, description) = EvProbePids[i];
+
+            ReportProgress(
+                DiagnosticPhase.ExtendedPidProbe,
+                $"[{i + 1}/{totalPids}] Probing {command} ({description})...",
+                (double)i / totalPids,
+                i,
+                totalPids,
+                command);
 
             var sw = Stopwatch.StartNew();
             try
             {
                 var response = await adapter.SendCommandAsync(
-                    new ObdCommand(command, TimeSpan.FromSeconds(5)));
+                    new ObdCommand(command, TimeSpan.FromSeconds(5)),
+                    cancellationToken);
 
                 sw.Stop();
 
@@ -476,6 +601,20 @@ public class DiagnosticDataCollector
                     Error = response.Error,
                     ResponseTime = sw.Elapsed
                 });
+
+                ReportProgress(
+                    DiagnosticPhase.ExtendedPidProbe,
+                    $"[{i + 1}/{totalPids}] {command}: {(response.Success ? TruncateResponse(response.RawResponse) : "NO DATA")} ({sw.ElapsedMilliseconds}ms)",
+                    (double)(i + 1) / totalPids,
+                    i + 1,
+                    totalPids,
+                    command,
+                    response.RawResponse,
+                    response.Success);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -488,9 +627,19 @@ public class DiagnosticDataCollector
                     Error = ex.Message,
                     ResponseTime = sw.Elapsed
                 });
+
+                ReportProgress(
+                    DiagnosticPhase.ExtendedPidProbe,
+                    $"[{i + 1}/{totalPids}] {command}: ERROR - {ex.Message}",
+                    (double)(i + 1) / totalPids,
+                    i + 1,
+                    totalPids,
+                    command,
+                    ex.Message,
+                    false);
             }
 
-            await Task.Delay(100);
+            await Task.Delay(100, cancellationToken);
         }
 
         var successCount = _extendedPidResults.Count(r => r.Success);
@@ -516,14 +665,28 @@ public class DiagnosticDataCollector
             ObdAdapterInfo = obdInfo,
             VehicleId = vehicleId,
             SupportedPids = supportedPids,
-            StandardPidResults = _standardPidResults,
-            ExtendedPidResults = _extendedPidResults,
-            Errors = _errors,
-            Notes = _notes
+            StandardPidResults = _standardPidResults.ToList(),
+            ExtendedPidResults = _extendedPidResults.ToList(),
+            Errors = _errors.ToList(),
+            Notes = _notes.ToList()
         };
     }
 
-    private void AddError(string phase, string message, string? details = null)
+    /// <summary>
+    /// Clears all collected data for a new collection run
+    /// </summary>
+    public void Reset()
+    {
+        _errors.Clear();
+        _notes.Clear();
+        _standardPidResults.Clear();
+        _extendedPidResults.Clear();
+    }
+
+    /// <summary>
+    /// Adds an error to the collection
+    /// </summary>
+    public void AddError(string phase, string message, string? details = null)
     {
         _errors.Add(new DiagnosticError
         {
@@ -533,14 +696,61 @@ public class DiagnosticDataCollector
         });
     }
 
-    private void AddNote(string note)
+    /// <summary>
+    /// Adds a note to the collection
+    /// </summary>
+    public void AddNote(string note)
     {
         _notes.Add(note);
     }
 
-    private void RaiseStatus(string status)
+    private void ReportProgress(
+        DiagnosticPhase phase,
+        string message,
+        double phaseProgress,
+        int itemsCompleted,
+        int itemsTotal,
+        string? currentItem = null,
+        string? lastResponse = null,
+        bool? lastSuccess = null)
     {
-        StatusUpdate?.Invoke(this, status);
+        _progress?.Report(new DiagnosticProgress
+        {
+            Phase = phase,
+            Message = message,
+            PhaseProgress = phaseProgress,
+            OverallProgress = CalculateOverallProgress(phase, phaseProgress),
+            CurrentItem = currentItem,
+            ItemsCompleted = itemsCompleted,
+            ItemsTotal = itemsTotal,
+            LastResponse = lastResponse,
+            LastOperationSuccess = lastSuccess
+        });
+    }
+
+    private static double CalculateOverallProgress(DiagnosticPhase phase, double phaseProgress)
+    {
+        // Weight phases by typical duration
+        var phaseWeights = new Dictionary<DiagnosticPhase, (double Start, double Weight)>
+        {
+            [DiagnosticPhase.BleDiscovery] = (0.0, 0.05),
+            [DiagnosticPhase.Connecting] = (0.05, 0.05),
+            [DiagnosticPhase.AdapterInit] = (0.10, 0.05),
+            [DiagnosticPhase.AdapterInfo] = (0.15, 0.10),
+            [DiagnosticPhase.VehicleId] = (0.25, 0.05),
+            [DiagnosticPhase.SupportedPids] = (0.30, 0.10),
+            [DiagnosticPhase.StandardPidProbe] = (0.40, 0.40),
+            [DiagnosticPhase.ExtendedPidProbe] = (0.80, 0.15),
+            [DiagnosticPhase.GeneratingReport] = (0.95, 0.05),
+            [DiagnosticPhase.Complete] = (1.0, 0.0),
+        };
+
+        if (phaseWeights.TryGetValue(phase, out var weight))
+        {
+            return weight.Start + (phaseProgress * weight.Weight);
+        }
+
+        return 0;
     }
 
     private static string GetToolVersion()
@@ -550,10 +760,16 @@ public class DiagnosticDataCollector
         return version?.ToString() ?? "1.0.0";
     }
 
-    private static ulong ParseMacAddress(string mac)
+    private static string TruncateResponse(string? response, int maxLength = 40)
     {
-        var cleanMac = mac.Replace(":", "").Replace("-", "");
-        return Convert.ToUInt64(cleanMac, 16);
+        if (string.IsNullOrEmpty(response))
+            return "<empty>";
+
+        var cleaned = response.Replace("\r", "").Replace("\n", " ").Trim();
+        if (cleaned.Length <= maxLength)
+            return cleaned;
+
+        return cleaned[..(maxLength - 3)] + "...";
     }
 
     private static string? ParseVin(string response)
@@ -604,20 +820,5 @@ public class DiagnosticDataCollector
                     yield return $"{mode}{(basePid + i + 1):X2}";
             }
         }
-    }
-
-    private static IEnumerable<string> GetPropertyStrings(
-        Windows.Devices.Bluetooth.GenericAttributeProfile.GattCharacteristicProperties props)
-    {
-        if (props.HasFlag(Windows.Devices.Bluetooth.GenericAttributeProfile.GattCharacteristicProperties.Read))
-            yield return "Read";
-        if (props.HasFlag(Windows.Devices.Bluetooth.GenericAttributeProfile.GattCharacteristicProperties.Write))
-            yield return "Write";
-        if (props.HasFlag(Windows.Devices.Bluetooth.GenericAttributeProfile.GattCharacteristicProperties.WriteWithoutResponse))
-            yield return "WriteNoResp";
-        if (props.HasFlag(Windows.Devices.Bluetooth.GenericAttributeProfile.GattCharacteristicProperties.Notify))
-            yield return "Notify";
-        if (props.HasFlag(Windows.Devices.Bluetooth.GenericAttributeProfile.GattCharacteristicProperties.Indicate))
-            yield return "Indicate";
     }
 }

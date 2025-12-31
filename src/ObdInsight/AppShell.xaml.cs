@@ -10,6 +10,7 @@ namespace ObdInsight
 
             // Register routes for navigation
             Routing.RegisterRoute("devices", typeof(DevicesPage));
+            Routing.RegisterRoute("diagnostics", typeof(DiagnosticReportPage));
         }
     }
 }
