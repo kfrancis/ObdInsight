@@ -1,7 +1,7 @@
 # ObdInsight
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![.NET MAUI](https://img.shields.io/badge/.NET%20MAUI-9.0-512BD4)](https://dotnet.microsoft.com/apps/maui)
+[![.NET MAUI](https://img.shields.io/badge/.NET%20MAUI-10.0-512BD4)](https://dotnet.microsoft.com/apps/maui)
 
 A modern, open-source OBD-II diagnostic application for Android and iOS built with .NET MAUI. 
 
