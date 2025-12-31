@@ -1,11 +1,13 @@
 # ObdInsight
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![.NET MAUI](https://img.shields.io/badge/.NET%20MAUI-10.0-512BD4)](https://dotnet.microsoft.com/apps/maui)
+[![.NET MAUI](https://img.shields.io/badge/.NET%20MAUI-9.0-512BD4)](https://dotnet.microsoft.com/apps/maui)
 
 A modern, open-source OBD-II diagnostic application for Android and iOS built with .NET MAUI. 
 
 ObdInsight addresses the poor user experience of existing OBD apps by providing a clean, responsive interface backed by a robust, testable architecture. The pluggable driver system makes it easy to add support for new Bluetooth and WiFi OBD dongles without modifying the core application.
+
+<img width="429" height="600" alt="image" src="https://github.com/user-attachments/assets/6430509e-c86c-4eb9-b693-1eacadb1fc73" />
 
 ## Table of Contents
 
