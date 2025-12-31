@@ -11,16 +11,19 @@
     <TabBar>
         <ShellContent
             Title="Home"
+            Icon="home.png"
             ContentTemplate="{DataTemplate local:MainPage}"
             Route="main" />
 
         <ShellContent
             Title="Devices"
+            Icon="devices.png"
             ContentTemplate="{DataTemplate pages:DevicesPage}"
             Route="devices" />
 
         <ShellContent
             Title="Diagnostics"
+            Icon="diagnostics.png"
             ContentTemplate="{DataTemplate pages:DiagnosticReportPage}"
             Route="diagnostics" />
     </TabBar>
