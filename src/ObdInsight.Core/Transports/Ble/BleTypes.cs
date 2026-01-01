@@ -69,6 +69,26 @@ public record BleDeviceProfile(
     );
 
     /// <summary>
+    /// Veepeak binary framing profile for higher performance.
+    /// Uses proprietary binary protocol instead of ASCII ELM327 commands.
+    /// Service: 6287, WriteNoResp: 6387, Notify: 6487
+    /// </summary>
+    /// <remarks>
+    /// Binary framing bypasses ELM327 ASCII parsing overhead and can provide
+    /// faster response times. However, it requires a different command format
+    /// than standard AT/OBD-II ASCII commands.
+    /// </remarks>
+    public static BleDeviceProfile VeepeakBinary => new(
+        Name: "Veepeak Binary",
+        ServiceUuid: Guid.Parse("00006287-3c17-d293-8e48-14fe2e4da212"),
+        WriteCharacteristicUuid: Guid.Parse("00006387-3c17-d293-8e48-14fe2e4da212"),
+        NotifyCharacteristicUuid: Guid.Parse("00006487-3c17-d293-8e48-14fe2e4da212"),
+        WriteWithResponse: false,  // WriteNoResp for speed
+        MaxWriteSize: 20,
+        NotificationsRequired: true
+    );
+
+    /// <summary>
     /// Nordic UART Service profile (used by some OBD adapters).
     /// </summary>
     public static BleDeviceProfile NordicUart => new(
@@ -99,6 +119,7 @@ public record BleDeviceProfile(
     /// </summary>
     public static IReadOnlyList<BleDeviceProfile> AllProfiles =>
     [
+        VeepeakBinary,  // Try binary first for better performance
         VeepeakBle,
         VeepeakBleAlt,
         ObdLinkMx,

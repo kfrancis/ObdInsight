@@ -30,6 +30,7 @@ internal class Program
                         "Connect to Veepeak (66:1e:87:02:c2:db)",
                         "Connect to custom device",
                         "Connect with vehicle detection",
+                        "Test Binary Protocol (Service 6287)",
                         "Test Nissan Leaf Battery Data",
                         "Record OBD session",
                         "Generate Vehicle Support Report",
@@ -55,6 +56,10 @@ internal class Program
 
                 case "Connect with vehicle detection":
                     await ConnectWithVehicleDetectionAsync(TargetMacAddress);
+                    break;
+
+                case "Test Binary Protocol (Service 6287)":
+                    await BinaryProtocolTest.RunAsync(TargetMacAddress);
                     break;
 
                 case "Test Nissan Leaf Battery Data":
