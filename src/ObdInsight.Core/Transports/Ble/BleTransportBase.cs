@@ -149,10 +149,11 @@ public abstract class BleTransportBase : IBleTransport
                 await WriteCharacteristicAsync(chunk, cancellationToken);
                 offset += chunkSize;
 
-                // Small delay between chunks to avoid overwhelming the device
+                // Longer delay between chunks to avoid overwhelming the BLE adapter
+                // Some ELM327 clones need more time between writes
                 if (offset < bytes.Length)
                 {
-                    await Task.Delay(10, cancellationToken);
+                    await Task.Delay(50, cancellationToken);
                 }
             }
 

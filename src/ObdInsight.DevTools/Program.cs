@@ -30,6 +30,7 @@ internal class Program
                         "Connect to Veepeak (66:1e:87:02:c2:db)",
                         "Connect to custom device",
                         "Connect with vehicle detection",
+                        "Test Nissan Leaf Battery Data",
                         "Record OBD session",
                         "Generate Vehicle Support Report",
                         "List supported vehicles",
@@ -56,6 +57,10 @@ internal class Program
                     await ConnectWithVehicleDetectionAsync(TargetMacAddress);
                     break;
 
+                case "Test Nissan Leaf Battery Data":
+                    await TestNissanLeafBatteryAsync(TargetMacAddress);
+                    break;
+
                 case "Record OBD session":
                     await RecordSessionAsync();
                     break;
@@ -77,6 +82,311 @@ internal class Program
             }
 
             AnsiConsole.WriteLine();
+        }
+    }
+
+    /// <summary>
+    /// Test Nissan Leaf battery data using proprietary CAN addresses.
+    /// Uses Mode 21 (manufacturer-specific group) with BMS header 0x79B.
+    /// </summary>
+    private static async Task TestNissanLeafBatteryAsync(string macAddress)
+    {
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new Rule("[cyan]Nissan Leaf Battery Test[/]").RuleStyle("grey"));
+        AnsiConsole.WriteLine();
+
+        AnsiConsole.Write(new Panel(
+            """
+            [yellow]IMPORTANT: Vehicle Must Be Awake![/]
+
+            The Nissan Leaf must be in one of these states:
+            [green]• READY mode[/] - Foot on brake + press start button
+            [green]• Actively charging[/] - Plugged in with charge session active
+
+            If the car is off or in ACC mode, the ECUs are asleep
+            and will return NO DATA.
+            """)
+            .Header("[cyan]Prerequisites[/]")
+            .Border(BoxBorder.Rounded));
+
+        if (!AnsiConsole.Confirm("[yellow]Is your Leaf in READY mode or charging?[/]"))
+        {
+            AnsiConsole.MarkupLine("[yellow]Please wake up the vehicle and try again.[/]");
+            return;
+        }
+
+        var profile = BleDeviceProfile.VeepeakBle;
+        using var transport = new WindowsBleTransport(profile);
+
+        // Setup logging
+        transport.DataSent += (_, data) => LogBleTraffic("TX", data);
+        transport.DataReceived += (_, data) => LogBleTraffic("RX", data);
+
+        // Connect
+        var connected = await AnsiConsole.Status()
+            .StartAsync($"Connecting to {macAddress}...", async ctx =>
+            {
+                return await transport.ConnectAsync(macAddress);
+            });
+
+        if (!connected)
+        {
+            AnsiConsole.MarkupLine("[red]Failed to connect![/]");
+            return;
+        }
+
+        AnsiConsole.MarkupLine("[green]✓[/] BLE Connected");
+        await Task.Delay(1500);
+
+        // Helper to send command directly
+        async Task<string> SendCommandAsync(string cmd, TimeSpan timeout)
+        {
+            transport.DrainBuffer();
+            await transport.WriteAsync(cmd + "\r");
+            var response = await transport.ReadUntilAsync(">", timeout);
+            return response.Replace(cmd, "").Replace(">", "").Replace("\r", " ").Replace("\n", " ").Trim();
+        }
+
+        try
+        {
+            // Initialize adapter
+            AnsiConsole.MarkupLine("[cyan]Initializing adapter...[/]");
+
+            var commands = new[]
+            {
+                ("ATZ", "Reset adapter", TimeSpan.FromSeconds(5)),
+                ("ATE0", "Disable echo", TimeSpan.FromSeconds(2)),
+                ("ATL0", "Disable linefeeds", TimeSpan.FromSeconds(2)),
+                ("ATS0", "Disable spaces", TimeSpan.FromSeconds(2)),
+                ("ATH1", "Enable headers", TimeSpan.FromSeconds(2)),
+                ("ATSP6", "Set protocol to CAN 11-bit 500k", TimeSpan.FromSeconds(3)),
+                ("ATCAF0", "Disable CAN auto-formatting", TimeSpan.FromSeconds(2)),
+            };
+
+            foreach (var (cmd, desc, timeout) in commands)
+            {
+                var resp = await SendCommandAsync(cmd, timeout);
+                AnsiConsole.MarkupLine($"[grey]   {cmd}: {resp.EscapeMarkup()}[/]");
+                await Task.Delay(300);
+            }
+
+            AnsiConsole.MarkupLine("[green]✓[/] Adapter initialized");
+            AnsiConsole.WriteLine();
+
+            // Set up flow control for multi-frame responses
+            AnsiConsole.MarkupLine("[cyan]Setting up flow control...[/]");
+            
+            var fcCommands = new[]
+            {
+                ("ATFCSH79B", "Set flow control header to BMS", TimeSpan.FromSeconds(2)),
+                ("ATFCSD300000", "Set flow control data", TimeSpan.FromSeconds(2)),
+                ("ATFCSM1", "Enable flow control mode", TimeSpan.FromSeconds(2)),
+            };
+
+            foreach (var (cmd, desc, timeout) in fcCommands)
+            {
+                var resp = await SendCommandAsync(cmd, timeout);
+                AnsiConsole.MarkupLine($"[grey]   {cmd}: {resp.EscapeMarkup()}[/]");
+                await Task.Delay(300);
+            }
+
+            AnsiConsole.MarkupLine("[green]✓[/] Flow control configured");
+            AnsiConsole.WriteLine();
+
+            // Set header to BMS (0x79B) and filter for responses from 0x7BB
+            AnsiConsole.MarkupLine("[cyan]Configuring BMS communication...[/]");
+            
+            var bmsSetup = new[]
+            {
+                ("ATSH79B", "Set TX header to BMS", TimeSpan.FromSeconds(2)),
+                ("ATCRA7BB", "Set RX filter to BMS response", TimeSpan.FromSeconds(2)),
+            };
+
+            foreach (var (cmd, desc, timeout) in bmsSetup)
+            {
+                var resp = await SendCommandAsync(cmd, timeout);
+                AnsiConsole.MarkupLine($"[grey]   {cmd}: {resp.EscapeMarkup()}[/]");
+                await Task.Delay(300);
+            }
+
+            AnsiConsole.MarkupLine("[green]✓[/] BMS communication configured (TX: 79B -> RX: 7BB)");
+            AnsiConsole.WriteLine();
+
+            // Now send the actual battery data requests
+            AnsiConsole.Write(new Rule("[yellow]Battery Data Requests[/]").RuleStyle("grey"));
+            AnsiConsole.WriteLine();
+
+            var batteryCommands = new[]
+            {
+                ("2101", "BMS Group 01: SOC, Capacity, Current, Voltage"),
+                ("2102", "BMS Group 02: Cell Voltages (96 cells)"),
+                ("2104", "BMS Group 04: Pack Temperatures"),
+            };
+
+            var results = new List<(string Command, string Description, string Response, bool Success)>();
+
+            foreach (var (cmd, desc) in batteryCommands)
+            {
+                AnsiConsole.MarkupLine($"[cyan]Sending {cmd}[/] ({desc})...");
+                
+                try
+                {
+                    var response = await SendCommandAsync(cmd, TimeSpan.FromSeconds(10));
+                    
+                    var hasData = !string.IsNullOrWhiteSpace(response) &&
+                                  !response.Contains("NO DATA") &&
+                                  !response.Contains("ERROR") &&
+                                  !response.Contains("?") &&
+                                  response.Length > 10;
+
+                    results.Add((cmd, desc, response, hasData));
+
+                    if (hasData)
+                    {
+                        AnsiConsole.MarkupLine($"[green]✓ Got {response.Length} chars of data![/]");
+                        
+                        // Show first 200 chars of response
+                        var preview = response.Length > 200 ? response[..200] + "..." : response;
+                        AnsiConsole.MarkupLine($"[grey]   {preview.EscapeMarkup()}[/]");
+                        
+                        // Try to parse some basic info from 2101 response
+                        if (cmd == "2101" && response.Length > 20)
+                        {
+                            TryParseBmsGroup01(response);
+                        }
+                    }
+                    else
+                    {
+                        AnsiConsole.MarkupLine($"[red]✗ No data: {response.EscapeMarkup()}[/]");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AnsiConsole.MarkupLine($"[red]✗ Error: {ex.Message.EscapeMarkup()}[/]");
+                    results.Add((cmd, desc, ex.Message, false));
+                }
+
+                AnsiConsole.WriteLine();
+                await Task.Delay(500);
+            }
+
+            // Summary
+            AnsiConsole.Write(new Rule("[green]Results Summary[/]").RuleStyle("grey"));
+            AnsiConsole.WriteLine();
+
+            var table = new Table()
+                .Border(TableBorder.Rounded)
+                .AddColumn("Command")
+                .AddColumn("Description")
+                .AddColumn("Status")
+                .AddColumn("Data Length");
+
+            foreach (var (cmd, desc, response, success) in results)
+            {
+                table.AddRow(
+                    cmd,
+                    desc,
+                    success ? "[green]Success[/]" : "[red]Failed[/]",
+                    success ? $"{response.Length} chars" : "-"
+                );
+            }
+
+            AnsiConsole.Write(table);
+
+            var successCount = results.Count(r => r.Success);
+            if (successCount > 0)
+            {
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine($"[green]✓ Successfully read {successCount}/{results.Count} battery data groups![/]");
+                AnsiConsole.MarkupLine("[grey]The Nissan Leaf is responding to proprietary Mode 21 requests.[/]");
+            }
+            else
+            {
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[red]✗ No battery data received.[/]");
+                AnsiConsole.MarkupLine("[yellow]Possible causes:[/]");
+                AnsiConsole.MarkupLine("  • Vehicle not in READY mode (foot on brake + start button)");
+                AnsiConsole.MarkupLine("  • Vehicle not actively charging");
+                AnsiConsole.MarkupLine("  • BLE connection unstable");
+            }
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Error: {ex.Message.EscapeMarkup()}[/]");
+        }
+        finally
+        {
+            await transport.DisconnectAsync();
+            AnsiConsole.MarkupLine("[grey]Disconnected[/]");
+        }
+    }
+
+    /// <summary>
+    /// Try to parse basic info from BMS Group 01 response.
+    /// Based on OVMS Nissan Leaf implementation.
+    /// </summary>
+    private static void TryParseBmsGroup01(string response)
+    {
+        try
+        {
+            // Remove spaces and get hex bytes
+            var hex = response.Replace(" ", "").Replace("\r", "").Replace("\n", "");
+            
+            // Look for the response header (61 01 for Mode 21 response to 2101)
+            var dataStart = hex.IndexOf("6101", StringComparison.OrdinalIgnoreCase);
+            if (dataStart < 0)
+            {
+                // Try without the mode prefix
+                dataStart = 0;
+            }
+            else
+            {
+                dataStart += 4; // Skip past "6101"
+            }
+
+            // Extract hex bytes after header
+            var dataHex = hex[dataStart..];
+            if (dataHex.Length < 20)
+            {
+                AnsiConsole.MarkupLine("[yellow]   Response too short to parse[/]");
+                return;
+            }
+
+            // Convert to bytes
+            var bytes = new List<byte>();
+            for (var i = 0; i < dataHex.Length - 1; i += 2)
+            {
+                if (byte.TryParse(dataHex.Substring(i, 2), System.Globalization.NumberStyles.HexNumber, null, out var b))
+                {
+                    bytes.Add(b);
+                }
+            }
+
+            if (bytes.Count < 10)
+            {
+                AnsiConsole.MarkupLine("[yellow]   Not enough bytes to parse[/]");
+                return;
+            }
+
+            // Try to extract some values (byte positions based on OVMS)
+            // Note: These positions may vary by model year
+            AnsiConsole.MarkupLine("[cyan]   Parsed data (approximate):[/]");
+            AnsiConsole.MarkupLine($"[grey]   Raw bytes: {string.Join(" ", bytes.Take(20).Select(b => b.ToString("X2")))}[/]");
+            
+            // SOC is usually around byte 5-6 as a 10-bit value
+            if (bytes.Count > 6)
+            {
+                var socRaw = ((bytes[5] << 2) | (bytes[6] >> 6)) & 0x3FF;
+                var soc = socRaw / 10.0;
+                if (soc is > 0 and <= 100)
+                {
+                    AnsiConsole.MarkupLine($"[green]   Estimated SOC: {soc:F1}%[/]");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[yellow]   Parse error: {ex.Message.EscapeMarkup()}[/]");
         }
     }
 
@@ -1092,11 +1402,45 @@ internal class Program
             _ => BleDeviceProfile.VeepeakBle
         };
 
+        // Determine if EV probing should be done
+        var isEv = userInfo.EngineType?.Contains("Electric") == true ||
+                   userInfo.EngineType?.Contains("BEV") == true ||
+                   userInfo.EngineType?.Contains("Hybrid") == true;
+
         AnsiConsole.WriteLine();
 
-        if (!AnsiConsole.Confirm("[yellow]Ready to start diagnostic collection. Vehicle should be on (ignition on or running). Continue?[/]"))
+        if (!AnsiConsole.Confirm("[yellow]Ready to start diagnostic collection. Continue?[/]"))
         {
             return;
+        }
+
+        // Add vehicle state guidance for EVs
+        if (isEv)
+        {
+            AnsiConsole.WriteLine();
+            AnsiConsole.Write(new Panel(
+                """
+                [yellow]IMPORTANT for Electric Vehicles:[/]
+
+                The Nissan Leaf (and many EVs) will [red]NOT respond[/] to OBD queries
+                when the car is in a sleep state. The vehicle must be:
+
+                [green]• Ignition ON (READY mode)[/] - Press start button with foot on brake
+                [green]• OR Actively charging[/] - Plugged in and charge session active
+
+                If ignition is just in ACC mode, or the car is off, the ECUs are asleep
+                and will not respond to any commands.
+
+                [grey]This is normal EV behavior documented in OVMS and LeafSpy.[/]
+                """)
+                .Header("[cyan]Vehicle Wake State[/]")
+                .Border(BoxBorder.Rounded));
+
+            if (!AnsiConsole.Confirm("[yellow]Is your vehicle in READY mode or actively charging?[/]"))
+            {
+                AnsiConsole.MarkupLine("[yellow]Please turn on the vehicle (READY mode) and try again.[/]");
+                return;
+            }
         }
 
         // Create collector using Core library
@@ -1105,6 +1449,8 @@ internal class Program
         ObdAdapterInfo? obdAdapterInfo = null;
         VehicleIdentification? vehicleId = null;
         SupportedPidsInfo? supportedPids = null;
+        WindowsBleTransport? transport = null;
+        Elm327Adapter? adapter = null;
 
         // Create progress reporter that writes to console in real-time
         var progress = new Progress<DiagnosticProgress>(p =>
@@ -1123,44 +1469,242 @@ internal class Program
                 _ => "[cyan]>[/]"
             };
 
-            // Show current operation with progress
+            // Escape ALL user data to prevent Spectre.Console markup parsing errors
+            var escapedMessage = p.Message?.EscapeMarkup() ?? "";
             var progressPct = (p.OverallProgress * 100).ToString("F0");
-            var itemProgress = p.ItemsTotal > 0 ? $"[{p.ItemsCompleted}/{p.ItemsTotal}]" : "";
+            var itemProgress = p.ItemsTotal > 0 ? $"({p.ItemsCompleted}/{p.ItemsTotal})" : "";
 
-            AnsiConsole.MarkupLine($"{phaseIcon} [{statusColor}]{p.Message}[/] [grey]{itemProgress} ({progressPct}%)[/]");
-
-            // Show response for PID probes
-            if (!string.IsNullOrEmpty(p.LastResponse) && p.CurrentItem != null)
+            try
             {
-                var truncated = p.LastResponse.Length > 50 ? p.LastResponse[..47] + "..." : p.LastResponse;
-                var escaped = truncated.Replace("\r", "").Replace("\n", " ").EscapeMarkup();
-                AnsiConsole.MarkupLine($"   [grey]Response: {escaped}[/]");
+                AnsiConsole.MarkupLine($"{phaseIcon} [{statusColor}]{escapedMessage}[/] [grey]{itemProgress} ({progressPct}%)[/]");
+
+                // Show response for probes (but not for every message)
+                if (!string.IsNullOrEmpty(p.LastResponse) && p.CurrentItem != null && p.LastOperationSuccess == true)
+                {
+                    var truncated = p.LastResponse.Length > 60 ? p.LastResponse[..57] + "..." : p.LastResponse;
+                    // IMPORTANT: Escape markup to avoid "[" and "]" being interpreted as Spectre markup
+                    var escaped = truncated.Replace("\r", "").Replace("\n", " ").EscapeMarkup();
+                    AnsiConsole.MarkupLine($"   [grey]→ {escaped}[/]");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Fallback to plain console output if markup parsing fails
+                Console.WriteLine($"> {p.Message} {itemProgress} ({progressPct}%)");
+                if (!string.IsNullOrEmpty(p.LastResponse) && p.CurrentItem != null && p.LastOperationSuccess == true)
+                {
+                    var truncated = p.LastResponse.Length > 60 ? p.LastResponse[..57] + "..." : p.LastResponse;
+                    Console.WriteLine($"   → {truncated.Replace("\r", "").Replace("\n", " ")}");
+                }
             }
         });
 
         AnsiConsole.WriteLine();
-        AnsiConsole.Write(new Rule("[cyan]Starting Collection[/]").RuleStyle("grey"));
+        AnsiConsole.Write(new Rule("[cyan]Starting Comprehensive Collection[/]").RuleStyle("grey"));
         AnsiConsole.WriteLine();
+
+        // Helper function to ensure we're connected
+        async Task<bool> EnsureConnectedAsync()
+        {
+            if (transport?.IsConnected == true)
+            {
+                // Validate link is actually usable (not connected-but-stale)
+                var ok = await TryValidateAdapterLinkAsync();
+                if (ok)
+                    return true;
+            }
+
+            AnsiConsole.MarkupLine("[yellow]Reconnecting to adapter...[/]");
+
+            // Dispose old transport if it exists
+            if (transport != null)
+            {
+                try { await transport.DisconnectAsync(); } catch { }
+                transport.Dispose();
+                transport = null;
+            }
+
+            // Wait longer for BLE stack to settle
+            await Task.Delay(3000);
+
+            // Create new transport and reconnect
+            transport = new WindowsBleTransport(profile);
+            transport.DataSent += (_, data) => LogBleTraffic("TX", data);
+            transport.DataReceived += (_, data) => LogBleTraffic("RX", data);
+
+            var connected = await transport.ConnectAsync(macAddress);
+            if (!connected)
+            {
+                AnsiConsole.MarkupLine("[red]Failed to reconnect![/]");
+                return false;
+            }
+
+            // Wait for connection to stabilize
+            await Task.Delay(1500);
+
+            // Do a full minimal init after reconnect (more reliable than sending just ATZ/ATE0)
+            AnsiConsole.MarkupLine("[grey]Resetting adapter after reconnect...[/]");
+            var reinitOk = await MinimalAdapterInitAsync();
+            if (!reinitOk)
+            {
+                AnsiConsole.MarkupLine("[red]Reconnect succeeded but adapter init failed[/]");
+                return false;
+            }
+
+            // Validate we can still round-trip at least one simple AT command
+            if (!await TryValidateAdapterLinkAsync())
+            {
+                AnsiConsole.MarkupLine("[red]Reconnect succeeded but adapter did not respond to validation command[/]");
+                return false;
+            }
+
+            AnsiConsole.MarkupLine("[green]Reconnected![/]");
+            return transport.IsConnected;
+        }
+
+        // Helper to validate adapter link by sending a command directly through transport
+        async Task<bool> TryValidateAdapterLinkAsync()
+        {
+            if (transport == null || !transport.IsConnected)
+                return false;
+                
+            try
+            {
+                transport.DrainBuffer();
+                await transport.WriteAsync("ATI\r");
+                var response = await transport.ReadUntilAsync(">", TimeSpan.FromSeconds(6));
+                return !string.IsNullOrWhiteSpace(response) && response.Contains("ELM", StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // Helper to do minimal adapter init (no protocol search) - sends commands directly through transport
+        async Task<bool> MinimalAdapterInitAsync()
+        {
+            if (transport == null || !transport.IsConnected)
+                return false;
+
+            try
+            {
+                // Helper to send a command directly through transport and get response
+                async Task<(bool Success, string Response)> SendDirectAsync(string cmd, TimeSpan timeout)
+                {
+                    AnsiConsole.MarkupLine($"[grey]   Init: {cmd}[/]");
+                    
+                    try
+                    {
+                        // Clear any pending data in buffer
+                        transport.DrainBuffer();
+                        
+                        // Send command with CR
+                        await transport.WriteAsync(cmd + "\r");
+                        
+                        // Wait for response ending with '>'
+                        var response = await transport.ReadUntilAsync(">", timeout);
+                        
+                        // Clean up response
+                        response = response
+                            .Replace(cmd, "") // Remove echo
+                            .Replace(">", "")
+                            .Replace("\r", "")
+                            .Replace("\n", " ")
+                            .Trim();
+                        
+                        var success = !string.IsNullOrWhiteSpace(response) && 
+                                     !response.Contains("?") &&
+                                     !response.Contains("ERROR", StringComparison.OrdinalIgnoreCase);
+                        
+                        if (!success)
+                            AnsiConsole.MarkupLine($"[yellow]{cmd} response: {response}[/]");
+                        
+                        return (success, response);
+                    }
+                    catch (TimeoutException)
+                    {
+                        AnsiConsole.MarkupLine($"[yellow]{cmd} timed out[/]");
+                        return (false, "");
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[yellow]{cmd} error: {ex.Message}[/]");
+                        return (false, "");
+                    }
+                }
+
+                // ATZ can be flaky on some clones; attempt it, but don't make it a hard requirement.
+                var (atzOk, atzResp) = await SendDirectAsync("ATZ", TimeSpan.FromSeconds(8));
+                if (!atzOk)
+                    AnsiConsole.MarkupLine("[yellow]ATZ did not respond properly (continuing anyway)[/]");
+                else
+                    AnsiConsole.MarkupLine($"[grey]   → {atzResp}[/]");
+
+                await Task.Delay(800);
+
+                // Hard requirement: we must be able to talk to the adapter.
+                var (atiOk, atiResp) = await SendDirectAsync("ATI", TimeSpan.FromSeconds(8));
+                if (!atiOk || string.IsNullOrWhiteSpace(atiResp))
+                {
+                    AnsiConsole.MarkupLine("[red]ATI did not respond - adapter not ready[/]");
+                    return false;
+                }
+                AnsiConsole.MarkupLine($"[grey]   → {atiResp}[/]");
+
+                // Send the rest of the init commands
+                var commands = new[] { "ATE0", "ATL0", "ATS0", "ATH0" };
+                foreach (var cmd in commands)
+                {
+                    var (ok, resp) = await SendDirectAsync(cmd, TimeSpan.FromSeconds(6));
+                    if (!ok)
+                    {
+                        AnsiConsole.MarkupLine($"[yellow]{cmd} failed[/]");
+                        return false;
+                    }
+                    await Task.Delay(300);
+                }
+
+                // Set protocol to CAN 11-bit 500k (protocol 6 - common for most vehicles)
+                var (sp6Ok, sp6Resp) = await SendDirectAsync("ATSP6", TimeSpan.FromSeconds(8));
+                if (!sp6Ok)
+                {
+                    AnsiConsole.MarkupLine("[yellow]ATSP6 did not respond[/]");
+                    return false;
+                }
+
+                await Task.Delay(300);
+                
+                // Now set up the adapter object so it can be used by DiagnosticDataCollector
+                // Use SetTransport to avoid the full initialization sequence (which includes
+                // the slow protocol search that doesn't work well on EVs)
+                adapter = new Elm327Adapter();
+                adapter.Log += (_, e) => LogAdapter(e);
+                adapter.SetTransport(transport, markAsInitialized: true);
+                
+                AnsiConsole.MarkupLine("[green]✓[/] Direct init complete");
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Init error: {ex.Message.EscapeMarkup()}[/]");
+                return false;
+            }
+        }
 
         try
         {
-            // Phase 1: Collect BLE info (Windows-specific)
-            AnsiConsole.MarkupLine("[cyan]Phase 1: Collecting BLE adapter info...[/]");
-            bleInfo = await CollectBleInfoAsync(macAddress);
-            if (bleInfo != null)
-            {
-                collector.AddNote($"Connected to {bleInfo.DeviceName} ({bleInfo.MacAddress})");
-                collector.AddNote($"Found {bleInfo.Services.Count} BLE services with {bleInfo.Services.Sum(s => s.Characteristics.Count)} characteristics");
-                AnsiConsole.MarkupLine($"[green]✓[/] Found {bleInfo.Services.Count} BLE services");
-            }
+            // Phase 1: Skip separate BLE discovery - it can conflict with the main connection
+            // We'll collect service info during the main connection instead
+            AnsiConsole.MarkupLine("[cyan]Phase 1: Preparing to connect...[/]");
+            AnsiConsole.MarkupLine("[grey]   (BLE service info will be collected during connection)[/]");
 
-            // Phase 2: Connect transport and initialize adapter
+            // Phase 2: Connect transport
             AnsiConsole.WriteLine();
             AnsiConsole.MarkupLine("[cyan]Phase 2: Connecting to OBD adapter...[/]");
 
-            using var transport = new WindowsBleTransport(profile);
-
-            // Setup traffic logging
+            transport = new WindowsBleTransport(profile);
             transport.DataSent += (_, data) => LogBleTraffic("TX", data);
             transport.DataReceived += (_, data) => LogBleTraffic("RX", data);
 
@@ -1169,38 +1713,95 @@ internal class Program
             {
                 AnsiConsole.MarkupLine("[red]✗ Failed to connect to BLE device![/]");
                 collector.AddError("Connection", "Failed to establish BLE connection");
-                // Still generate report with what we have
                 goto GenerateReport;
             }
 
             AnsiConsole.MarkupLine("[green]✓[/] BLE connection established");
 
-            // Initialize ELM327 adapter
+            // Collect minimal BLE info from successful connection
+            bleInfo = new BleAdapterInfo
+            {
+                DeviceName = profile.Name,
+                MacAddress = macAddress,
+                Services = [] // We connected successfully, but won't enumerate services separately
+            };
+            collector.AddNote($"Connected to {bleInfo.DeviceName} ({bleInfo.MacAddress})");
+
+            // Wait for connection to fully stabilize
+            AnsiConsole.MarkupLine("[grey]   Waiting for connection to stabilize...[/]");
+            await Task.Delay(2000);
+
+            // Phase 3: Initialize ELM327 adapter
             AnsiConsole.WriteLine();
             AnsiConsole.MarkupLine("[cyan]Phase 3: Initializing ELM327 adapter...[/]");
 
-            var adapter = new Elm327Adapter();
+            adapter = new Elm327Adapter();
             adapter.Log += (_, e) => LogAdapter(e);
 
-            var initialized = await adapter.InitializeAsync(transport);
-            if (!initialized)
+            if (isEv)
             {
-                AnsiConsole.MarkupLine("[yellow]⚠ Adapter initialization completed with warnings[/]");
+                // For EVs, use minimal init to avoid the protocol search timeout
+                AnsiConsole.MarkupLine("[grey]   (Using minimal initialization for EV - skipping protocol search)[/]");
+                var minimalInit = await MinimalAdapterInitAsync();
+                if (minimalInit)
+                {
+                    AnsiConsole.MarkupLine("[green]✓[/] Adapter initialized (minimal mode for EV)");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] Minimal initialization had issues");
+                    if (!await EnsureConnectedAsync())
+                        goto GenerateReport;
+                }
             }
             else
             {
-                AnsiConsole.MarkupLine("[green]✓[/] Adapter initialized successfully");
+                // For regular vehicles, use full initialization
+                AnsiConsole.MarkupLine("[grey]   (This may take up to 45 seconds for protocol search)[/]");
+                var initialized = await adapter.InitializeAsync(transport);
+                if (!initialized)
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] Adapter initialization completed with warnings");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[green]✓[/] Adapter initialized successfully");
+                }
             }
+
+            // Check connection and reconnect if needed
+            if (!await EnsureConnectedAsync())
+                goto GenerateReport;
 
             // Phase 4: Collect adapter info
             AnsiConsole.WriteLine();
             AnsiConsole.MarkupLine("[cyan]Phase 4: Collecting OBD adapter info...[/]");
+
             obdAdapterInfo = await collector.CollectObdAdapterInfoAsync(adapter, progress);
             AnsiConsole.MarkupLine($"[green]✓[/] Adapter: {obdAdapterInfo.VersionResponse?.Trim() ?? "Unknown"}");
 
-            // Phase 5: Collect vehicle ID
+            // Reconnect if needed before protocol probe
+            if (!await EnsureConnectedAsync())
+                goto GenerateReport;
+
+            // Phase 5: Probe multiple protocols
             AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[cyan]Phase 5: Reading vehicle identification...[/]");
+            AnsiConsole.MarkupLine("[cyan]Phase 5: Probing OBD protocols...[/]");
+            AnsiConsole.MarkupLine("[grey]   (Testing which protocols get responses from the vehicle)[/]");
+
+            await collector.ProbeProtocolsAsync(adapter, progress);
+
+            var workingProtocols = collector.BuildReport(userInfo, bleInfo, obdAdapterInfo, vehicleId, supportedPids)
+                .ProtocolProbeResults.Count(p => p.GotResponse);
+            AnsiConsole.MarkupLine($"[green]✓[/] Found {workingProtocols} working protocol(s)");
+
+            // Reconnect if needed
+            if (!await EnsureConnectedAsync())
+                goto GenerateReport;
+
+            // Phase 6: Collect vehicle ID
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[cyan]Phase 6: Reading vehicle identification...[/]");
             vehicleId = await collector.CollectVehicleIdAsync(adapter, progress);
             if (!string.IsNullOrEmpty(vehicleId.Vin))
             {
@@ -1208,33 +1809,74 @@ internal class Program
             }
             else
             {
-                AnsiConsole.MarkupLine("[yellow]⚠[/] VIN not available");
+                AnsiConsole.MarkupLine("[yellow]⚠[/] VIN not available (normal for many EVs)");
             }
 
-            // Phase 6: Collect supported PIDs
+            // Reconnect if needed
+            if (!await EnsureConnectedAsync())
+                goto GenerateReport;
+
+            // Phase 7: Collect supported PIDs
             AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[cyan]Phase 6: Querying supported PIDs...[/]");
+            AnsiConsole.MarkupLine("[cyan]Phase 7: Querying supported PIDs...[/]");
             supportedPids = await collector.CollectSupportedPidsAsync(adapter, progress);
             AnsiConsole.MarkupLine($"[green]✓[/] Found {supportedPids.Mode01Pids.Count} Mode 01 PIDs, {supportedPids.Mode09Pids.Count} Mode 09 PIDs");
 
-            // Phase 7: Probe standard PIDs
+            // Reconnect if needed
+            if (!await EnsureConnectedAsync())
+                goto GenerateReport;
+
+            // Phase 8: Probe standard PIDs
             AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[cyan]Phase 7: Probing standard PIDs...[/]");
-            AnsiConsole.MarkupLine("[grey]This may take a few minutes...[/]");
+            AnsiConsole.MarkupLine("[cyan]Phase 8: Probing standard PIDs...[/]");
+            AnsiConsole.MarkupLine("[grey]   (This may take a few minutes)[/]");
             await collector.ProbeStandardPidsAsync(adapter, supportedPids, progress);
 
-            // Phase 8: Probe extended PIDs
+            // Reconnect if needed
+            if (!await EnsureConnectedAsync())
+                goto GenerateReport;
+
+            // Phase 9: Probe extended PIDs
             AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[cyan]Phase 8: Probing extended/EV PIDs...[/]");
+            AnsiConsole.MarkupLine("[cyan]Phase 9: Probing extended/manufacturer PIDs...[/]");
             await collector.ProbeExtendedPidsAsync(adapter, progress);
 
-            await transport.DisconnectAsync();
-            AnsiConsole.MarkupLine("[grey]Disconnected from adapter[/]");
+            // Phase 10: EV-specific CAN probing (if applicable)
+            if (isEv)
+            {
+                // Reconnect if needed
+                if (!await EnsureConnectedAsync())
+                    goto GenerateReport;
+
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[cyan]Phase 10: Probing EV-specific CAN addresses...[/]");
+                AnsiConsole.MarkupLine($"[grey]   (Probing {userInfo.Make} EV-specific addresses)[/]");
+                await collector.ProbeEvCanAddressesAsync(adapter, userInfo.Make, progress);
+            }
+
+            if (transport?.IsConnected == true)
+            {
+                await transport.DisconnectAsync();
+                AnsiConsole.MarkupLine("[grey]Disconnected from adapter[/]");
+            }
         }
         catch (Exception ex)
         {
-            AnsiConsole.MarkupLine($"[red]Error during collection: {ex.Message}[/]");
+            AnsiConsole.MarkupLine($"[red]Error during collection: {ex.Message.EscapeMarkup()}[/]");
             collector.AddError("Collection", ex.Message, ex.ToString());
+        }
+        finally
+        {
+            // Ensure transport is disposed
+            if (transport != null)
+            {
+                try
+                {
+                    await transport.DisconnectAsync();
+                }
+                catch { /* ignore */ }
+                transport.Dispose();
+            }
         }
 
 GenerateReport:
@@ -1248,12 +1890,15 @@ GenerateReport:
         // Generate markdown using Core library
         var markdown = Core.Diagnostics.MarkdownReportGenerator.Generate(report);
 
-        // Save to file
+        // Save to file - use Reports subdirectory
+        var reportsDir = Path.Combine(Environment.CurrentDirectory, "Reports");
+        Directory.CreateDirectory(reportsDir);
+
         var fileName = $"vehicle_report_{userInfo.Year}_{userInfo.Make}_{userInfo.Model}_{DateTime.Now:yyyyMMdd_HHmmss}.md"
             .Replace(" ", "_")
             .Replace("/", "-");
 
-        var filePath = Path.Combine(Environment.CurrentDirectory, fileName);
+        var filePath = Path.Combine(reportsDir, fileName);
         await File.WriteAllTextAsync(filePath, markdown);
 
         // Display summary
@@ -1270,17 +1915,21 @@ GenerateReport:
         summaryTable.AddRow("Vehicle", $"{userInfo.Year} {userInfo.Make} {userInfo.Model}");
         summaryTable.AddRow("VIN", vehicleId?.Vin != null ? MaskVin(vehicleId.Vin) : "[grey]Not available[/]");
         summaryTable.AddRow("Adapter", obdAdapterInfo?.VersionResponse?.Trim() ?? "[grey]Unknown[/]");
-        summaryTable.AddRow("Protocol", obdAdapterInfo?.ProtocolDescription?.Trim() ?? "[grey]Unknown[/]");
+        summaryTable.AddRow("Working Protocols", $"{report.ProtocolProbeResults.Count(p => p.GotResponse)}/{report.ProtocolProbeResults.Count}");
         summaryTable.AddRow("Mode 01 PIDs", $"{supportedPids?.Mode01Pids.Count ?? 0} supported");
-        summaryTable.AddRow("Standard PIDs Probed", $"{report.StandardPidResults.Count(r => r.Success)}/{report.StandardPidResults.Count} successful");
-        summaryTable.AddRow("Extended PIDs Probed", $"{report.ExtendedPidResults.Count(r => r.Success)}/{report.ExtendedPidResults.Count} successful");
+        summaryTable.AddRow("Standard PIDs", $"{report.StandardPidResults.Count(r => r.Success)}/{report.StandardPidResults.Count} responded");
+        summaryTable.AddRow("Extended PIDs", $"{report.ExtendedPidResults.Count(r => r.Success)}/{report.ExtendedPidResults.Count} responded");
+        if (isEv)
+        {
+            summaryTable.AddRow("EV CAN Probes", $"{report.CanProbeResults.Count(r => r.Success && !r.Command.StartsWith("ATSH"))}/{report.CanProbeResults.Count(r => !r.Command.StartsWith("ATSH"))} responded");
+        }
         summaryTable.AddRow("Errors", report.Errors.Count > 0 ? $"[red]{report.Errors.Count}[/]" : "[green]0[/]");
-        summaryTable.AddRow("Report File", $"[link={filePath}]{fileName}[/]");
+        summaryTable.AddRow("Report File", fileName);
 
         AnsiConsole.Write(summaryTable);
 
         AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine("[green]✓[/] Report saved to: [cyan]{0}[/]", filePath.EscapeMarkup());
+        AnsiConsole.MarkupLine($"[green]✓[/] Report saved to: [cyan]{filePath.EscapeMarkup()}[/]");
         AnsiConsole.WriteLine();
 
         // Show errors if any
@@ -1289,7 +1938,7 @@ GenerateReport:
             AnsiConsole.MarkupLine("[yellow]Errors encountered during collection:[/]");
             foreach (var error in report.Errors)
             {
-                AnsiConsole.MarkupLine($"  [red]•[/] {error.Phase}: {error.Message}");
+                AnsiConsole.MarkupLine($"  [red]•[/] {error.Phase}: {error.Message.EscapeMarkup()}");
             }
             AnsiConsole.WriteLine();
         }
@@ -1412,19 +2061,21 @@ GenerateReport:
 
         var year = AnsiConsole.Prompt(
             new TextPrompt<int>("[cyan]Vehicle Year:[/]")
-                .DefaultValue(DateTime.Now.Year)
+                .DefaultValue(2017)
                 .Validate(y => y >= 1996 && y <= DateTime.Now.Year + 1
                     ? ValidationResult.Success()
                     : ValidationResult.Error("Year must be between 1996 and current year")));
 
         var make = AnsiConsole.Prompt(
             new TextPrompt<string>("[cyan]Make (e.g., Honda, Toyota, Nissan):[/]")
+                .DefaultValue("Nissan")
                 .Validate(m => !string.IsNullOrWhiteSpace(m)
                     ? ValidationResult.Success()
                     : ValidationResult.Error("Make is required")));
 
         var model = AnsiConsole.Prompt(
             new TextPrompt<string>("[cyan]Model (e.g., CR-V, Camry, Leaf):[/]")
+                .DefaultValue("Leaf")
                 .Validate(m => !string.IsNullOrWhiteSpace(m)
                     ? ValidationResult.Success()
                     : ValidationResult.Error("Model is required")));

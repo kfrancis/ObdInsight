@@ -33,6 +33,7 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
 
     private readonly IBleTransportFactory _bleTransportFactory;
     private readonly INavigationService _navigationService;
+    private readonly IConnectedDeviceService _connectedDeviceService;
     private readonly object _scanLock = new();
     private bool _isStopping;
     private IBleScanner? _scanner;
@@ -63,13 +64,18 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
     [ObservableProperty]
     private string _debugLog = string.Empty;
 
-    public DevicesViewModel(INavigationService navigationService, IBleTransportFactory bleTransportFactory)
+    public DevicesViewModel(
+        INavigationService navigationService, 
+        IBleTransportFactory bleTransportFactory,
+        IConnectedDeviceService connectedDeviceService)
     {
         ArgumentNullException.ThrowIfNull(navigationService);
         ArgumentNullException.ThrowIfNull(bleTransportFactory);
+        ArgumentNullException.ThrowIfNull(connectedDeviceService);
 
         _navigationService = navigationService;
         _bleTransportFactory = bleTransportFactory;
+        _connectedDeviceService = connectedDeviceService;
         Title = "Select Device";
 
         Log("DevicesViewModel initialized");
@@ -242,28 +248,26 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
                     return;
                 }
 
-                Log("Connection successful! Preparing navigation parameters...");
+                Log("Connection successful! Storing in connected device service...");
                 ScanStatus = $"Connected to {SelectedDevice.Device.Name}";
 
-                // Navigate back to main page with connection info
-                var navParams = new Dictionary<string, object>
-                {
-                    ["DeviceName"] = SelectedDevice.Device.Name,
-                    ["DeviceAddress"] = SelectedDevice.Device.Address,
-                    ["Transport"] = transport // Pass the connected transport
-                };
+                // Store the connection in the shared service
+                _connectedDeviceService.SetConnectedDevice(
+                    transport,
+                    SelectedDevice.Device.Name,
+                    SelectedDevice.Device.Address,
+                    profile);
 
-                Log($"Navigating to main page with params: DeviceName={SelectedDevice.Device.Name}, Address={SelectedDevice.Device.Address}");
+                Log($"Navigating back to main page");
                 
                 try
                 {
-                    await _navigationService.NavigateToAsync("..", navParams);
+                    await _navigationService.NavigateToAsync("..");
                     Log("Navigation completed successfully");
                 }
                 catch (Exception navEx)
                 {
                     Log($"Navigation exception: {navEx.GetType().Name}: {navEx.Message}");
-                    // Don't dispose transport if navigation fails - caller may still need it
                     throw;
                 }
             }

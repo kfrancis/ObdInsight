@@ -15,11 +15,10 @@ namespace ObdInsight.ViewModels;
 /// </summary>
 public partial class DiagnosticReportViewModel : BaseViewModel, IProgress<DiagnosticProgress>
 {
-    private readonly IBleTransportFactory _bleTransportFactory;
+    private readonly IConnectedDeviceService _connectedDeviceService;
     private readonly INavigationService _navigationService;
 
     private CancellationTokenSource? _cancellationTokenSource;
-    private IBleTransport? _transport;
     private IObdAdapter? _adapter;
     private DiagnosticDataCollector? _collector;
 
@@ -65,13 +64,14 @@ public partial class DiagnosticReportViewModel : BaseViewModel, IProgress<Diagno
     private string? _reportFilePath;
 
     [ObservableProperty]
-    private string? _selectedDeviceAddress;
+    [NotifyCanExecuteChangedFor(nameof(StartCollectionCommand))]
+    private bool _isDeviceConnected;
 
     [ObservableProperty]
-    private string? _selectedDeviceName;
+    private string? _connectedDeviceName;
 
     [ObservableProperty]
-    private BleDeviceProfile _selectedProfile = BleDeviceProfile.VeepeakBle;
+    private string? _connectedDeviceAddress;
 
     // User vehicle info
     [ObservableProperty]
@@ -103,11 +103,6 @@ public partial class DiagnosticReportViewModel : BaseViewModel, IProgress<Diagno
     public ObservableCollection<DiagnosticLogEntry> LogEntries { get; } = [];
 
     /// <summary>
-    /// Available BLE device profiles
-    /// </summary>
-    public IReadOnlyList<BleDeviceProfile> AvailableProfiles { get; } = BleDeviceProfile.AllProfiles;
-
-    /// <summary>
     /// Available engine types
     /// </summary>
     public IReadOnlyList<string> EngineTypes { get; } =
@@ -134,24 +129,33 @@ public partial class DiagnosticReportViewModel : BaseViewModel, IProgress<Diagno
     ];
 
     public DiagnosticReportViewModel(
-        IBleTransportFactory bleTransportFactory,
+        IConnectedDeviceService connectedDeviceService,
         INavigationService navigationService)
     {
-        ArgumentNullException.ThrowIfNull(bleTransportFactory);
+        ArgumentNullException.ThrowIfNull(connectedDeviceService);
         ArgumentNullException.ThrowIfNull(navigationService);
 
-        _bleTransportFactory = bleTransportFactory;
+        _connectedDeviceService = connectedDeviceService;
         _navigationService = navigationService;
         Title = "Diagnostic Report";
+
+        // Subscribe to connection changes
+        _connectedDeviceService.ConnectionChanged += OnConnectionChanged;
+
+        // Initialize from current connection state
+        UpdateConnectionState();
     }
 
-    /// <summary>
-    /// Sets the device to connect to (from device selection)
-    /// </summary>
-    public void SetDevice(string address, string name)
+    private void OnConnectionChanged(object? sender, DeviceConnectionChangedEventArgs e)
     {
-        SelectedDeviceAddress = address;
-        SelectedDeviceName = name;
+        MainThread.BeginInvokeOnMainThread(UpdateConnectionState);
+    }
+
+    private void UpdateConnectionState()
+    {
+        IsDeviceConnected = _connectedDeviceService.IsConnected;
+        ConnectedDeviceName = _connectedDeviceService.DeviceName;
+        ConnectedDeviceAddress = _connectedDeviceService.DeviceAddress;
     }
 
     /// <summary>
@@ -160,9 +164,9 @@ public partial class DiagnosticReportViewModel : BaseViewModel, IProgress<Diagno
     [RelayCommand(CanExecute = nameof(CanStartCollection))]
     private async Task StartCollectionAsync()
     {
-        if (string.IsNullOrEmpty(SelectedDeviceAddress))
+        if (!_connectedDeviceService.IsConnected || _connectedDeviceService.Transport is null)
         {
-            SetError("Please select a device first");
+            SetError("Please connect to a device first");
             return;
         }
 
@@ -185,43 +189,34 @@ public partial class DiagnosticReportViewModel : BaseViewModel, IProgress<Diagno
         VehicleIdentification? vehicleId = null;
         SupportedPidsInfo? supportedPids = null;
 
+        // Get the transport from the connected device service
+        var transport = _connectedDeviceService.Transport;
+
         try
         {
             _collector = new DiagnosticDataCollector();
 
-            // Phase 1: Connect to device
-            UpdatePhase(DiagnosticPhase.Connecting, "Connecting to device...");
-            AddLogEntry("INFO", $"Connecting to {SelectedDeviceName} ({SelectedDeviceAddress})...");
-
-            _transport = _bleTransportFactory.CreateTransport(SelectedProfile);
-
             // Subscribe to traffic for logging
-            _transport.DataSent += OnDataSent;
-            _transport.DataReceived += OnDataReceived;
+            transport.DataSent += OnDataSent;
+            transport.DataReceived += OnDataReceived;
 
-            var connected = await _transport.ConnectAsync(SelectedDeviceAddress, token);
-            if (!connected)
-            {
-                throw new InvalidOperationException("Failed to connect to BLE device");
-            }
-
-            AddLogEntry("OK", "BLE connection established");
+            AddLogEntry("INFO", $"Using connected device: {ConnectedDeviceName} ({ConnectedDeviceAddress})");
 
             // Collect BLE info (basic - we'll enhance this later)
             bleInfo = new BleAdapterInfo
             {
-                DeviceName = SelectedDeviceName ?? "Unknown",
-                MacAddress = SelectedDeviceAddress,
+                DeviceName = ConnectedDeviceName ?? "Unknown",
+                MacAddress = ConnectedDeviceAddress ?? "Unknown",
                 Services = [] // Platform-specific discovery would go here
             };
-            _collector.AddNote($"Connected to {SelectedDeviceName}");
+            _collector.AddNote($"Connected to {ConnectedDeviceName}");
 
-            // Phase 2: Initialize adapter
+            // Phase 1: Initialize adapter
             UpdatePhase(DiagnosticPhase.AdapterInit, "Initializing OBD adapter...");
             AddLogEntry("INFO", "Initializing ELM327 adapter...");
 
             _adapter = new Elm327Adapter();
-            var initialized = await _adapter.InitializeAsync(_transport, token);
+            var initialized = await _adapter.InitializeAsync(transport, token);
 
             if (!initialized)
             {
@@ -232,27 +227,27 @@ public partial class DiagnosticReportViewModel : BaseViewModel, IProgress<Diagno
                 AddLogEntry("OK", "Adapter initialized successfully");
             }
 
-            // Phase 3: Collect adapter info
+            // Phase 2: Collect adapter info
             UpdatePhase(DiagnosticPhase.AdapterInfo, "Collecting adapter information...");
             obdInfo = await _collector.CollectObdAdapterInfoAsync(_adapter, this, token);
 
-            // Phase 4: Collect vehicle ID
+            // Phase 3: Collect vehicle ID
             UpdatePhase(DiagnosticPhase.VehicleId, "Reading vehicle identification...");
             vehicleId = await _collector.CollectVehicleIdAsync(_adapter, this, token);
 
-            // Phase 5: Query supported PIDs
+            // Phase 4: Query supported PIDs
             UpdatePhase(DiagnosticPhase.SupportedPids, "Querying supported PIDs...");
             supportedPids = await _collector.CollectSupportedPidsAsync(_adapter, this, token);
 
-            // Phase 6: Probe standard PIDs
+            // Phase 5: Probe standard PIDs
             UpdatePhase(DiagnosticPhase.StandardPidProbe, "Probing standard PIDs...");
             await _collector.ProbeStandardPidsAsync(_adapter, supportedPids, this, token);
 
-            // Phase 7: Probe extended PIDs
+            // Phase 6: Probe extended PIDs
             UpdatePhase(DiagnosticPhase.ExtendedPidProbe, "Probing extended/EV PIDs...");
             await _collector.ProbeExtendedPidsAsync(_adapter, this, token);
 
-            // Phase 8: Generate report
+            // Phase 7: Generate report
             UpdatePhase(DiagnosticPhase.GeneratingReport, "Generating report...");
 
             var userInfo = new UserVehicleInfo
@@ -300,12 +295,19 @@ public partial class DiagnosticReportViewModel : BaseViewModel, IProgress<Diagno
         }
         finally
         {
-            await CleanupAsync();
+            // Unsubscribe from transport events (but don't dispose - it's managed by the service)
+            transport.DataSent -= OnDataSent;
+            transport.DataReceived -= OnDataReceived;
+
+            _adapter = null;
+            _collector = null;
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
             IsCollecting = false;
         }
     }
 
-    private bool CanStartCollection() => !IsCollecting && !string.IsNullOrEmpty(SelectedDeviceAddress);
+    private bool CanStartCollection() => !IsCollecting && IsDeviceConnected;
 
     /// <summary>
     /// Cancels the current collection
@@ -463,32 +465,6 @@ public partial class DiagnosticReportViewModel : BaseViewModel, IProgress<Diagno
             return cleaned;
 
         return cleaned[..(maxLength - 3)] + "...";
-    }
-
-    private async Task CleanupAsync()
-    {
-        if (_transport != null)
-        {
-            _transport.DataSent -= OnDataSent;
-            _transport.DataReceived -= OnDataReceived;
-
-            try
-            {
-                await _transport.DisconnectAsync();
-            }
-            catch
-            {
-                // Ignore cleanup errors
-            }
-
-            _transport.Dispose();
-            _transport = null;
-        }
-
-        _adapter = null;
-        _collector = null;
-        _cancellationTokenSource?.Dispose();
-        _cancellationTokenSource = null;
     }
 
     #endregion

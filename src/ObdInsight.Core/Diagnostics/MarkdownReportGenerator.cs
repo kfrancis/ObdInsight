@@ -27,6 +27,9 @@ public static class MarkdownReportGenerator
         // Summary
         AppendSummary(sb, report);
 
+        // Diagnostic Recommendations (NEW)
+        AppendRecommendations(sb, report);
+
         // BLE Adapter Info
         if (report.BleAdapterInfo != null)
         {
@@ -37,6 +40,12 @@ public static class MarkdownReportGenerator
         if (report.ObdAdapterInfo != null)
         {
             AppendObdAdapterInfo(sb, report.ObdAdapterInfo);
+        }
+
+        // Protocol Probe Results (NEW)
+        if (report.ProtocolProbeResults.Count > 0)
+        {
+            AppendProtocolProbeResults(sb, report.ProtocolProbeResults);
         }
 
         // Vehicle ID
@@ -60,6 +69,12 @@ public static class MarkdownReportGenerator
         if (report.ExtendedPidResults.Count > 0)
         {
             AppendPidProbeResults(sb, "Extended/EV PID Responses", report.ExtendedPidResults);
+        }
+
+        // CAN Probe Results (NEW)
+        if (report.CanProbeResults.Count > 0)
+        {
+            AppendCanProbeResults(sb, report.CanProbeResults);
         }
 
         // Errors
@@ -125,6 +140,11 @@ public static class MarkdownReportGenerator
         checksTable.Add(("Adapter Detection", !string.IsNullOrEmpty(adapterName),
             adapterName ?? "Unknown"));
 
+        // Protocol probe
+        var workingProtocols = report.ProtocolProbeResults.Count(p => p.GotResponse);
+        checksTable.Add(("Working Protocols", workingProtocols > 0,
+            workingProtocols > 0 ? $"{workingProtocols} protocol(s) responded" : "No protocols responded"));
+
         // VIN read
         var vin = report.VehicleId?.Vin;
         checksTable.Add(("VIN Read", !string.IsNullOrEmpty(vin),
@@ -137,14 +157,29 @@ public static class MarkdownReportGenerator
 
         // Standard PIDs responded
         var respondedPids = report.StandardPidResults.Count(r => r.Success);
-        checksTable.Add(("PID Responses", respondedPids > 0,
+        checksTable.Add(("Standard PID Responses", respondedPids > 0,
             $"{respondedPids}/{report.StandardPidResults.Count} successful"));
 
+        // Extended PIDs responded
+        var extendedResponded = report.ExtendedPidResults.Count(r => r.Success);
+        checksTable.Add(("Extended PID Responses", extendedResponded > 0,
+            $"{extendedResponded}/{report.ExtendedPidResults.Count} successful"));
+
+        // CAN probe results
+        var canResponded = report.CanProbeResults.Count(r => r.Success && !r.Command.StartsWith("ATSH"));
+        if (report.CanProbeResults.Count > 0)
+        {
+            checksTable.Add(("EV CAN Responses", canResponded > 0,
+                $"{canResponded} CAN address(es) responded"));
+        }
+
         // EV indicators
-        var evIndicators = report.ExtendedPidResults.Count(r => r.Success);
-        var isLikelyEv = evIndicators > 0 || report.SupportedPids?.Mode01Pids.Contains("012F") == false;
-        checksTable.Add(("EV/Hybrid Indicators", isLikelyEv ? true : null,
-            isLikelyEv ? $"{evIndicators} EV PIDs responded" : "Standard vehicle"));
+        var isLikelyEv = report.UserVehicleInfo.EngineType?.Contains("Electric") == true ||
+                         report.UserVehicleInfo.EngineType?.Contains("BEV") == true ||
+                         report.UserVehicleInfo.EngineType?.Contains("Hybrid") == true;
+        var evDataFound = extendedResponded > 0 || canResponded > 0;
+        checksTable.Add(("EV/Hybrid Data", isLikelyEv ? evDataFound : null,
+            isLikelyEv ? (evDataFound ? "EV-specific data found" : "No EV data (may need proprietary protocol)") : "Not an EV"));
 
         sb.AppendLine("| Check | Status | Details |");
         sb.AppendLine("|-------|--------|---------|");
@@ -155,11 +190,122 @@ public static class MarkdownReportGenerator
             {
                 true => "?",
                 false => "?",
-                null => "??"
+                null => "?"
             };
             sb.AppendLine($"| {check} | {status} | {EscapeMarkdown(details)} |");
         }
 
+        sb.AppendLine();
+    }
+
+    private static void AppendRecommendations(StringBuilder sb, DiagnosticReport report)
+    {
+        sb.AppendLine("## Diagnostic Analysis");
+        sb.AppendLine();
+
+        var recommendations = new List<string>();
+        var findings = new List<string>();
+
+        // Analyze what worked and what didn't
+        var workingProtocols = report.ProtocolProbeResults.Where(p => p.GotResponse).ToList();
+        var standardPidsWorked = report.StandardPidResults.Count(r => r.Success);
+        var extendedPidsWorked = report.ExtendedPidResults.Count(r => r.Success);
+        var canProbesWorked = report.CanProbeResults.Count(r => r.Success && !r.Command.StartsWith("ATSH"));
+        var isEv = report.UserVehicleInfo.EngineType?.Contains("Electric") == true ||
+                   report.UserVehicleInfo.EngineType?.Contains("BEV") == true;
+
+        // Findings
+        if (workingProtocols.Count > 0)
+        {
+            var protocols = string.Join(", ", workingProtocols.Select(p => p.Description));
+            findings.Add($"**Working protocols:** {protocols}");
+        }
+        else
+        {
+            findings.Add("**No standard OBD-II protocols responded** - Vehicle may use proprietary protocol");
+        }
+
+        if (standardPidsWorked == 0 && isEv)
+        {
+            findings.Add("**No standard PIDs responded** - Expected for pure EVs which often don't implement OBD-II Mode 01");
+        }
+
+        if (report.VehicleId?.Vin == null)
+        {
+            findings.Add("**VIN not available** - Vehicle doesn't expose VIN via standard OBD-II Mode 09");
+        }
+
+        // Recommendations based on vehicle type
+        if (isEv)
+        {
+            recommendations.Add("This is an **Electric Vehicle** which typically requires manufacturer-specific protocols");
+
+            if (report.UserVehicleInfo.Make.Equals("Nissan", StringComparison.OrdinalIgnoreCase))
+            {
+                recommendations.Add("**Nissan Leaf/EV:** Try using CAN header 0x79B for battery data (ATSH79B then 2101-2104)");
+                recommendations.Add("The Leaf uses ISO 15765-4 CAN but with non-standard addressing");
+            }
+            else if (report.UserVehicleInfo.Make.Equals("Tesla", StringComparison.OrdinalIgnoreCase))
+            {
+                recommendations.Add("**Tesla:** Uses proprietary CAN messages - standard OBD-II is very limited");
+            }
+            else if (report.UserVehicleInfo.Make.Equals("Chevrolet", StringComparison.OrdinalIgnoreCase) ||
+                     report.UserVehicleInfo.Make.Equals("GM", StringComparison.OrdinalIgnoreCase))
+            {
+                recommendations.Add("**GM/Chevrolet EV:** Try Mode 22 PIDs (220101, 220102, 220105) for battery data");
+            }
+            else if (report.UserVehicleInfo.Make.Equals("Hyundai", StringComparison.OrdinalIgnoreCase) ||
+                     report.UserVehicleInfo.Make.Equals("Kia", StringComparison.OrdinalIgnoreCase))
+            {
+                recommendations.Add("**Hyundai/Kia EV:** Try Mode 21 PIDs (2101-2105) and Mode 22 PIDs for battery data");
+            }
+            else
+            {
+                recommendations.Add("**Unknown EV:** Additional research needed for this vehicle's proprietary protocol");
+            }
+
+            if (canProbesWorked > 0)
+            {
+                recommendations.Add("? **Some EV CAN addresses responded** - this data can be used to develop a driver");
+            }
+        }
+
+        if (standardPidsWorked > 0)
+        {
+            recommendations.Add($"? **Standard OBD-II support detected** - {standardPidsWorked} PIDs can be used");
+        }
+
+        // Output findings
+        if (findings.Count > 0)
+        {
+            sb.AppendLine("### Findings");
+            sb.AppendLine();
+            foreach (var finding in findings)
+            {
+                sb.AppendLine($"- {finding}");
+            }
+            sb.AppendLine();
+        }
+
+        // Output recommendations
+        if (recommendations.Count > 0)
+        {
+            sb.AppendLine("### Recommendations");
+            sb.AppendLine();
+            foreach (var rec in recommendations)
+            {
+                sb.AppendLine($"- {rec}");
+            }
+            sb.AppendLine();
+        }
+
+        // What to include in issue
+        sb.AppendLine("### For GitHub Issue");
+        sb.AppendLine();
+        sb.AppendLine("When submitting this report, please include:");
+        sb.AppendLine("1. Any additional observations about how your vehicle behaves");
+        sb.AppendLine("2. Whether any aftermarket apps (LeafSpy, Torque, etc.) work with your vehicle");
+        sb.AppendLine("3. What data you're most interested in (battery %, range, charging status, etc.)");
         sb.AppendLine();
     }
 
@@ -240,6 +386,55 @@ public static class MarkdownReportGenerator
         }
     }
 
+    private static void AppendProtocolProbeResults(StringBuilder sb, IReadOnlyList<ProtocolProbeResult> results)
+    {
+        sb.AppendLine("## Protocol Probe Results");
+        sb.AppendLine();
+
+        var working = results.Where(r => r.GotResponse).ToList();
+        var notWorking = results.Where(r => !r.GotResponse && r.SetSuccess).ToList();
+
+        if (working.Count > 0)
+        {
+            sb.AppendLine("### Working Protocols");
+            sb.AppendLine();
+            sb.AppendLine("| Protocol | Command | Response Time | Sample Response |");
+            sb.AppendLine("|----------|---------|---------------|-----------------|");
+
+            foreach (var result in working)
+            {
+                var response = TruncateForTable(result.TestResponse);
+                sb.AppendLine($"| {result.Description} | `{result.ProtocolCommand}` | {result.ResponseTime.TotalMilliseconds:F0}ms | `{EscapeMarkdown(response)}` |");
+            }
+
+            sb.AppendLine();
+        }
+        else
+        {
+            sb.AppendLine("**No standard OBD-II protocols responded with data.**");
+            sb.AppendLine();
+        }
+
+        if (notWorking.Count > 0)
+        {
+            sb.AppendLine("<details>");
+            sb.AppendLine("<summary>Protocols Tested (No Response)</summary>");
+            sb.AppendLine();
+            sb.AppendLine("```");
+
+            foreach (var result in notWorking)
+            {
+                var response = result.TestResponse?.Replace("\r", "\\r").Replace("\n", "\\n") ?? "NO DATA";
+                sb.AppendLine($"{result.ProtocolCommand} ({result.Description}): {response}");
+            }
+
+            sb.AppendLine("```");
+            sb.AppendLine();
+            sb.AppendLine("</details>");
+            sb.AppendLine();
+        }
+    }
+
     private static void AppendVehicleId(StringBuilder sb, VehicleIdentification info)
     {
         sb.AppendLine("## Vehicle Identification (ECU)");
@@ -251,7 +446,7 @@ public static class MarkdownReportGenerator
         }
         else
         {
-            sb.AppendLine("**VIN:** Not available");
+            sb.AppendLine("**VIN:** Not available via standard OBD-II");
         }
 
         if (!string.IsNullOrEmpty(info.CalibrationId))
@@ -338,13 +533,15 @@ public static class MarkdownReportGenerator
 
             foreach (var result in successful)
             {
-                var response = result.RawResponse ?? "";
-                if (response.Length > 50)
-                    response = response[..47] + "...";
-
+                var response = TruncateForTable(result.RawResponse);
                 sb.AppendLine($"| `{result.Command}` | {result.Description} | `{EscapeMarkdown(response)}` | {result.ResponseTime.TotalMilliseconds:F0}ms |");
             }
 
+            sb.AppendLine();
+        }
+        else
+        {
+            sb.AppendLine("*No PIDs in this category responded with data.*");
             sb.AppendLine();
         }
 
@@ -373,6 +570,65 @@ public static class MarkdownReportGenerator
             sb.AppendLine($"*{failed.Count} PIDs did not respond or returned errors*");
             sb.AppendLine();
         }
+    }
+
+    private static void AppendCanProbeResults(StringBuilder sb, IReadOnlyList<CanProbeResult> results)
+    {
+        sb.AppendLine("## EV CAN Address Probes");
+        sb.AppendLine();
+
+        var dataResults = results.Where(r => !r.Command.StartsWith("ATSH")).ToList();
+        var successful = dataResults.Where(r => r.Success).ToList();
+
+        if (successful.Count > 0)
+        {
+            sb.AppendLine("### Successful CAN Responses");
+            sb.AppendLine();
+            sb.AppendLine("| Header | Command | Description | Response | Time |");
+            sb.AppendLine("|--------|---------|-------------|----------|------|");
+
+            foreach (var result in successful)
+            {
+                var response = TruncateForTable(result.RawResponse);
+                sb.AppendLine($"| `{result.Header ?? "default"}` | `{result.Command}` | {result.Description} | `{EscapeMarkdown(response)}` | {result.ResponseTime.TotalMilliseconds:F0}ms |");
+            }
+
+            sb.AppendLine();
+        }
+        else
+        {
+            sb.AppendLine("*No EV-specific CAN addresses responded. Vehicle may require different addressing.*");
+            sb.AppendLine();
+        }
+
+        // Show all probes
+        sb.AppendLine("<details>");
+        sb.AppendLine("<summary>All CAN Probe Data</summary>");
+        sb.AppendLine();
+        sb.AppendLine("```");
+
+        string? currentHeader = null;
+        foreach (var result in results)
+        {
+            if (result.Command.StartsWith("ATSH"))
+            {
+                currentHeader = result.Command.Substring(4);
+                sb.AppendLine($"--- Header: {currentHeader} ---");
+            }
+            else
+            {
+                var status = result.Success ? "OK" : "NO DATA";
+                var response = result.RawResponse?.Replace("\r", "\\r").Replace("\n", "\\n") ?? "";
+                if (response.Length > 60)
+                    response = response[..57] + "...";
+                sb.AppendLine($"[{status}] {result.Command}: {response} [{result.ResponseTime.TotalMilliseconds:F0}ms]");
+            }
+        }
+
+        sb.AppendLine("```");
+        sb.AppendLine();
+        sb.AppendLine("</details>");
+        sb.AppendLine();
     }
 
     private static void AppendErrors(StringBuilder sb, IReadOnlyList<DiagnosticError> errors)
@@ -416,6 +672,21 @@ public static class MarkdownReportGenerator
             return new string('*', vin.Length);
 
         return vin[..^6] + "******";
+    }
+
+    /// <summary>
+    /// Truncates response for table display
+    /// </summary>
+    private static string TruncateForTable(string? response, int maxLength = 40)
+    {
+        if (string.IsNullOrEmpty(response))
+            return "<empty>";
+
+        var cleaned = response.Replace("\r", "").Replace("\n", " ").Trim();
+        if (cleaned.Length <= maxLength)
+            return cleaned;
+
+        return cleaned[..(maxLength - 3)] + "...";
     }
 
     /// <summary>

@@ -10,6 +10,7 @@ namespace ObdInsight.ViewModels;
 public partial class MainViewModel : BaseViewModel
 {
     private readonly INavigationService _navigationService;
+    private readonly IConnectedDeviceService _connectedDeviceService;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RefreshDataCommand))]
@@ -37,11 +38,42 @@ public partial class MainViewModel : BaseViewModel
     [ObservableProperty]
     private string? _chargingStatus;
 
-    public MainViewModel(INavigationService navigationService)
+    public MainViewModel(INavigationService navigationService, IConnectedDeviceService connectedDeviceService)
     {
         ArgumentNullException.ThrowIfNull(navigationService);
+        ArgumentNullException.ThrowIfNull(connectedDeviceService);
+
         _navigationService = navigationService;
+        _connectedDeviceService = connectedDeviceService;
         Title = "OBD Insight";
+
+        // Subscribe to connection changes
+        _connectedDeviceService.ConnectionChanged += OnConnectionChanged;
+
+        // Initialize from current state
+        UpdateConnectionState();
+    }
+
+    private void OnConnectionChanged(object? sender, DeviceConnectionChangedEventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(UpdateConnectionState);
+    }
+
+    private void UpdateConnectionState()
+    {
+        IsConnected = _connectedDeviceService.IsConnected;
+
+        if (IsConnected)
+        {
+            AdapterName = _connectedDeviceService.DeviceName;
+            VehicleName = "Unknown Vehicle"; // Will be updated after vehicle detection
+            ConnectionStatus = $"Connected to {_connectedDeviceService.DeviceName}";
+        }
+        else
+        {
+            ClearVehicleData();
+            ConnectionStatus = "Not Connected";
+        }
     }
 
     /// <summary>
@@ -61,7 +93,7 @@ public partial class MainViewModel : BaseViewModel
     {
         await ExecuteBusyAsync(async () =>
         {
-            // TODO: Implement data refresh from IVehicleObdService
+            // TODO: Implement data refresh from IVehicleObdService using _connectedDeviceService.Transport
             await Task.Delay(100); // Placeholder
         });
     }
@@ -74,11 +106,8 @@ public partial class MainViewModel : BaseViewModel
     {
         await ExecuteBusyAsync(async () =>
         {
-            // TODO: Implement disconnect logic
-            await Task.Delay(100); // Placeholder
-            IsConnected = false;
-            ConnectionStatus = "Disconnected";
-            ClearVehicleData();
+            await _connectedDeviceService.DisconnectAsync();
+            // State will be updated via ConnectionChanged event
         });
     }
 
@@ -97,11 +126,10 @@ public partial class MainViewModel : BaseViewModel
     /// <summary>
     /// Called when connection is established from the devices page.
     /// </summary>
+    [Obsolete("Use IConnectedDeviceService instead - connection state is automatically tracked")]
     public void OnDeviceConnected(string deviceName, string? vehicleProfile)
     {
-        IsConnected = true;
-        AdapterName = deviceName;
-        VehicleName = vehicleProfile ?? "Unknown Vehicle";
-        ConnectionStatus = $"Connected to {deviceName}";
+        // This method is kept for backwards compatibility but is no longer needed
+        // as connection state is tracked via IConnectedDeviceService
     }
 }

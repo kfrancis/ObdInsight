@@ -77,6 +77,9 @@ public enum DiagnosticPhase
     /// <summary>Collecting OBD adapter AT command info</summary>
     AdapterInfo,
 
+    /// <summary>Probing multiple OBD protocols</summary>
+    ProtocolProbe,
+
     /// <summary>Reading vehicle identification</summary>
     VehicleId,
 
@@ -88,6 +91,9 @@ public enum DiagnosticPhase
 
     /// <summary>Probing extended/EV PIDs</summary>
     ExtendedPidProbe,
+
+    /// <summary>Probing EV-specific CAN addresses</summary>
+    EvCanProbe,
 
     /// <summary>Generating report</summary>
     GeneratingReport,

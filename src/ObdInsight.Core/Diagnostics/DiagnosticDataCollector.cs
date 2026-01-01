@@ -14,6 +14,8 @@ public class DiagnosticDataCollector
     private readonly List<string> _notes = [];
     private readonly List<PidProbeResult> _standardPidResults = [];
     private readonly List<PidProbeResult> _extendedPidResults = [];
+    private readonly List<ProtocolProbeResult> _protocolProbeResults = [];
+    private readonly List<CanProbeResult> _canProbeResults = [];
 
     private IProgress<DiagnosticProgress>? _progress;
     private int _totalPhases;
@@ -86,9 +88,98 @@ public class DiagnosticDataCollector
     [
         ("015B", "Hybrid battery pack remaining life"),
         ("015E", "Engine fuel rate (0 = EV)"),
-        ("2101", "Manufacturer-specific battery data (Nissan)"),
+        ("2101", "Manufacturer-specific battery data (Nissan/Hyundai)"),
+        ("2102", "Manufacturer-specific battery data 2"),
+        ("2103", "Manufacturer-specific battery data 3"),
+        ("2104", "Manufacturer-specific battery data 4"),
+        ("2105", "Manufacturer-specific battery data 5"),
         ("220101", "Manufacturer-specific battery data (GM/Kia)"),
-        ("7E421C0", "Tesla-specific probe"),
+        ("220102", "Manufacturer-specific battery data (GM/Kia) 2"),
+        ("220105", "Manufacturer-specific battery data (GM/Kia) 3"),
+    ];
+
+    /// <summary>
+    /// Nissan Leaf-specific BMS and charger probes based on OVMS project.
+    /// Uses CAN IDs 0x79B (BMS TX) -> 0x7BB (BMS RX) and 0x797 (Charger TX) -> 0x79A (Charger RX).
+    /// Mode 21 = OBDII Group request (manufacturer specific)
+    /// Mode 22 = OBDII Extended PID request
+    /// </summary>
+    private static readonly (string Command, string Description)[] NissanLeafProbes =
+    [
+        // === SETUP PHASE ===
+        // Set protocol to ISO 15765-4 CAN (11-bit, 500k) - this is what the Leaf uses
+        ("ATSP6", "Set protocol to CAN 11-bit 500k"),
+        
+        // Enable headers in response so we can see which ECU responds
+        ("ATH1", "Enable headers in response"),
+        
+        // Disable CAN auto-formatting to get raw data
+        ("ATCAF0", "Disable CAN auto-formatting"),
+        
+        // Set flow control for multi-frame ISO-TP responses
+        // The BMS sends multi-frame responses that need flow control
+        ("ATFCSH79B", "Set flow control header to BMS"),
+        ("ATFCSD300000", "Set flow control data (CTS, block size 0, delay 0)"),
+        ("ATFCSM1", "Enable flow control mode 1"),
+        
+        // === BMS COMMUNICATION (TX: 79B -> RX: 7BB) ===
+        ("ATSH79B", "Set TX header to BMS (79B)"),
+        ("ATCRA7BB", "Set RX filter to BMS response (7BB)"),
+        
+        // BMS Group 01 - Battery capacity, SOC, HX, current, voltage
+        // Response: 39 bytes (ZE0/AZE0) or 51 bytes (ZE1)
+        ("2101", "BMS Group 01: Battery SOC, capacity, current, voltage"),
+        
+        // BMS Group 02 - All 96 cell voltages (196 bytes)
+        ("2102", "BMS Group 02: Cell voltages (96 cells)"),
+        
+        // BMS Group 04 - Temperature sensors (14-29 bytes)
+        ("2104", "BMS Group 04: Pack temperatures"),
+        
+        // BMS Group 06 - Cell balancing shunts (24 bytes) - only useful when charging
+        ("2106", "BMS Group 06: Cell balancing status"),
+        
+        // BMS Group 61 - SOH for ZE1 Leafs (329 bytes) - ZE1 only
+        ("2161", "BMS Group 61: SOH (ZE1 models only)"),
+        
+        // === CHARGER/VCM COMMUNICATION (TX: 797 -> RX: 79A) ===
+        ("ATFCSH797", "Set flow control header to Charger"),
+        ("ATSH797", "Set TX header to Charger (797)"),
+        ("ATCRA79A", "Set RX filter to Charger response (79A)"),
+        
+        // Charger Group 81 - VIN (19 bytes)
+        ("2181", "Charger Group 81: VIN"),
+        
+        // Extended PID 1203 - Quick charge (CHAdeMO) count
+        ("221203", "Extended PID 1203: Quick charge count"),
+        
+        // Extended PID 1205 - L0/L1/L2 AC charge count
+        ("221205", "Extended PID 1205: AC charge count"),
+        
+        // === CLEANUP ===
+        ("ATCRA", "Clear RX filter"),
+        ("ATH0", "Disable headers"),
+        ("ATCAF1", "Re-enable CAN auto-formatting"),
+        ("ATFCSM0", "Disable flow control mode"),
+        ("ATSH7DF", "Reset to broadcast header"),
+        ("ATD", "Reset to defaults"),
+    ];
+
+    /// <summary>
+    /// Generic EV CAN probes for unknown vehicles
+    /// </summary>
+    private static readonly (string Command, string Description)[] GenericEvCanProbes =
+    [
+        // Common BMS addresses
+        ("ATSH7E4", "Set header to common BMS address 1"),
+        ("2101", "BMS data request"),
+        ("ATSH7E5", "Set header to common BMS address 2"),
+        ("2101", "BMS data request"),
+        ("ATSH7BB", "Set header to Nissan/Renault BMS"),
+        ("2101", "BMS data request"),
+        ("ATSH7C0", "Set header to common VCU address"),
+        ("2101", "VCU data request"),
+        ("ATSH7DF", "Reset to broadcast header"),
     ];
 
     /// <summary>
@@ -103,6 +194,23 @@ public class DiagnosticDataCollector
         ("ATRV", "Voltage reading"),
         ("ATDP", "Describe protocol"),
         ("ATDPN", "Describe protocol by number"),
+    ];
+
+    /// <summary>
+    /// OBD protocols to try, in order of preference
+    /// </summary>
+    private static readonly (string SetCommand, string Name, string Description)[] OdbProtocols =
+    [
+        ("ATSP0", "AUTO", "Automatic protocol detection"),
+        ("ATSP6", "ISO 15765-4 CAN (11-bit, 500kbaud)", "CAN 11-bit 500k"),
+        ("ATSP7", "ISO 15765-4 CAN (29-bit, 500kbaud)", "CAN 29-bit 500k"),
+        ("ATSP8", "ISO 15765-4 CAN (11-bit, 250kbaud)", "CAN 11-bit 250k"),
+        ("ATSP9", "ISO 15765-4 CAN (29-bit, 250kbaud)", "CAN 29-bit 250k"),
+        ("ATSPB", "User1 CAN (11-bit, user baud)", "User CAN 11-bit"),
+        ("ATSPC", "User2 CAN (29-bit, user baud)", "User CAN 29-bit"),
+        ("ATSP5", "ISO 14230-4 KWP (fast init)", "KWP Fast"),
+        ("ATSP4", "ISO 14230-4 KWP (5-baud init)", "KWP 5-baud"),
+        ("ATSP3", "ISO 9141-2", "ISO 9141"),
     ];
 
     /// <summary>
@@ -150,6 +258,23 @@ public class DiagnosticDataCollector
                 var rawValue = response.RawResponse ?? response.Value ?? "";
                 rawResponses[command] = rawValue;
 
+                // Check for transport disconnection error
+                if (response.Error == "Transport not connected")
+                {
+                    AddError("Adapter Info", $"Transport disconnected during {command}");
+                    ReportProgress(
+                        DiagnosticPhase.AdapterInfo,
+                        $"{command}: DISCONNECTED",
+                        (double)(i + 1) / AtCommands.Length,
+                        i + 1,
+                        AtCommands.Length,
+                        command,
+                        "Transport not connected",
+                        false);
+                    // Break out - reconnection will be handled by caller
+                    break;
+                }
+
                 ReportProgress(
                     DiagnosticPhase.AdapterInfo,
                     $"{command}: {TruncateResponse(rawValue)}",
@@ -182,7 +307,8 @@ public class DiagnosticDataCollector
                         break;
                 }
 
-                await Task.Delay(100, cancellationToken);
+                // Longer delay between commands to keep BLE connection stable
+                await Task.Delay(300, cancellationToken);
             }
             catch (OperationCanceledException)
             {
@@ -202,6 +328,9 @@ public class DiagnosticDataCollector
                     command,
                     ex.Message,
                     false);
+                
+                // Break on error - let caller handle reconnection
+                break;
             }
         }
 
@@ -217,6 +346,350 @@ public class DiagnosticDataCollector
             ProtocolNumber = protocolNum,
             RawAtResponses = rawResponses
         };
+    }
+
+    /// <summary>
+    /// Probes multiple OBD protocols to find which ones get responses
+    /// </summary>
+    public async Task<List<ProtocolProbeResult>> ProbeProtocolsAsync(
+        IObdAdapter adapter,
+        IProgress<DiagnosticProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        _progress = progress;
+        _protocolProbeResults.Clear();
+
+        var totalProtocols = OdbProtocols.Length;
+        ReportProgress(DiagnosticPhase.ProtocolProbe, $"Probing {totalProtocols} OBD protocols...", 0, 0, totalProtocols);
+
+        for (var i = 0; i < OdbProtocols.Length; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var (setCommand, name, description) = OdbProtocols[i];
+
+            ReportProgress(
+                DiagnosticPhase.ProtocolProbe,
+                $"Trying {description}...",
+                (double)i / totalProtocols,
+                i,
+                totalProtocols,
+                setCommand);
+
+            var result = new ProtocolProbeResult
+            {
+                ProtocolCommand = setCommand,
+                ProtocolName = name,
+                Description = description
+            };
+
+            try
+            {
+                // Set the protocol
+                var setResponse = await adapter.SendCommandAsync(
+                    new ObdCommand(setCommand, TimeSpan.FromSeconds(3)),
+                    cancellationToken);
+
+                // Check if transport disconnected
+                if (setResponse.Error == "Transport not connected")
+                {
+                    result.SetSuccess = false;
+                    result.Error = "Transport disconnected";
+                    _protocolProbeResults.Add(result);
+                    AddError("Protocol Probe", $"Transport disconnected during {setCommand}");
+                    break; // Exit loop to let caller reconnect
+                }
+
+                if (!setResponse.Success || setResponse.RawResponse?.Contains("ERROR") == true)
+                {
+                    result.SetSuccess = false;
+                    result.SetResponse = setResponse.RawResponse;
+                    _protocolProbeResults.Add(result);
+                    await Task.Delay(200, cancellationToken);
+                    continue;
+                }
+
+                result.SetSuccess = true;
+                result.SetResponse = setResponse.RawResponse;
+
+                // Wait a bit for protocol change to take effect
+                await Task.Delay(300, cancellationToken);
+
+                // Try a simple OBD query to test if protocol works
+                // Use shorter timeout to avoid long waits
+                var sw = Stopwatch.StartNew();
+                var testResponse = await adapter.SendCommandAsync(
+                    new ObdCommand("0100", TimeSpan.FromSeconds(5)),
+                    cancellationToken);
+                sw.Stop();
+
+                // Check if transport disconnected during test
+                if (testResponse.Error == "Transport not connected")
+                {
+                    result.TestResponse = "DISCONNECTED";
+                    result.Error = "Transport disconnected during test";
+                    _protocolProbeResults.Add(result);
+                    AddError("Protocol Probe", $"Transport disconnected during 0100 test on {description}");
+                    break; // Exit loop to let caller reconnect
+                }
+
+                result.TestResponse = testResponse.RawResponse;
+                result.ResponseTime = sw.Elapsed;
+
+                // Check if we got actual data vs NO DATA/errors
+                var gotData = testResponse.Success &&
+                              !string.IsNullOrEmpty(testResponse.RawResponse) &&
+                              !testResponse.RawResponse.Contains("NO DATA") &&
+                              !testResponse.RawResponse.Contains("UNABLE") &&
+                              !testResponse.RawResponse.Contains("ERROR") &&
+                              !testResponse.RawResponse.Contains("STOPPED") &&
+                              testResponse.RawResponse.Contains("41");
+
+                result.GotResponse = gotData;
+
+                if (gotData)
+                {
+                    AddNote($"Protocol {description} responded with data");
+                }
+
+                ReportProgress(
+                    DiagnosticPhase.ProtocolProbe,
+                    $"{description}: {(gotData ? "RESPONDED" : "No data")} ({sw.ElapsedMilliseconds}ms)",
+                    (double)(i + 1) / totalProtocols,
+                    i + 1,
+                    totalProtocols,
+                    setCommand,
+                    testResponse.RawResponse,
+                    gotData);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                result.Error = ex.Message;
+                ReportProgress(
+                    DiagnosticPhase.ProtocolProbe,
+                    $"{description}: ERROR - {ex.Message}",
+                    (double)(i + 1) / totalProtocols,
+                    i + 1,
+                    totalProtocols,
+                    setCommand,
+                    ex.Message,
+                    false);
+                
+                // On exception, break to let caller handle reconnection
+                _protocolProbeResults.Add(result);
+                break;
+            }
+
+            _protocolProbeResults.Add(result);
+
+            // Longer delay between protocol changes to keep BLE stable
+            await Task.Delay(500, cancellationToken);
+        }
+
+        // Reset to auto protocol (don't wait for response if disconnected)
+        try
+        {
+            await adapter.SendCommandAsync(new ObdCommand("ATSP0", TimeSpan.FromSeconds(2)), cancellationToken);
+        }
+        catch { /* ignore */ }
+
+        var successfulProtocols = _protocolProbeResults.Count(r => r.GotResponse);
+        AddNote($"Protocol probe complete: {successfulProtocols}/{_protocolProbeResults.Count} protocols responded");
+
+        return _protocolProbeResults;
+    }
+
+    /// <summary>
+    /// Probes EV-specific CAN addresses for vehicles like Nissan Leaf
+    /// </summary>
+    public async Task<List<CanProbeResult>> ProbeEvCanAddressesAsync(
+        IObdAdapter adapter,
+        string vehicleMake,
+        IProgress<DiagnosticProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        _progress = progress;
+        _canProbeResults.Clear();
+
+        var isNissan = vehicleMake.Equals("Nissan", StringComparison.OrdinalIgnoreCase);
+
+        // Select probes based on vehicle make
+        var probes = vehicleMake.ToUpperInvariant() switch
+        {
+            "NISSAN" => NissanLeafProbes,
+            _ => GenericEvCanProbes
+        };
+
+        var totalProbes = probes.Length;
+        ReportProgress(DiagnosticPhase.EvCanProbe, $"Probing {totalProbes} EV CAN addresses for {vehicleMake}...", 0, 0, totalProbes);
+
+        string? currentHeader = null;
+        var headersEnabled = false;
+
+        for (var i = 0; i < probes.Length; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var (command, description) = probes[i];
+
+            ReportProgress(
+                DiagnosticPhase.EvCanProbe,
+                $"Sending {command} ({description})...",
+                (double)i / totalProbes,
+                i,
+                totalProbes,
+                command);
+
+            var result = new CanProbeResult
+            {
+                Command = command,
+                Description = description,
+                Header = currentHeader
+            };
+
+            try
+            {
+                var timeout = command.StartsWith("21") || command.StartsWith("22")
+                    ? TimeSpan.FromSeconds(10)
+                    : TimeSpan.FromSeconds(5);
+
+                var sw = Stopwatch.StartNew();
+                var response = await adapter.SendCommandAsync(new ObdCommand(command, timeout), cancellationToken);
+                sw.Stop();
+
+                var raw = response.RawResponse;
+                result.RawResponse = raw;
+                result.ResponseTime = sw.Elapsed;
+
+                if (command.StartsWith("ATSH", StringComparison.OrdinalIgnoreCase))
+                {
+                    currentHeader = command.Substring(4);
+                    result.Header = currentHeader;
+
+                    result.Success = response.Success &&
+                        (raw?.Contains("OK") == true || string.IsNullOrWhiteSpace(response.Error));
+                }
+                else if (command.Equals("ATH1", StringComparison.OrdinalIgnoreCase))
+                {
+                    headersEnabled = response.Success &&
+                        (raw?.Contains("OK") == true || string.IsNullOrWhiteSpace(response.Error));
+
+                    result.Success = headersEnabled;
+                }
+                else if (command.Equals("ATH0", StringComparison.OrdinalIgnoreCase))
+                {
+                    var ok = response.Success &&
+                        (raw?.Contains("OK") == true || string.IsNullOrWhiteSpace(response.Error));
+
+                    if (ok)
+                        headersEnabled = false;
+
+                    result.Success = ok;
+                }
+                else if (command.StartsWith("AT", StringComparison.OrdinalIgnoreCase))
+                {
+                    result.Success = response.Success || raw?.Contains("OK") == true || string.IsNullOrWhiteSpace(response.Error);
+                }
+                else
+                {
+                    var hasData = response.Success &&
+                                  !string.IsNullOrEmpty(raw) &&
+                                  !raw.Contains("NO DATA") &&
+                                  !raw.Contains("UNABLE") &&
+                                  !raw.Contains("ERROR") &&
+                                  !raw.Contains("?") &&
+                                  raw.Length > 2;
+
+                    if (hasData && isNissan && headersEnabled)
+                    {
+                        var expectedRx = currentHeader?.ToUpperInvariant() switch
+                        {
+                            "79B" => "7BB",
+                            "797" => "79A",
+                            _ => null
+                        };
+
+                        if (expectedRx != null && !raw.Contains(expectedRx, StringComparison.OrdinalIgnoreCase))
+                        {
+                            result.Success = false;
+                            result.Error = $"Response did not contain expected RX header {expectedRx}";
+                        }
+                        else
+                        {
+                            result.Success = true;
+                        }
+                    }
+                    else
+                    {
+                        result.Success = hasData;
+                    }
+                }
+
+                if (result.Success && !command.StartsWith("AT", StringComparison.OrdinalIgnoreCase))
+                {
+                    AddNote($"EV CAN probe {command} with header {currentHeader} responded ({raw?.Length ?? 0} chars): {TruncateResponse(raw, 80)}");
+                }
+
+                var display = result.Success
+                    ? TruncateResponse(raw)
+                    : result.Error ?? "No response";
+
+                ReportProgress(
+                    DiagnosticPhase.EvCanProbe,
+                    $"{command}: {display} ({sw.ElapsedMilliseconds}ms)",
+                    (double)(i + 1) / totalProbes,
+                    i + 1,
+                    totalProbes,
+                    command,
+                    raw,
+                    result.Success);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                result.Error = ex.Message;
+                result.Success = false;
+
+                ReportProgress(
+                    DiagnosticPhase.EvCanProbe,
+                    $"{command}: ERROR - {ex.Message}",
+                    (double)(i + 1) / totalProbes,
+                    i + 1,
+                    totalProbes,
+                    command,
+                    ex.Message,
+                    false);
+            }
+
+            _canProbeResults.Add(result);
+
+            var delayMs = command.StartsWith("21") || command.StartsWith("22") ? 500 :
+                          command.StartsWith("ATSH") || command.StartsWith("ATFC") ? 300 :
+                          200;
+            await Task.Delay(delayMs, cancellationToken);
+        }
+
+        try
+        {
+            await adapter.SendCommandAsync(new ObdCommand("ATSH7DF", TimeSpan.FromSeconds(2)), cancellationToken);
+            await Task.Delay(100, cancellationToken);
+            await adapter.SendCommandAsync(new ObdCommand("ATH0", TimeSpan.FromSeconds(2)), cancellationToken);
+            await Task.Delay(100, cancellationToken);
+            await adapter.SendCommandAsync(new ObdCommand("ATSP0", TimeSpan.FromSeconds(2)), cancellationToken);
+        }
+        catch { /* ignore */ }
+
+        var successfulProbes = _canProbeResults.Count(r => r.Success && !r.Command.StartsWith("AT"));
+        AddNote($"EV CAN probe complete: {successfulProbes} data responses");
+
+        return _canProbeResults;
     }
 
     /// <summary>
@@ -265,7 +738,7 @@ public class DiagnosticDataCollector
             ReportProgress(DiagnosticPhase.VehicleId, $"VIN: ERROR - {ex.Message}", 0.33, 1, 3, "0902", ex.Message, false);
         }
 
-        // Calibration ID (Mode 09 PID 04)
+        // Calibration ID (Mode 09 PID 04) - don't let failure stop collection
         ReportProgress(DiagnosticPhase.VehicleId, "Reading Calibration ID (0904)...", 0.33, 1, 3, "0904");
         try
         {
@@ -284,10 +757,11 @@ public class DiagnosticDataCollector
         }
         catch
         {
-            // Optional - don't report as error
+            // Optional - don't report as error, continue
+            ReportProgress(DiagnosticPhase.VehicleId, "Calibration ID: Not available", 0.66, 2, 3, "0904", null, false);
         }
 
-        // ECU Name (Mode 09 PID 0A)
+        // ECU Name (Mode 09 PID 0A) - don't let failure stop collection
         ReportProgress(DiagnosticPhase.VehicleId, "Reading ECU Name (090A)...", 0.66, 2, 3, "090A");
         try
         {
@@ -306,7 +780,8 @@ public class DiagnosticDataCollector
         }
         catch
         {
-            // Optional
+            // Optional - continue
+            ReportProgress(DiagnosticPhase.VehicleId, "ECU Name: Not available", 1.0, 3, 3, "090A", null, false);
         }
 
         return new VehicleIdentification
@@ -482,7 +957,7 @@ public class DiagnosticDataCollector
 
             ReportProgress(
                 DiagnosticPhase.StandardPidProbe,
-                $"[{i + 1}/{totalPids}] Probing {command} ({description})...",
+                $"Probing {command} ({description})...",
                 (double)i / totalPids,
                 i,
                 totalPids,
@@ -512,7 +987,7 @@ public class DiagnosticDataCollector
 
                 ReportProgress(
                     DiagnosticPhase.StandardPidProbe,
-                    $"[{i + 1}/{totalPids}] {command}: {(response.Success ? TruncateResponse(response.RawResponse) : "NO DATA")} ({sw.ElapsedMilliseconds}ms)",
+                    $"{command}: {(response.Success ? TruncateResponse(response.RawResponse) : "NO DATA")} ({sw.ElapsedMilliseconds}ms)",
                     (double)(i + 1) / totalPids,
                     i + 1,
                     totalPids,
@@ -538,7 +1013,7 @@ public class DiagnosticDataCollector
 
                 ReportProgress(
                     DiagnosticPhase.StandardPidProbe,
-                    $"[{i + 1}/{totalPids}] {command}: ERROR - {ex.Message}",
+                    $"{command}: ERROR - {ex.Message}",
                     (double)(i + 1) / totalPids,
                     i + 1,
                     totalPids,
@@ -576,7 +1051,7 @@ public class DiagnosticDataCollector
 
             ReportProgress(
                 DiagnosticPhase.ExtendedPidProbe,
-                $"[{i + 1}/{totalPids}] Probing {command} ({description})...",
+                $"Probing {command} ({description})...",
                 (double)i / totalPids,
                 i,
                 totalPids,
@@ -604,7 +1079,7 @@ public class DiagnosticDataCollector
 
                 ReportProgress(
                     DiagnosticPhase.ExtendedPidProbe,
-                    $"[{i + 1}/{totalPids}] {command}: {(response.Success ? TruncateResponse(response.RawResponse) : "NO DATA")} ({sw.ElapsedMilliseconds}ms)",
+                    $"{command}: {(response.Success ? TruncateResponse(response.RawResponse) : "NO DATA")} ({sw.ElapsedMilliseconds}ms)",
                     (double)(i + 1) / totalPids,
                     i + 1,
                     totalPids,
@@ -630,7 +1105,7 @@ public class DiagnosticDataCollector
 
                 ReportProgress(
                     DiagnosticPhase.ExtendedPidProbe,
-                    $"[{i + 1}/{totalPids}] {command}: ERROR - {ex.Message}",
+                    $"{command}: ERROR - {ex.Message}",
                     (double)(i + 1) / totalPids,
                     i + 1,
                     totalPids,
@@ -667,6 +1142,8 @@ public class DiagnosticDataCollector
             SupportedPids = supportedPids,
             StandardPidResults = _standardPidResults.ToList(),
             ExtendedPidResults = _extendedPidResults.ToList(),
+            ProtocolProbeResults = _protocolProbeResults.ToList(),
+            CanProbeResults = _canProbeResults.ToList(),
             Errors = _errors.ToList(),
             Notes = _notes.ToList()
         };
@@ -681,6 +1158,8 @@ public class DiagnosticDataCollector
         _notes.Clear();
         _standardPidResults.Clear();
         _extendedPidResults.Clear();
+        _protocolProbeResults.Clear();
+        _canProbeResults.Clear();
     }
 
     /// <summary>
@@ -735,13 +1214,15 @@ public class DiagnosticDataCollector
         {
             [DiagnosticPhase.BleDiscovery] = (0.0, 0.05),
             [DiagnosticPhase.Connecting] = (0.05, 0.05),
-            [DiagnosticPhase.AdapterInit] = (0.10, 0.05),
-            [DiagnosticPhase.AdapterInfo] = (0.15, 0.10),
-            [DiagnosticPhase.VehicleId] = (0.25, 0.05),
-            [DiagnosticPhase.SupportedPids] = (0.30, 0.10),
-            [DiagnosticPhase.StandardPidProbe] = (0.40, 0.40),
-            [DiagnosticPhase.ExtendedPidProbe] = (0.80, 0.15),
-            [DiagnosticPhase.GeneratingReport] = (0.95, 0.05),
+            [DiagnosticPhase.AdapterInit] = (0.10, 0.03),
+            [DiagnosticPhase.AdapterInfo] = (0.13, 0.07),
+            [DiagnosticPhase.ProtocolProbe] = (0.20, 0.10),
+            [DiagnosticPhase.VehicleId] = (0.30, 0.05),
+            [DiagnosticPhase.SupportedPids] = (0.35, 0.05),
+            [DiagnosticPhase.StandardPidProbe] = (0.40, 0.25),
+            [DiagnosticPhase.ExtendedPidProbe] = (0.65, 0.10),
+            [DiagnosticPhase.EvCanProbe] = (0.75, 0.15),
+            [DiagnosticPhase.GeneratingReport] = (0.90, 0.10),
             [DiagnosticPhase.Complete] = (1.0, 0.0),
         };
 

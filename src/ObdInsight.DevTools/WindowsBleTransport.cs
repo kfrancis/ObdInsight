@@ -1,5 +1,7 @@
 using ObdInsight.Core.Transports.Ble;
+using System.Buffers;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 
@@ -8,120 +10,234 @@ namespace ObdInsight.DevTools;
 /// <summary>
 /// Windows-specific BLE transport using WinRT APIs.
 /// Works on Windows 10/11 desktop with Bluetooth LE support.
+///
+/// This implementation follows Windows BLE best practices:
+/// - Event-driven readiness instead of fixed delays
+/// - Targeted UUID enumeration (Cached then Uncached)
+/// - WriteValueWithResultAsync for detailed error reporting
+/// - Serialized writes with configurable pacing
+/// - Proper CCCD notification handling
+/// - ArrayPool for reduced allocations in notification path
 /// </summary>
-public sealed class WindowsBleTransport : BleTransportBase
+public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
 {
+    private readonly ArrayPool<byte> _arrayPool = ArrayPool<byte>.Shared;
+    private readonly SemaphoreSlim _writeGate = new(1, 1);
     private BluetoothLEDevice? _device;
-    private bool _isConnected;
+    private TaskCompletionSource<bool>? _gattReadyTcs;
+    private GattSession? _gattSession;
+    private volatile bool _isConnected;
+    private int _maxPduSize;
     private GattCharacteristic? _notifyCharacteristic;
     private GattDeviceService? _service;
+    private volatile bool _userDisconnecting;
     private GattCharacteristic? _writeCharacteristic;
+    
+    // Diagnostic counters
+    private int _notificationsReceived;
+    private int _bytesReceived;
+    private int _writeAttempts;
+    private int _writeSuccesses;
 
     public WindowsBleTransport(BleDeviceProfile profile) : base(profile)
     {
     }
 
-    public override bool IsConnected => _isConnected && _device != null;
+    /// <summary>
+    /// Delay between consecutive writes in milliseconds. Some ELM327 clones need pacing.
+    /// </summary>
+    public int InterWriteDelayMs { get; set; } = 20;
+
+    public override bool IsConnected => _isConnected && _device != null && _writeCharacteristic != null;
 
     public override async Task<bool> ConnectAsync(string deviceAddress, CancellationToken cancellationToken = default)
     {
         try
         {
+            _userDisconnecting = false;
+            _isConnected = false;
+            _notificationsReceived = 0;
+            _bytesReceived = 0;
+            _writeAttempts = 0;
+            _writeSuccesses = 0;
+            
             SetConnectionState(BleConnectionState.Connecting);
             DeviceAddress = deviceAddress;
 
-            // Parse MAC address to ulong
             var macValue = ParseMacAddress(deviceAddress);
+            Log($"Connecting to {deviceAddress} (0x{macValue:X})...");
 
             // Connect to device
             _device = await BluetoothLEDevice.FromBluetoothAddressAsync(macValue).AsTask(cancellationToken);
             if (_device == null)
             {
+                Log("Failed to get BluetoothLEDevice");
                 SetConnectionState(BleConnectionState.Disconnected);
                 return false;
             }
 
+            Log($"Got device: {_device.Name}, ConnectionStatus: {_device.ConnectionStatus}");
             _device.ConnectionStatusChanged += OnConnectionStatusChanged;
 
-            // Get GATT services
-            var servicesResult = await _device.GetGattServicesAsync(BluetoothCacheMode.Uncached).AsTask(cancellationToken);
-            if (servicesResult.Status != GattCommunicationStatus.Success)
+            // Create GATT session with event-driven readiness
+            _gattReadyTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            try
             {
-                await DisconnectAsync();
-                return false;
+                _gattSession = await GattSession.FromDeviceIdAsync(_device.BluetoothDeviceId).AsTask(cancellationToken);
+                if (_gattSession != null)
+                {
+                    _gattSession.MaintainConnection = true;
+                    _gattSession.SessionStatusChanged += OnSessionStatusChanged;
+                    _gattSession.MaxPduSizeChanged += OnMaxPduSizeChanged;
+                    _maxPduSize = _gattSession.MaxPduSize;
+                    Log($"GATT session created, MaintainConnection=true, MaxPduSize={_maxPduSize}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Warning: Could not create GATT session: {ex.Message}");
             }
 
-            // Find our target service
-            _service = servicesResult.Services.FirstOrDefault(s => s.Uuid == Profile.ServiceUuid);
+            // Get service using targeted UUID enumeration (Cached first, then Uncached)
+            _service = await GetServiceForUuidAsync(Profile.ServiceUuid, cancellationToken);
             if (_service == null)
             {
-                // Log available services for debugging
-                var availableServices = string.Join(", ", servicesResult.Services.Select(s => s.Uuid.ToString()));
-                System.Diagnostics.Debug.WriteLine($"Service {Profile.ServiceUuid} not found. Available: {availableServices}");
+                Log($"Service {Profile.ServiceUuid} not found");
                 await DisconnectAsync();
                 return false;
             }
 
-            // Get characteristics
-            var charsResult = await _service.GetCharacteristicsAsync(BluetoothCacheMode.Uncached).AsTask(cancellationToken);
-            if (charsResult.Status != GattCommunicationStatus.Success)
-            {
-                await DisconnectAsync();
-                return false;
-            }
+            Log($"Found target service: {_service.Uuid}");
 
-            _writeCharacteristic = charsResult.Characteristics.FirstOrDefault(c => c.Uuid == Profile.WriteCharacteristicUuid);
-            _notifyCharacteristic = charsResult.Characteristics.FirstOrDefault(c => c.Uuid == Profile.NotifyCharacteristicUuid);
-
+            // Get characteristics using targeted enumeration
+            _writeCharacteristic = await GetCharacteristicForUuidAsync(_service, Profile.WriteCharacteristicUuid, cancellationToken);
             if (_writeCharacteristic == null)
             {
-                System.Diagnostics.Debug.WriteLine($"Write characteristic {Profile.WriteCharacteristicUuid} not found");
+                Log($"Write characteristic {Profile.WriteCharacteristicUuid} not found");
                 await DisconnectAsync();
                 return false;
             }
 
-            // Subscribe to notifications if characteristic supports it
+            Log($"Write characteristic found: {_writeCharacteristic.Uuid}, Props: {_writeCharacteristic.CharacteristicProperties}");
+
+            _notifyCharacteristic = await GetCharacteristicForUuidAsync(_service, Profile.NotifyCharacteristicUuid, cancellationToken);
             if (_notifyCharacteristic != null)
             {
-                var notifyProps = _notifyCharacteristic.CharacteristicProperties;
-                if (notifyProps.HasFlag(GattCharacteristicProperties.Notify) ||
-                    notifyProps.HasFlag(GattCharacteristicProperties.Indicate))
+                Log($"Notify characteristic found: {_notifyCharacteristic.Uuid}, Props: {_notifyCharacteristic.CharacteristicProperties}");
+
+                var notifyOk = await EnableNotificationsAsync(_notifyCharacteristic, cancellationToken);
+                if (!notifyOk && Profile.NotificationsRequired)
                 {
-                    _notifyCharacteristic.ValueChanged += OnCharacteristicValueChanged;
-
-                    var cccdValue = notifyProps.HasFlag(GattCharacteristicProperties.Indicate)
-                        ? GattClientCharacteristicConfigurationDescriptorValue.Indicate
-                        : GattClientCharacteristicConfigurationDescriptorValue.Notify;
-
-                    var status = await _notifyCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(cccdValue)
-                        .AsTask(cancellationToken);
-
-                    if (status != GattCommunicationStatus.Success)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Failed to enable notifications: {status}");
-                    }
+                    Log("Failed to enable required notifications - aborting connect");
+                    await DisconnectAsync();
+                    return false;
                 }
+            }
+            else if (Profile.NotificationsRequired)
+            {
+                Log($"Notify characteristic {Profile.NotifyCharacteristicUuid} not found but required");
+                await DisconnectAsync();
+                return false;
+            }
+
+            // Signal readiness and wait for GATT to be truly ready
+            TrySignalGattReady();
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
+
+            try
+            {
+                await _gattReadyTcs.Task.WaitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                Log("GATT readiness timeout - proceeding anyway");
             }
 
             ClearBuffer();
             _isConnected = true;
             SetConnectionState(BleConnectionState.Connected);
+
+            Log("Connection complete, IsConnected=true");
+            
+            // Do a test write to wake up the adapter
+            Log("Sending wake-up sequence...");
+            await TestCommunicationAsync(cancellationToken);
+            
             return true;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Connection failed: {ex.Message}");
+            Log($"Connection failed: {ex.GetType().Name}: {ex.Message}");
             await DisconnectAsync();
             return false;
         }
     }
 
+    /// <summary>
+    /// Test basic communication by sending a carriage return and waiting for any response.
+    /// </summary>
+    private async Task TestCommunicationAsync(CancellationToken ct)
+    {
+        try
+        {
+            // Send a few carriage returns to clear any pending state
+            for (int i = 0; i < 3; i++)
+            {
+                await WriteCharacteristicDirectAsync(new byte[] { 0x0D }, ct); // CR
+                await Task.Delay(100, ct);
+            }
+            
+            // Wait a bit and check if we received anything
+            await Task.Delay(500, ct);
+            
+            Log($"After wake-up: notifications={_notificationsReceived}, bytes={_bytesReceived}");
+        }
+        catch (Exception ex)
+        {
+            Log($"Wake-up test failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Direct write without the semaphore (for internal use during connect).
+    /// </summary>
+    private async Task WriteCharacteristicDirectAsync(byte[] data, CancellationToken ct)
+    {
+        if (_writeCharacteristic == null) return;
+        
+        _writeAttempts++;
+        var buffer = data.AsBuffer();
+        var writeType = Profile.WriteWithResponse
+            ? GattWriteOption.WriteWithResponse
+            : GattWriteOption.WriteWithoutResponse;
+            
+        var result = await _writeCharacteristic.WriteValueWithResultAsync(buffer, writeType).AsTask(ct);
+        
+        if (result.Status == GattCommunicationStatus.Success)
+        {
+            _writeSuccesses++;
+            Log($"Direct write OK: {BitConverter.ToString(data)}");
+        }
+        else
+        {
+            Log($"Direct write FAILED: {result.Status}, ProtocolError={result.ProtocolError}");
+        }
+    }
+
     public override async Task DisconnectAsync()
     {
+        _userDisconnecting = true;
         SetConnectionState(BleConnectionState.Disconnecting);
+        Log($"DisconnectAsync called. Stats: notifications={_notificationsReceived}, bytes={_bytesReceived}, writes={_writeSuccesses}/{_writeAttempts}");
 
         try
         {
+            // Cancel any pending readiness wait
+            _gattReadyTcs?.TrySetCanceled();
+
             if (_notifyCharacteristic != null)
             {
                 _notifyCharacteristic.ValueChanged -= OnCharacteristicValueChanged;
@@ -134,6 +250,15 @@ public sealed class WindowsBleTransport : BleTransportBase
             }
 
             _service?.Dispose();
+
+            if (_gattSession != null)
+            {
+                _gattSession.SessionStatusChanged -= OnSessionStatusChanged;
+                _gattSession.MaxPduSizeChanged -= OnMaxPduSizeChanged;
+                _gattSession.MaintainConnection = false;
+                _gattSession.Dispose();
+                _gattSession = null;
+            }
 
             if (_device != null)
             {
@@ -149,54 +274,414 @@ public sealed class WindowsBleTransport : BleTransportBase
             _notifyCharacteristic = null;
             _isConnected = false;
             SetConnectionState(BleConnectionState.Disconnected);
+            Log("Disconnect complete");
         }
     }
 
     public override void Dispose()
     {
-        DisconnectAsync().GetAwaiter().GetResult();
+        // Best-effort non-blocking cleanup to avoid deadlocks
+        _userDisconnecting = true;
+        _gattReadyTcs?.TrySetCanceled();
+
+        try
+        {
+            if (_notifyCharacteristic != null)
+                _notifyCharacteristic.ValueChanged -= OnCharacteristicValueChanged;
+
+            _service?.Dispose();
+
+            if (_gattSession != null)
+            {
+                _gattSession.SessionStatusChanged -= OnSessionStatusChanged;
+                _gattSession.MaxPduSizeChanged -= OnMaxPduSizeChanged;
+                _gattSession.MaintainConnection = false;
+                _gattSession.Dispose();
+            }
+
+            if (_device != null)
+            {
+                _device.ConnectionStatusChanged -= OnConnectionStatusChanged;
+                _device.Dispose();
+            }
+        }
+        catch { /* Best effort */ }
+        finally
+        {
+            _device = null;
+            _service = null;
+            _writeCharacteristic = null;
+            _notifyCharacteristic = null;
+            _gattSession = null;
+            _isConnected = false;
+            _writeGate.Dispose();
+        }
+
         base.Dispose();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DisconnectAsync();
+        _writeGate.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Drains any pending data from the receive buffer.
+    /// </summary>
+    public void DrainBuffer()
+    {
+        ClearBuffer();
+        Log("Buffer drained");
+    }
+    
+    /// <summary>
+    /// Gets diagnostic statistics about the connection.
+    /// </summary>
+    public string GetDiagnostics()
+    {
+        return $"Notifications: {_notificationsReceived}, Bytes: {_bytesReceived}, Writes: {_writeSuccesses}/{_writeAttempts}";
     }
 
     protected override async Task WriteCharacteristicAsync(byte[] data, CancellationToken cancellationToken)
     {
         if (_writeCharacteristic == null)
-        {
             throw new InvalidOperationException("Write characteristic not available");
+
+        if (_device?.ConnectionStatus != BluetoothConnectionStatus.Connected)
+        {
+            Log("Device not connected when trying to write");
+            _isConnected = false;
+            SetConnectionState(BleConnectionState.Disconnected);
+            throw new IOException("Device not connected");
         }
 
-        var writeType = Profile.WriteWithResponse
-            ? GattWriteOption.WriteWithResponse
-            : GattWriteOption.WriteWithoutResponse;
-
-        var buffer = data.AsBuffer();
-        var result = await _writeCharacteristic.WriteValueAsync(buffer, writeType).AsTask(cancellationToken);
-
-        if (result != GattCommunicationStatus.Success)
+        // Serialize all writes - Windows BLE doesn't like concurrent writes
+        await _writeGate.WaitAsync(cancellationToken);
+        try
         {
-            throw new IOException($"Write failed: {result}");
+            _writeAttempts++;
+            
+            var writeType = Profile.WriteWithResponse
+                ? GattWriteOption.WriteWithResponse
+                : GattWriteOption.WriteWithoutResponse;
+
+            var buffer = data.AsBuffer();
+            
+            // Log what we're sending
+            var dataStr = Encoding.ASCII.GetString(data).Replace("\r", "\\r").Replace("\n", "\\n");
+            Log($"Writing {data.Length} bytes: '{dataStr}' (hex: {BitConverter.ToString(data)})");
+
+            // Use WriteValueWithResultAsync for richer error information
+            GattWriteResult? result = null;
+            Exception? lastException = null;
+
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    result = await _writeCharacteristic.WriteValueWithResultAsync(buffer, writeType)
+                        .AsTask(cancellationToken);
+
+                    if (result.Status == GattCommunicationStatus.Success)
+                    {
+                        _writeSuccesses++;
+                        Log($"Write success (attempt {attempt + 1})");
+                        
+                        // Optional write pacing for slow adapters
+                        if (InterWriteDelayMs > 0)
+                            await Task.Delay(InterWriteDelayMs, cancellationToken);
+                        return;
+                    }
+
+                    var protoErr = result.ProtocolError?.ToString() ?? "none";
+                    Log($"Write attempt {attempt + 1} failed: {result.Status}, ProtocolError={protoErr}");
+
+                    // If write-without-response failed, try with response
+                    if (writeType == GattWriteOption.WriteWithoutResponse && attempt == 0)
+                    {
+                        Log("Retrying with WriteWithResponse");
+                        writeType = GattWriteOption.WriteWithResponse;
+                    }
+
+                    await Task.Delay(100, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    Log($"Write exception: {ex.Message}");
+                    await Task.Delay(100, cancellationToken);
+                }
+            }
+
+            // All retries failed
+            _isConnected = false;
+            SetConnectionState(BleConnectionState.Disconnected);
+
+            var errorDetail = result != null
+                ? $"{result.Status}, ProtocolError={result.ProtocolError?.ToString() ?? "none"}"
+                : lastException?.Message ?? "Unknown error";
+
+            throw new IOException($"Write failed after retries: {errorDetail}", lastException);
+        }
+        finally
+        {
+            _writeGate.Release();
         }
     }
 
-    private static ulong ParseMacAddress(string mac)
+    #region Targeted UUID Enumeration
+
+    private async Task<GattCharacteristic?> GetCharacteristicForUuidAsync(
+        GattDeviceService service, Guid charUuid, CancellationToken ct)
     {
-        // Handle formats: "66:1e:87:02:c2:db" or "661e8702c2db"
-        var cleanMac = mac.Replace(":", "").Replace("-", "");
-        return Convert.ToUInt64(cleanMac, 16);
+        // Try Cached first
+        Log($"Getting characteristic {charUuid} (Cached)...");
+        var result = await service.GetCharacteristicsForUuidAsync(charUuid, BluetoothCacheMode.Cached).AsTask(ct);
+
+        if (result.Status == GattCommunicationStatus.Success && result.Characteristics.Count > 0)
+        {
+            Log($"Found characteristic via Cached mode");
+            return result.Characteristics[0];
+        }
+
+        // Fallback to Uncached
+        Log($"Getting characteristic {charUuid} (Uncached fallback)...");
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            result = await service.GetCharacteristicsForUuidAsync(charUuid, BluetoothCacheMode.Uncached).AsTask(ct);
+
+            if (result.Status == GattCommunicationStatus.Success && result.Characteristics.Count > 0)
+            {
+                Log($"Found characteristic via Uncached mode (attempt {attempt + 1})");
+                return result.Characteristics[0];
+            }
+
+            Log($"Characteristic fetch attempt {attempt + 1}: Status={result.Status}, Count={result.Characteristics.Count}");
+            await Task.Delay(300, ct);
+        }
+
+        return null;
+    }
+
+    private async Task<GattDeviceService?> GetServiceForUuidAsync(Guid serviceUuid, CancellationToken ct)
+    {
+        if (_device == null) return null;
+
+        // Try Cached first (more reliable immediately after connect on Windows)
+        Log($"Getting service {serviceUuid} (Cached)...");
+        var result = await _device.GetGattServicesForUuidAsync(serviceUuid, BluetoothCacheMode.Cached).AsTask(ct);
+
+        if (result.Status == GattCommunicationStatus.Success && result.Services.Count > 0)
+        {
+            Log($"Found service via Cached mode");
+            return result.Services[0];
+        }
+
+        // Fallback to Uncached
+        Log($"Getting service {serviceUuid} (Uncached fallback)...");
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            result = await _device.GetGattServicesForUuidAsync(serviceUuid, BluetoothCacheMode.Uncached).AsTask(ct);
+
+            if (result.Status == GattCommunicationStatus.Success && result.Services.Count > 0)
+            {
+                Log($"Found service via Uncached mode (attempt {attempt + 1})");
+                return result.Services[0];
+            }
+
+            Log($"Service fetch attempt {attempt + 1}: Status={result.Status}, Count={result.Services.Count}");
+            await Task.Delay(300, ct);
+        }
+
+        // Log available services for debugging
+        var allServices = await _device.GetGattServicesAsync(BluetoothCacheMode.Cached).AsTask(ct);
+        if (allServices.Status == GattCommunicationStatus.Success)
+        {
+            var uuids = string.Join(", ", allServices.Services.Select(s => s.Uuid.ToString()));
+            Log($"Available services: {uuids}");
+        }
+
+        return null;
+    }
+
+    #endregion Targeted UUID Enumeration
+
+    #region Notification Handling
+
+    private async Task<bool> EnableNotificationsAsync(GattCharacteristic characteristic, CancellationToken ct)
+    {
+        var props = characteristic.CharacteristicProperties;
+        Log($"Enabling notifications, Props: {props}");
+
+        if (!props.HasFlag(GattCharacteristicProperties.Notify) &&
+            !props.HasFlag(GattCharacteristicProperties.Indicate))
+        {
+            Log("Characteristic doesn't support Notify or Indicate");
+            return false;
+        }
+
+        // Subscribe to value changes FIRST
+        characteristic.ValueChanged += OnCharacteristicValueChanged;
+        Log("Subscribed to ValueChanged event");
+
+        var cccdValue = props.HasFlag(GattCharacteristicProperties.Indicate)
+            ? GattClientCharacteristicConfigurationDescriptorValue.Indicate
+            : GattClientCharacteristicConfigurationDescriptorValue.Notify;
+
+        Log($"Writing CCCD with value: {cccdValue}");
+
+        // CCCD writes can fail the first time for non-bonded devices on Windows
+        // Retry with delays
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                // Use WriteValueWithResultAsync for CCCD to get detailed errors
+                var result = await characteristic.WriteClientCharacteristicConfigurationDescriptorWithResultAsync(cccdValue)
+                    .AsTask(ct);
+
+                if (result.Status == GattCommunicationStatus.Success)
+                {
+                    Log("CCCD write SUCCESS - notifications should now be enabled");
+                    
+                    // Verify we can read the CCCD back
+                    try
+                    {
+                        var readResult = await characteristic.ReadClientCharacteristicConfigurationDescriptorAsync().AsTask(ct);
+                        Log($"CCCD read back: Status={readResult.Status}, Value={readResult.ClientCharacteristicConfigurationDescriptor}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"CCCD read-back failed: {ex.Message}");
+                    }
+                    
+                    return true;
+                }
+
+                var protoErr = result.ProtocolError?.ToString() ?? "none";
+                Log($"CCCD write attempt {attempt + 1} failed: {result.Status}, ProtocolError={protoErr}");
+
+                // ProtocolError can indicate auth/encryption issues
+                if (result.ProtocolError != null)
+                {
+                    Log($"Protocol error may indicate pairing/authentication required");
+                }
+
+                await Task.Delay(500, ct);
+            }
+            catch (Exception ex)
+            {
+                Log($"CCCD write exception: {ex.Message}");
+                await Task.Delay(500, ct);
+            }
+        }
+
+        Log("Failed to enable notifications after retries - unsubscribing from ValueChanged");
+        characteristic.ValueChanged -= OnCharacteristicValueChanged;
+        return false;
     }
 
     private void OnCharacteristicValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
     {
-        var data = args.CharacteristicValue.ToArray();
-        OnDataReceived(data);
+        _notificationsReceived++;
+        var length = (int)args.CharacteristicValue.Length;
+        _bytesReceived += length;
+        
+        // Use ArrayPool to reduce allocation churn for high-frequency notifications
+        var rentedArray = _arrayPool.Rent(length);
+
+        try
+        {
+            args.CharacteristicValue.CopyTo(0, rentedArray, 0, length);
+
+            // Log what we received
+            var text = Encoding.ASCII.GetString(rentedArray, 0, length);
+            var escaped = text.Replace("\r", "\\r").Replace("\n", "\\n");
+            Log($"RX notification #{_notificationsReceived}: {length} bytes: '{escaped}'");
+
+            // Create a copy for the base class (it may hold onto it)
+            var data = new byte[length];
+            Array.Copy(rentedArray, data, length);
+            OnDataReceived(data);
+        }
+        finally
+        {
+            _arrayPool.Return(rentedArray);
+        }
     }
+
+    #endregion Notification Handling
+
+    #region Event Handlers
 
     private void OnConnectionStatusChanged(BluetoothLEDevice sender, object args)
     {
-        if (sender.ConnectionStatus == BluetoothConnectionStatus.Disconnected)
+        Log($"ConnectionStatusChanged: {sender.ConnectionStatus}, UserDisconnecting: {_userDisconnecting}");
+
+        if (sender.ConnectionStatus == BluetoothConnectionStatus.Disconnected && !_userDisconnecting)
         {
+            Log("External disconnection detected!");
+            _isConnected = false;
+            SetConnectionState(BleConnectionState.Disconnected);
+            _gattReadyTcs?.TrySetResult(false);
+        }
+        else if (sender.ConnectionStatus == BluetoothConnectionStatus.Connected)
+        {
+            TrySignalGattReady();
+        }
+    }
+
+    private void OnMaxPduSizeChanged(GattSession sender, object args)
+    {
+        _maxPduSize = sender.MaxPduSize;
+        Log($"MaxPduSizeChanged: {_maxPduSize}");
+        TrySignalGattReady();
+    }
+
+    private void OnSessionStatusChanged(GattSession sender, GattSessionStatusChangedEventArgs args)
+    {
+        Log($"SessionStatusChanged: Status={args.Status}, Error={args.Error}");
+
+        if (args.Status == GattSessionStatus.Active)
+        {
+            TrySignalGattReady();
+        }
+        else if (args.Status == GattSessionStatus.Closed && !_userDisconnecting)
+        {
+            Log("GATT session closed unexpectedly");
             _isConnected = false;
             SetConnectionState(BleConnectionState.Disconnected);
         }
     }
+
+    private void TrySignalGattReady()
+    {
+        // Signal readiness when we have enough to proceed
+        if (_device?.ConnectionStatus == BluetoothConnectionStatus.Connected &&
+            _writeCharacteristic != null)
+        {
+            _gattReadyTcs?.TrySetResult(true);
+        }
+    }
+
+    #endregion Event Handlers
+
+    #region Helpers
+
+    private static void Log(string message)
+    {
+        System.Diagnostics.Debug.WriteLine($"[WindowsBleTransport] {message}");
+        // Also log to console for DevTools visibility
+        Console.WriteLine($"[BLE] {message}");
+    }
+
+    private static ulong ParseMacAddress(string mac)
+    {
+        var cleanMac = mac.Replace(":", "").Replace("-", "");
+        return Convert.ToUInt64(cleanMac, 16);
+    }
+
+    #endregion Helpers
 }

@@ -52,6 +52,16 @@ public record DiagnosticReport
     public IReadOnlyList<PidProbeResult> ExtendedPidResults { get; init; } = [];
 
     /// <summary>
+    /// Results of protocol probing (which OBD protocols respond)
+    /// </summary>
+    public IReadOnlyList<ProtocolProbeResult> ProtocolProbeResults { get; init; } = [];
+
+    /// <summary>
+    /// Results of EV-specific CAN address probes
+    /// </summary>
+    public IReadOnlyList<CanProbeResult> CanProbeResults { get; init; } = [];
+
+    /// <summary>
     /// Any errors encountered during collection
     /// </summary>
     public IReadOnlyList<DiagnosticError> Errors { get; init; } = [];
@@ -206,6 +216,98 @@ public record PidProbeResult
     public string? ParsedValue { get; init; }
     public string? Error { get; init; }
     public TimeSpan ResponseTime { get; init; }
+}
+
+/// <summary>
+/// Result of probing an OBD protocol
+/// </summary>
+public record ProtocolProbeResult
+{
+    /// <summary>
+    /// AT command used to set the protocol (e.g., ATSP6)
+    /// </summary>
+    public required string ProtocolCommand { get; init; }
+
+    /// <summary>
+    /// Protocol name (e.g., "ISO 15765-4 CAN (11-bit, 500kbaud)")
+    /// </summary>
+    public required string ProtocolName { get; init; }
+
+    /// <summary>
+    /// Brief description
+    /// </summary>
+    public required string Description { get; init; }
+
+    /// <summary>
+    /// Whether the protocol set command succeeded
+    /// </summary>
+    public bool SetSuccess { get; set; }
+
+    /// <summary>
+    /// Response to the set command
+    /// </summary>
+    public string? SetResponse { get; set; }
+
+    /// <summary>
+    /// Whether the protocol got actual data from the vehicle
+    /// </summary>
+    public bool GotResponse { get; set; }
+
+    /// <summary>
+    /// Response to the test query (0100)
+    /// </summary>
+    public string? TestResponse { get; set; }
+
+    /// <summary>
+    /// Time for the test response
+    /// </summary>
+    public TimeSpan ResponseTime { get; set; }
+
+    /// <summary>
+    /// Error message if probing failed
+    /// </summary>
+    public string? Error { get; set; }
+}
+
+/// <summary>
+/// Result of probing a CAN address for EV-specific data
+/// </summary>
+public record CanProbeResult
+{
+    /// <summary>
+    /// Command sent (e.g., ATSH79B or 2101)
+    /// </summary>
+    public required string Command { get; init; }
+
+    /// <summary>
+    /// Description of what we're probing
+    /// </summary>
+    public required string Description { get; init; }
+
+    /// <summary>
+    /// CAN header that was set when this command was sent
+    /// </summary>
+    public string? Header { get; set; }
+
+    /// <summary>
+    /// Whether the probe got a response
+    /// </summary>
+    public bool Success { get; set; }
+
+    /// <summary>
+    /// Raw response data
+    /// </summary>
+    public string? RawResponse { get; set; }
+
+    /// <summary>
+    /// Response time
+    /// </summary>
+    public TimeSpan ResponseTime { get; set; }
+
+    /// <summary>
+    /// Error message if probing failed
+    /// </summary>
+    public string? Error { get; set; }
 }
 
 /// <summary>

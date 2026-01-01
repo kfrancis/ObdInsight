@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace ObdInsight.Core.Adapters.Elm327;
@@ -21,9 +22,14 @@ public partial class Elm327Adapter : IObdAdapter
     private IObdTransport? _transport;
     private readonly TimeSpan _defaultTimeout = TimeSpan.FromSeconds(5);
     private readonly TimeSpan _initTimeout = TimeSpan.FromSeconds(10);
+    private readonly TimeSpan _protocolSearchTimeout = TimeSpan.FromSeconds(45);
+
+    private const int DefaultMaxAttempts = 3;
+    private readonly TimeSpan _retryBaseDelay = TimeSpan.FromMilliseconds(150);
 
     /// <summary>
     /// Known ELM327 error response patterns (case-insensitive).
+    /// Note: SEARCHING is handled specially and not treated as a final error.
     /// </summary>
     private static readonly string[] ErrorPatterns =
     [
@@ -39,7 +45,6 @@ public partial class Elm327Adapter : IObdAdapter
         "LP ALERT",
         "ACT ALERT",
         "STOPPED",
-        "SEARCHING",
         "ERR"
     ];
 
@@ -66,6 +71,19 @@ public partial class Elm327Adapter : IObdAdapter
     /// Event raised for raw communication logging
     /// </summary>
     public event EventHandler<Elm327LogEventArgs>? Log;
+
+    /// <summary>
+    /// Sets the transport without doing a full initialization sequence.
+    /// Use this when you've already done manual setup and just need the adapter
+    /// to be able to send commands through the transport.
+    /// </summary>
+    /// <param name="transport">The transport to use</param>
+    /// <param name="markAsInitialized">Whether to mark the adapter as initialized</param>
+    public void SetTransport(IObdTransport transport, bool markAsInitialized = true)
+    {
+        _transport = transport ?? throw new ArgumentNullException(nameof(transport));
+        IsInitialized = markAsInitialized;
+    }
 
     /// <inheritdoc />
     public async Task<bool> InitializeAsync(IObdTransport transport, CancellationToken cancellationToken = default)
@@ -112,9 +130,11 @@ public partial class Elm327Adapter : IObdAdapter
                 RaiseLog(Elm327LogLevel.Warning, $"Protocol set response: {protocolResponse}");
             }
 
-            // Try to connect to the vehicle ECU (longer timeout for protocol search)
-            var ecuTimeout = TimeSpan.FromSeconds(30);
-            var ecuResponse = await SendRawCommandAsync("0100", ecuTimeout, cancellationToken);
+            // Try to connect to the vehicle ECU
+            // Use extended timeout for protocol search - this can take 30-45 seconds
+            // The adapter sends "SEARCHING..." while trying different protocols
+            RaiseLog(Elm327LogLevel.Info, "Searching for vehicle ECU (this may take up to 45 seconds)...");
+            var ecuResponse = await SendProtocolSearchCommandAsync("0100", _protocolSearchTimeout, cancellationToken);
 
             if (ecuResponse.Contains("UNABLE TO CONNECT"))
             {
@@ -125,7 +145,7 @@ public partial class Elm327Adapter : IObdAdapter
             {
                 RaiseLog(Elm327LogLevel.Warning, $"ECU communication issue: {ecuResponse.Replace("\n", " ")}");
             }
-            else
+            else if (!string.IsNullOrWhiteSpace(ecuResponse))
             {
                 // Get the detected protocol
                 var dpResponse = await SendRawCommandAsync("ATDP", _defaultTimeout, cancellationToken);
@@ -259,37 +279,186 @@ public partial class Elm327Adapter : IObdAdapter
             "LP ALERT" => "Low power alert",
             "ACT ALERT" => "Activity alert - no bus activity",
             "STOPPED" => "Command stopped",
-            "SEARCHING" => "Still searching for protocol",
             "ERR" => "Adapter error",
             _ => $"Error: {pattern}"
         };
     }
 
     /// <summary>
-    /// Send a raw command and get the response
+    /// Send a command that may trigger protocol search (like 0100).
+    /// This handles the "SEARCHING..." intermediate response specially.
     /// </summary>
+    private async Task<string> SendProtocolSearchCommandAsync(string command, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        if (_transport == null)
+            throw new InvalidOperationException("Transport not set");
+
+        return await ExecuteWithRetriesAsync(
+            operationName: $"ProtocolSearch:{command}",
+            maxAttempts: DefaultMaxAttempts,
+            cancellationToken,
+            async () =>
+            {
+                var fullCommand = command.EndsWith('\r') ? command : command + "\r";
+
+                RaiseLog(Elm327LogLevel.Debug, $"TX: {command}");
+
+                await _transport.WriteAsync(fullCommand, cancellationToken);
+
+                // Read response, handling "SEARCHING..." specially
+                var response = new StringBuilder();
+                var startTime = DateTime.UtcNow;
+                var searchingReported = false;
+                var lastActivityTime = DateTime.UtcNow;
+
+                // Use longer individual read timeouts during protocol search
+                var readTimeout = TimeSpan.FromSeconds(10);
+
+                while (DateTime.UtcNow - startTime < timeout)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (!_transport.IsConnected)
+                    {
+                        throw new IOException("Transport disconnected");
+                    }
+
+                    try
+                    {
+                        var chunk = await _transport.ReadUntilAsync(">", readTimeout, cancellationToken);
+                        lastActivityTime = DateTime.UtcNow;
+                        response.Append(chunk);
+
+                        var currentResponse = response.ToString();
+
+                        if (currentResponse.Contains("SEARCHING", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!searchingReported)
+                            {
+                                RaiseLog(Elm327LogLevel.Info, "Protocol search in progress...");
+                                searchingReported = true;
+                            }
+
+                            if (currentResponse.TrimEnd().EndsWith('>'))
+                            {
+                                break;
+                            }
+
+                            continue;
+                        }
+
+                        break;
+                    }
+                    catch (TimeoutException)
+                    {
+                        if (searchingReported)
+                        {
+                            var elapsed = DateTime.UtcNow - startTime;
+                            RaiseLog(Elm327LogLevel.Debug, $"Still searching for protocol... ({elapsed.TotalSeconds:F0}s elapsed)");
+
+                            var silenceTime = DateTime.UtcNow - lastActivityTime;
+                            if (silenceTime > TimeSpan.FromSeconds(20))
+                            {
+                                throw new TimeoutException("No response for 20 seconds during protocol search");
+                            }
+
+                            continue;
+                        }
+
+                        if (response.Length > 0)
+                        {
+                            break;
+                        }
+
+                        throw;
+                    }
+                }
+
+                var finalResponse = CleanResponse(response.ToString(), command);
+                RaiseLog(Elm327LogLevel.Debug, $"RX: {finalResponse}");
+
+                return finalResponse;
+            }).ConfigureAwait(false);
+    }
+
     private async Task<string> SendRawCommandAsync(string command, TimeSpan timeout, CancellationToken cancellationToken)
     {
         if (_transport == null)
             throw new InvalidOperationException("Transport not set");
 
-        // ELM327 commands end with carriage return
-        var fullCommand = command.EndsWith('\r') ? command : command + "\r";
+        return await ExecuteWithRetriesAsync(
+            operationName: $"Command:{command}",
+            maxAttempts: DefaultMaxAttempts,
+            cancellationToken,
+            async () =>
+            {
+                if (!_transport.IsConnected)
+                {
+                    throw new IOException("Transport disconnected");
+                }
 
-        RaiseLog(Elm327LogLevel.Debug, $"TX: {command}");
+                var fullCommand = command.EndsWith('\r') ? command : command + "\r";
 
-        await _transport.WriteAsync(fullCommand, cancellationToken);
+                RaiseLog(Elm327LogLevel.Debug, $"TX: {command}");
 
-        // Read until we get the prompt character '>'
-        var response = await _transport.ReadUntilAsync(">", timeout, cancellationToken);
+                await _transport.WriteAsync(fullCommand, cancellationToken);
 
-        // Clean up the response
-        response = CleanResponse(response, command);
+                var response = await _transport.ReadUntilAsync(">", timeout, cancellationToken);
+                response = CleanResponse(response, command);
 
-        RaiseLog(Elm327LogLevel.Debug, $"RX: {response}");
+                RaiseLog(Elm327LogLevel.Debug, $"RX: {response}");
 
-        return response;
+                // Some adapters occasionally return just a prompt; treat that as transient.
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    throw new TimeoutException("Empty response");
+                }
+
+                return response;
+            }).ConfigureAwait(false);
     }
+
+    private async Task<T> ExecuteWithRetriesAsync<T>(
+        string operationName,
+        int maxAttempts,
+        CancellationToken cancellationToken,
+        Func<Task<T>> operation)
+    {
+        Exception? last = null;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                return await operation().ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (IsTransient(ex) && attempt < maxAttempts)
+            {
+                last = ex;
+                var delay = TimeSpan.FromMilliseconds(_retryBaseDelay.TotalMilliseconds * attempt * attempt);
+                RaiseLog(Elm327LogLevel.Warning, $"{operationName} transient failure (attempt {attempt}/{maxAttempts}): {ex.Message}. Retrying in {delay.TotalMilliseconds:F0}ms");
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+                break;
+            }
+        }
+
+        throw last ?? new InvalidOperationException($"{operationName} failed");
+    }
+
+    private static bool IsTransient(Exception ex) =>
+        ex is TimeoutException ||
+        ex is IOException ||
+        ex is InvalidOperationException;
 
     /// <summary>
     /// Clean up ELM327 response by removing echo, prompt, and extra whitespace

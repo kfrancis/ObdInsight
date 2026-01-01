@@ -29,13 +29,15 @@ public record BleDeviceInfo(
 /// <param name="NotifyCharacteristicUuid">UUID of the characteristic to receive responses from</param>
 /// <param name="WriteWithResponse">Whether to use write-with-response (slower but more reliable)</param>
 /// <param name="MaxWriteSize">Maximum bytes per write (BLE MTU consideration)</param>
+/// <param name="NotificationsRequired">If true, connection fails when CCCD notification subscription fails</param>
 public record BleDeviceProfile(
     string Name,
     Guid ServiceUuid,
     Guid WriteCharacteristicUuid,
     Guid NotifyCharacteristicUuid,
     bool WriteWithResponse = false,
-    int MaxWriteSize = 20
+    int MaxWriteSize = 20,
+    bool NotificationsRequired = true
 )
 {
     /// <summary>
@@ -47,8 +49,9 @@ public record BleDeviceProfile(
         ServiceUuid: Guid.Parse("0000FFF0-0000-1000-8000-00805F9B34FB"),
         WriteCharacteristicUuid: Guid.Parse("0000FFF2-0000-1000-8000-00805F9B34FB"),
         NotifyCharacteristicUuid: Guid.Parse("0000FFF1-0000-1000-8000-00805F9B34FB"),
-        WriteWithResponse: false,
-        MaxWriteSize: 20
+        WriteWithResponse: true,  // More reliable for ELM327 clones
+        MaxWriteSize: 20,
+        NotificationsRequired: true  // OBD adapters need notifications for RX
     );
 
     /// <summary>
@@ -61,7 +64,8 @@ public record BleDeviceProfile(
         WriteCharacteristicUuid: Guid.Parse("0000FFE1-0000-1000-8000-00805F9B34FB"),
         NotifyCharacteristicUuid: Guid.Parse("0000FFE1-0000-1000-8000-00805F9B34FB"),
         WriteWithResponse: false,
-        MaxWriteSize: 20
+        MaxWriteSize: 20,
+        NotificationsRequired: true
     );
 
     /// <summary>
@@ -73,7 +77,8 @@ public record BleDeviceProfile(
         WriteCharacteristicUuid: Guid.Parse("6E400002-B5A3-F393-E0A9-E50E24DCCA9E"),
         NotifyCharacteristicUuid: Guid.Parse("6E400003-B5A3-F393-E0A9-E50E24DCCA9E"),
         WriteWithResponse: false,
-        MaxWriteSize: 20
+        MaxWriteSize: 20,
+        NotificationsRequired: true
     );
 
     /// <summary>
@@ -84,8 +89,9 @@ public record BleDeviceProfile(
         ServiceUuid: Guid.Parse("0000FFF0-0000-1000-8000-00805F9B34FB"),
         WriteCharacteristicUuid: Guid.Parse("0000FFF2-0000-1000-8000-00805F9B34FB"),
         NotifyCharacteristicUuid: Guid.Parse("0000FFF1-0000-1000-8000-00805F9B34FB"),
-        WriteWithResponse: true, // OBDLink prefers write-with-response
-        MaxWriteSize: 20
+        WriteWithResponse: true,  // OBDLink prefers write-with-response
+        MaxWriteSize: 20,
+        NotificationsRequired: true
     );
 
     /// <summary>

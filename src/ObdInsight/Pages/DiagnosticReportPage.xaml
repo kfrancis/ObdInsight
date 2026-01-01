@@ -32,7 +32,7 @@
                 Padding="15"
                 IsVisible="{Binding IsCollecting, Converter={StaticResource InvertedBoolConverter}}">
                 <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
-                    <Label Text="Selected Device" Style="{StaticResource SectionLabel}" />
+                    <Label Text="Connected Device" Style="{StaticResource SectionLabel}" />
                     <Button
                         Grid.Column="1"
                         Text="Select"
@@ -43,13 +43,13 @@
                     <Label
                         Grid.Row="1"
                         Grid.ColumnSpan="2"
-                        Text="{Binding SelectedDeviceName, TargetNullValue='No device selected'}"
+                        Text="{Binding ConnectedDeviceName, TargetNullValue='No device connected'}"
                         FontAttributes="Bold"
                         FontSize="16" />
                     <Label
                         Grid.Row="2"
                         Grid.ColumnSpan="2"
-                        Text="{Binding SelectedDeviceAddress}"
+                        Text="{Binding ConnectedDeviceAddress}"
                         Style="{StaticResource FieldLabel}" />
                 </Grid>
             </Border>
@@ -238,14 +238,6 @@
                             <Picker
                                 ItemsSource="{Binding TransmissionTypes}"
                                 SelectedItem="{Binding TransmissionType}" />
-                        </VerticalStackLayout>
-
-                        <VerticalStackLayout>
-                            <Label Text="BLE Profile" Style="{StaticResource FieldLabel}" />
-                            <Picker
-                                ItemsSource="{Binding AvailableProfiles}"
-                                SelectedItem="{Binding SelectedProfile}"
-                                ItemDisplayBinding="{Binding Name}" />
                         </VerticalStackLayout>
 
                         <VerticalStackLayout>

@@ -22,6 +22,7 @@ namespace ObdInsight
             // Register services
             builder.Services.AddSingleton<INavigationService, ShellNavigationService>();
             builder.Services.AddSingleton<IBleTransportFactory, PluginBleTransportFactory>();
+            builder.Services.AddSingleton<IConnectedDeviceService, ConnectedDeviceService>();
 
             // Register ViewModels
             builder.Services.AddSingleton<MainViewModel>();
