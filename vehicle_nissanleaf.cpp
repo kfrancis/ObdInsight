@@ -2502,7 +2502,7 @@ OvmsVehicle::vehicle_command_t OvmsVehicleNissanLeaf::CommandWakeup()
   /*
   unsigned char data = 0;
   m_can1->WriteStandard(0x679, 1, &data); //Wakes up the modules by spoofing VCM startup message
-  m_can1->WriteStandard(0x679, 1, &data); //Tops up the 12V battery if connected to EVSE
+  m_can1->WriteStandard(0x679, https://github.com/DarthAffe/OBD.NET/tree/master/OBD.NET1, &data); //Tops up the 12V battery if connected to EVSE
   m_can1->WriteStandard(0x5C0, 8, &data); //Wakes up the VCM (by spoofing empty battery request heating)
   */
   uint8_t d8[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};

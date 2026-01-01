@@ -1,4 +1,5 @@
 using ObdInsight.Core.Transports.Ble;
+using ObdInsight.DevTools.Commands;
 using Spectre.Console;
 
 namespace ObdInsight.DevTools;
@@ -9,11 +10,16 @@ namespace ObdInsight.DevTools;
 public static class BinaryProtocolTest
 {
     /// <summary>
-    /// Run the binary protocol test against a device.
+    /// Run the binary protocol test using the current session.
     /// </summary>
-    /// <param name="deviceAddress">MAC address of the BLE device</param>
-    public static async Task RunAsync(string deviceAddress)
+    public static async Task RunAsync(DevToolsSession session)
     {
+        if (string.IsNullOrEmpty(session.DeviceAddress))
+        {
+            AnsiConsole.MarkupLine("[red]No device selected. Please scan or set a device first.[/]");
+            return;
+        }
+
         AnsiConsole.WriteLine();
         AnsiConsole.Write(new Rule("[cyan]Binary Protocol Explorer[/]").RuleStyle("grey"));
         AnsiConsole.WriteLine();
@@ -22,7 +28,7 @@ public static class BinaryProtocolTest
             """
             [yellow]Binary Protocol Mode[/]
             
-            This mode connects using the Veepeak binary service (6287)
+            This mode connects using the binary service (6287)
             instead of the ASCII ELM327 service (FFF0).
             
             Binary protocols typically provide:
@@ -44,23 +50,8 @@ public static class BinaryProtocolTest
         AnsiConsole.MarkupLine($"[grey]Notify:[/] {profile.NotifyCharacteristicUuid}");
         AnsiConsole.WriteLine();
 
-        await using var transport = new WindowsBinaryBleTransport(profile);
-
-        // Subscribe to data events for real-time display
-        transport.DataReceived += (_, data) =>
-        {
-            // Already logged by transport, but we could add extra handling here
-        };
-
-        AnsiConsole.MarkupLine($"[cyan]Connecting to {deviceAddress}...[/]");
-
-        var connected = await AnsiConsole.Status()
-            .StartAsync("Connecting...", async ctx =>
-            {
-                return await transport.ConnectAsync(deviceAddress);
-            });
-
-        if (!connected)
+        // Use session's binary connection
+        if (!await session.ConnectBinaryAsync())
         {
             AnsiConsole.MarkupLine("[red]Failed to connect to binary service![/]");
             AnsiConsole.MarkupLine("[yellow]This could mean:[/]");
@@ -74,7 +65,13 @@ public static class BinaryProtocolTest
         AnsiConsole.WriteLine();
 
         // Run the interactive test loop
-        await RunInteractiveLoopAsync(transport);
+        await RunInteractiveLoopAsync(session.BinaryTransport!);
+        
+        // Disconnect binary transport when done
+        if (session.BinaryTransport != null)
+        {
+            await session.BinaryTransport.DisconnectAsync();
+        }
     }
 
     private static async Task RunInteractiveLoopAsync(WindowsBinaryBleTransport transport)
@@ -118,7 +115,6 @@ public static class BinaryProtocolTest
                         break;
 
                     case "Exit binary test":
-                        await transport.DisconnectAsync();
                         return;
                 }
             }

@@ -2,7 +2,11 @@
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
     <File Path=".gitignore" />
+    <File Path="EV-CAN_signal_glossary.csv" />
+    <File Path="EV-CAN_signal_glossary.json" />
+    <File Path="EV-CAN_signal_glossary.md" />
     <File Path="global.json" />
+    <File Path="Leaf_Battery_SoC_SoH_notes.md" />
     <File Path="notes.md" />
     <File Path="README.md" />
     <File Path="vehicle_nissanleaf.cpp" />

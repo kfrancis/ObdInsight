@@ -672,9 +672,9 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
 
     private static void Log(string message)
     {
-        System.Diagnostics.Debug.WriteLine($"[WindowsBleTransport] {message}");
-        // Also log to console for DevTools visibility
-        Console.WriteLine($"[BLE] {message}");
+        System.Diagnostics.Debug.WriteLine($"[BLE] {message}");
+        // Don't log to Console - it interferes with Spectre.Console's cursor positioning
+        // The session handles logging via DataSent/DataReceived events
     }
 
     private static ulong ParseMacAddress(string mac)

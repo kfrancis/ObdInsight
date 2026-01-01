@@ -1,0 +1,3616 @@
+[
+  {
+    "can_id_hex": "0x11A",
+    "can_id_dec": 282,
+    "name": "x11A",
+    "dlc": 8,
+    "transmitter": "VCM",
+    "cycle_time_ms": null,
+    "comment": null,
+    "signals": [
+      {
+        "name": "JoystickGearPosition",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 4,
+        "bit_length": 4,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "-",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "(MSBits selected gear: 4 for D/B, 3 for N, 2 for R,0 for Parked)",
+        "values": {
+          "2": "Reverse",
+          "3": "Neutral",
+          "4": "Drive/B",
+          "0": "Parked"
+        }
+      },
+      {
+        "name": "CarOnOffStatus",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 15,
+        "bit_length": 2,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "-",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {
+          "4": "CarOff",
+          "8": "CarOn"
+        }
+      },
+      {
+        "name": "Mulitplexor",
+        "is_multiplexer": true,
+        "mux_val": null,
+        "start_bit": 48,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "0, 1, 2, 3",
+        "values": {}
+      },
+      {
+        "name": "Unknown_11A_2_5",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 21,
+        "bit_length": 3,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "00,04,80 observed here",
+        "values": {}
+      },
+      {
+        "name": "HeartbeatVCM",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 24,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 85.0,
+        "max": 170.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "ECOselected",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 12,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "If set, ECO mode is active and regen is increased",
+        "values": {}
+      },
+      {
+        "name": "ELECTRIC_SHIFT_SYSTEM",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 9,
+        "bit_length": 2,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {
+          "1": "SBW_Trq_Down_Req",
+          "3": "ELECTRIC_SHIFT_SYSTEM",
+          "0": "NO_ERROR"
+        }
+      },
+      {
+        "name": "Unknown_11A_2_2",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 18,
+        "bit_length": 1,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "Unknown_11A_2_6",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 22,
+        "bit_length": 1,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "Unknown_11A_2_7",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 23,
+        "bit_length": 1,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "Unknown_11A_1_2",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 10,
+        "bit_length": 1,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "Unknown_11A_1_3",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 11,
+        "bit_length": 1,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x1D4",
+    "can_id_dec": 468,
+    "name": "x1D4",
+    "dlc": 8,
+    "transmitter": "VCM",
+    "cycle_time_ms": 10,
+    "comment": "Vehicle Control Module (10ms)",
+    "signals": [
+      {
+        "name": "TargetMotorTorque",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 23,
+        "bit_length": 12,
+        "byte_order": "big",
+        "signed": true,
+        "factor": 0.25,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1024.0,
+        "unit": "Nm",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Requested Torque sent to inverter",
+        "values": {}
+      },
+      {
+        "name": "HCM_CLOCK",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 38,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 3.0,
+        "unit": "-",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "PRUN Detection of frozen data. Message-PRUN-Diag. The transmitting node adds a message counter of 2bits or more to the end of the last data area (or just before the checksum). The value of the counter, which is initially 0, increments by one everytime new data is transmitted, and returned to zero when reaching the max value. The receiving node lets the first message pass without check, but for second next message and following, it check whether the counter number is different from the previous message.",
+        "values": {}
+      },
+      {
+        "name": "StatusOfHighVoltagePowerSupply",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 34,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "-",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "BTONFN",
+        "values": {
+          "0": "High Voltage not supplied",
+          "1": "High Voltage supplied"
+        }
+      },
+      {
+        "name": "Relay_Plus_Output_Status",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 46,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "-",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "RLYP",
+        "values": {
+          "0": "Main Relay Plus not output",
+          "1": "Main Relay Plus ON"
+        }
+      },
+      {
+        "name": "CRC_1D4",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 56,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 255.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "ChargeStatus",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 52,
+        "bit_length": 5,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 255.0,
+        "unit": "MODEMASK",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "During charging, the first 3 MSBs are high, and if user aborts charge, the highest MSB will go low. Useful for detecting that charge was interrupted by user unplugging the charge cable.",
+        "values": {
+          "140": "Charging interrupted",
+          "224": "Charging"
+        }
+      },
+      {
+        "name": "Motor_vibratin_const_stat",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 45,
+        "bit_length": 2,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "Inhibitor_Pos",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 42,
+        "bit_length": 2,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {
+          "0": "NA",
+          "1": "R",
+          "2": "D",
+          "3": "P"
+        }
+      },
+      {
+        "name": "Gear_shift_ingibitor_req",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 55,
+        "bit_length": 2,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "MotorTqLimitUpper",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 7,
+        "bit_length": 8,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 2.5,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "Nm",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "MotorTqLimitLower",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 15,
+        "bit_length": 8,
+        "byte_order": "big",
+        "signed": false,
+        "factor": -2.5,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "Nm",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "BrakePedalPressed",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 53,
+        "bit_length": 1,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x1DA",
+    "can_id_dec": 474,
+    "name": "x1DA",
+    "dlc": 8,
+    "transmitter": "INVmc",
+    "cycle_time_ms": 10,
+    "comment": "Inverter (10ms)",
+    "signals": [
+      {
+        "name": "MG_InputVoltage",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 0,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 2.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 508.0,
+        "unit": "V",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "MG_EffectiveTorque",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 18,
+        "bit_length": 11,
+        "byte_order": "big",
+        "signed": true,
+        "factor": 0.5,
+        "offset": 0.0,
+        "min": -274.0,
+        "max": 274.0,
+        "unit": "Nm",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "STMG -  Response from Inverter how much torque was applied (Demand is in 0x1D4) Note that value is 2S!",
+        "values": {}
+      },
+      {
+        "name": "MG_OutputRevolution",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 39,
+        "bit_length": 15,
+        "byte_order": "big",
+        "signed": true,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": -16382.0,
+        "max": 16382.0,
+        "unit": "rpm",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "MG_CLOCK",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 48,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 3.0,
+        "unit": "PRUN",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Detection of frozen data. Message-PRUN-Diag. The transmitting node adds a message counter of 2bits or more to the end of the last data area (or just before the checksum). The value of the counter, which is initially 0, increments by one everytime new data is transmitted, and returned to zero when reaching the max value. The receiving node lets the first message pass without check, but for second next message and following, it check whether the counter number is different from the previous message.",
+        "values": {}
+      },
+      {
+        "name": "CRC_1DA",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 56,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "CRC",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "CRC",
+        "values": {}
+      },
+      {
+        "name": "MG_ErrorCodes",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 50,
+        "bit_length": 6,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "status",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x1DB",
+    "can_id_dec": 475,
+    "name": "x1DB",
+    "dlc": 8,
+    "transmitter": "HVBAT",
+    "cycle_time_ms": 10,
+    "comment": "Lithium Battery Controller (10ms)",
+    "signals": [
+      {
+        "name": "LB_Current",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 7,
+        "bit_length": 11,
+        "byte_order": "big",
+        "signed": true,
+        "factor": 0.5,
+        "offset": 0.0,
+        "min": -400.0,
+        "max": 200.0,
+        "unit": "A",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "BatteryCurrentSignal , 2s comp, 1lSB = 0.5A",
+        "values": {}
+      },
+      {
+        "name": "LB_Relay_Cut_Request",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 11,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "MODEMASK",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "00 = No-Request 01 = Main Relay OFF Request 10 = Main Relay OFF Request 11 = Main Relay OFF Request",
+        "values": {
+          "0": "No-Request",
+          "1": "Main Relay OFF Request",
+          "2": "Main Relay OFF Request",
+          "3": "Main Relay OFF Request"
+        }
+      },
+      {
+        "name": "LB_Failsafe_Status",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 8,
+        "bit_length": 3,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "MODEMASK",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {
+          "0": "Normal Start Request",
+          "1": "Normal Stop Request",
+          "2": "Charging Mode Stop Request",
+          "3": "Charging Mode Stop Request & Normal Stop Request",
+          "4": "Caution Lamp Request",
+          "5": "Caution Lamp Request & Normal Stop Request",
+          "6": "Caution Lamp Request & Charging Mode Stop Request",
+          "7": "Caution Lamp Request & Charging Mode Stop Request & Normal Stop Request"
+        }
+      },
+      {
+        "name": "LB_Total_Voltage",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 23,
+        "bit_length": 10,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 0.5,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 450.0,
+        "unit": "V",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "LB_MainRelayOn_flag",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 29,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "MODEMASK",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "0h = No-Permission 1h = Main Relay On Permission",
+        "values": {
+          "0": "No-Permission",
+          "1": "Main Relay On Permission"
+        }
+      },
+      {
+        "name": "LB_Full_CHARGE_flag",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 28,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "",
+        "values": {}
+      },
+      {
+        "name": "LB_INTER_LOCK",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 27,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "MODEMASK",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "0h = Not Inter Lock connected 1h = Inter Lock connected",
+        "values": {
+          "0": "Not Inter Lock connected",
+          "1": "Inter Lock connected"
+        }
+      },
+      {
+        "name": "LB_Discharge_Power_Status",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 25,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "MODEMASK",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "00b = Reserved 01b = Normal limit POUT 10b = High rate limit POUT 11b = Immediate limit POUT",
+        "values": {
+          "0": "Reserved",
+          "1": "Normal limit POUT",
+          "2": "High rate limit POUT",
+          "3": " Immediate limit POUT"
+        }
+      },
+      {
+        "name": "LB_Voltage_Latch_Flag",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 24,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "MODEMASK",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "LB_Usable_SOC",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 32,
+        "bit_length": 7,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Contains SOC for dash. LB_USABLE_SOC is a 1% resolution 'proper' SOC calculated by the LBC and used by ABB chargers and the SOC display in the dash menu as well as the 3-light charging indicator on top of the dash [Needs to be copied to this location when doing 40/62kWh swaps into AZE0]",
+        "values": {}
+      },
+      {
+        "name": "LB_PRUN_1DB",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 48,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "MPR1DB Detection of frozen data. Message-PRUN-Diag. The transmitting node adds a message counter of 2bits or more to the end of the last data area (or just before the checksum). The value of the counter, which is initially 0, increments by one everytime new data is transmitted, and returned to zero when reaching the max value. The receiving node lets the first message pass without check, but for second next message and following, it check whether the counter number is different from the previous message.",
+        "values": {}
+      },
+      {
+        "name": "CRC_1DB",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 56,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "CRC",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "CRC",
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x1DC",
+    "can_id_dec": 476,
+    "name": "x1DC",
+    "dlc": 8,
+    "transmitter": "HVBAT",
+    "cycle_time_ms": 10,
+    "comment": "Lithium Battery Controller (10ms)",
+    "signals": [
+      {
+        "name": "LB_Discharge_Power_Limit",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 7,
+        "bit_length": 10,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 0.25,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 254.0,
+        "unit": "kW",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Max available power that can be pulled from battery",
+        "values": {}
+      },
+      {
+        "name": "LB_Charge_Power_Limit",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 13,
+        "bit_length": 10,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 0.25,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 254.0,
+        "unit": "kW",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Max power that battery can be charged with",
+        "values": {}
+      },
+      {
+        "name": "LB_MAX_POWER_FOR_CHARGER",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 19,
+        "bit_length": 10,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 0.1,
+        "offset": -10.0,
+        "min": -10.0,
+        "max": 90.0,
+        "unit": "kW",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "LB_BPCMAX",
+        "values": {}
+      },
+      {
+        "name": "LB_Charge_Power_Status",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 24,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "MODEMASK",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "00b = Reserved 01b = Normal limit PIN 10b = High rate limit PIN 11b = Immediate limit PIN",
+        "values": {
+          "0": "Reserved",
+          "1": "Normal limit PIN",
+          "2": "High rate limit PIN",
+          "3": "Immediate limit PIN"
+        }
+      },
+      {
+        "name": "LB_BPCMAX_UPRATE",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 37,
+        "bit_length": 3,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "MODEMASK",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "BPC MAX Uprate Level 1-8. Dala: (CAN-bridge testing) This value specifies how quickly the VCM follows the requested power in \\\"LB_MAX_POWER_FOR_CHARGER\\\".ZE0 Example, if Level 1 is selected and battery requests 45kW of quickcharging power, it will take 8minutes for power to ramp up from 0kW->45kW. If Level 8 is selected, it will take not ramp at all, and just intantaneously follow the requested power. If low level is forced, some quickcharging stations will fail to charge the vehicle, with an error message stating that too low current was demanded. Special notes for AZE0, the newer AZE0 VCM will ramp more aggressively at level 1 compared to ZE0, and no issues with fastcharging even though slow ramp rate is selected.",
+        "values": {
+          "0": "BPC MAX Uprate Level 1",
+          "1": "BPC MAX Uprate Level 2",
+          "2": "BPC MAX Uprate Level 3",
+          "3": "BPC MAX Uprate Level 4",
+          "4": "BPC MAX Uprate Level 5",
+          "5": "BPC MAX Uprate Level 6",
+          "6": "BPC MAX Uprate Level 7",
+          "7": "BPC MAX Uprate Level 8"
+        }
+      },
+      {
+        "name": "LB_CODE_CONDITION",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 34,
+        "bit_length": 3,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "",
+        "values": {}
+      },
+      {
+        "name": "LB_CODE1",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 33,
+        "bit_length": 8,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "",
+        "values": {}
+      },
+      {
+        "name": "LB_CODE2",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 41,
+        "bit_length": 8,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "",
+        "values": {}
+      },
+      {
+        "name": "LB_PRUN_1DC",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 48,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 3.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Detection of frozen data. Message-PRUN-Diag. The transmitting node adds a message counter of 2bits or more to the end of the last data area (or just before the checksum). The value of the counter, which is initially 0, increments by one everytime new data is transmitted, and returned to zero when reaching the max value. The receiving node lets the first message pass without check, but for second next message and following, it check whether the counter number is different from the previous message.",
+        "values": {}
+      },
+      {
+        "name": "CRC_1DC",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 56,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "CRC",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "CRC",
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x1F2",
+    "can_id_dec": 498,
+    "name": "x1F2",
+    "dlc": 8,
+    "transmitter": "VCM",
+    "cycle_time_ms": 10,
+    "comment": "Vehicle Control Module (10ms)",
+    "signals": [
+      {
+        "name": "HvBatChargeablePower",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 1,
+        "bit_length": 10,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 0.1,
+        "offset": -10.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "",
+        "values": {}
+      },
+      {
+        "name": "TargetCharge_SOC",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 7,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "modemask",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "TCSOC",
+        "values": {
+          "0": "100%",
+          "1": "Deteroiration Restraint 80%"
+        }
+      },
+      {
+        "name": "Charge_StatusTransitionReqest",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 21,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 3.0,
+        "unit": "modemask",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "CHG_STA_RQ",
+        "values": {
+          "0": "other",
+          "1": "Normal Charge",
+          "2": "Quick Charge",
+          "3": "Stop Request"
+        }
+      },
+      {
+        "name": "Keep_SOC_Request",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 20,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "modemask",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "KEEP_SOC_REQ When the temperature in the battery pack is low outside the timer charge set time, VCM transmists a keep SOC request signal to LBC via CAN. In this case, the battery is not charged, and only battery heater is activated.",
+        "values": {
+          "0": "Normal charge mode (Initial Value)",
+          "1": "Keep SOC charge mode"
+        }
+      },
+      {
+        "name": "PCS_Connector_Detection",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 17,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "modemask",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "PSCONDET",
+        "values": {
+          "0": "other",
+          "1": "Vehicle-to-Home mode"
+        }
+      },
+      {
+        "name": "MPRUN",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 48,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Detection of frozen data. Message-PRUN-Diag. The transmitting node adds a message counter of 2bits or more to the end of the last data area (or just before the checksum). The value of the counter, which is initially 0, increments by one everytime new data is transmitted, and returned to zero when reaching the max value. The receiving node lets the first message pass without check, but for second next message and following, it check whether the counter number is different from the previous message.",
+        "values": {}
+      },
+      {
+        "name": "Unknown_498",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 63,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "unknown - may indicate charging",
+        "values": {}
+      },
+      {
+        "name": "CSUM_498",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 56,
+        "bit_length": 4,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Checksum. All message nibbles summed together, plus 2. End result in hex is anded with 0xF.",
+        "values": {}
+      },
+      {
+        "name": "VcmMode",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 47,
+        "bit_length": 8,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Unknown values. Consult provides raw data 0-255",
+        "values": {}
+      },
+      {
+        "name": "DcDcConverterReqVoltage",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 31,
+        "bit_length": 6,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 0.1,
+        "offset": -10.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "V",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x284",
+    "can_id_dec": 644,
+    "name": "x284",
+    "dlc": 8,
+    "transmitter": "VCM",
+    "cycle_time_ms": 20,
+    "comment": "ABS module relayed via VCM to EV-CAN (20ms)",
+    "signals": [
+      {
+        "name": "LeftWheelSpeedSensor",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 7,
+        "bit_length": 16,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 65535.0,
+        "unit": "pulses",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "2's comp",
+        "values": {}
+      },
+      {
+        "name": "RightWheelSpeedSensor",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 23,
+        "bit_length": 16,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 65535.0,
+        "unit": "pulses",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "2's comp",
+        "values": {}
+      },
+      {
+        "name": "AverageRearSpeedSensor",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 39,
+        "bit_length": 16,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 65535.0,
+        "unit": "pulses",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "??? speed sensor.  Maybe average of both rear? Or VehicleSpeedFromABS?",
+        "values": {}
+      },
+      {
+        "name": "DistanceTraveled1",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 48,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 255.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "00..ff (wraps ~360 times in a 25 mile drive)",
+        "values": {}
+      },
+      {
+        "name": "DistanceTraveled2",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 56,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 255.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "00..ff (wraps ~360 times in a 25 mile drive)",
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x390",
+    "can_id_dec": 912,
+    "name": "x390",
+    "dlc": 8,
+    "transmitter": "OBCpd",
+    "cycle_time_ms": 100,
+    "comment": "On Board Charger (100ms)",
+    "signals": [
+      {
+        "name": "OBC_Status_AC_Voltage",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 27,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 3.0,
+        "unit": "status",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "ACVOLST - Type of AC voltage",
+        "values": {
+          "0": "No Signal",
+          "1": "100V",
+          "2": "200V",
+          "3": "Abnormal Wave"
+        }
+      },
+      {
+        "name": "OBC_Flag_QC_Relay_On_Announcemen",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 38,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1.0,
+        "unit": "status",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "FQCRELAYST - QC Relay announcement",
+        "values": {
+          "1": "Announce OFF",
+          "2": "Announce ON"
+        }
+      },
+      {
+        "name": "OBC_Flag_QC_IR_Sensor",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 47,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1.0,
+        "unit": "status",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "FQCIRSENS - QC IR Sensor",
+        "values": {
+          "0": "Without",
+          "1": "With"
+        }
+      },
+      {
+        "name": "OBC_Maximum_Charge_Power_Out",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 40,
+        "bit_length": 9,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 0.1,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 50.0,
+        "unit": "kW",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "MAXCHGPOUT - Maximum power supplied by charger in kW",
+        "values": {}
+      },
+      {
+        "name": "PRUN_390",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 60,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 3.0,
+        "unit": "PRUN",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Detection of frozen data. Message-PRUN-Diag. The transmitting node adds a message counter of 2bits or more to the end of the last data area (or just before the checksum). The value of the counter, which is initially 0, increments by one everytime new data is transmitted, and returned to zero when reaching the max value. The receiving node lets the first message pass without check, but for second next message and following, it check whether the counter number is different from the previous message.",
+        "values": {}
+      },
+      {
+        "name": "OBC_Charge_Status",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 46,
+        "bit_length": 6,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "status",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "From OVMS code",
+        "values": {
+          "1": "Idle OR QC",
+          "2": "Finished",
+          "4": "Charging OR interrupted",
+          "8": "Idle",
+          "9": "Idle",
+          "12": "Plugged in waiting on timer"
+        }
+      },
+      {
+        "name": "CSUM_390",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 56,
+        "bit_length": 4,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 16.0,
+        "unit": "CSUM",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Sum of all nibbles (-4)",
+        "values": {}
+      },
+      {
+        "name": "OBC_Charge_Power",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 0,
+        "bit_length": 9,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 0.1,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 50.0,
+        "unit": "kW",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Actual charger output - From OVMS code",
+        "values": {}
+      },
+      {
+        "name": "OBC_SleepEnabled",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 3,
+        "bit_length": 2,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "OBC_DcdcConvStatus",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 26,
+        "bit_length": 2,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x393",
+    "can_id_dec": 915,
+    "name": "x393",
+    "dlc": 8,
+    "transmitter": "OBCpd",
+    "cycle_time_ms": 100,
+    "comment": "On Board Charger (100ms)",
+    "signals": [
+      {
+        "name": "PRUN_393",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 60,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 3.0,
+        "unit": "PRUN",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Detection of frozen data. Message-PRUN-Diag. The transmitting node adds a message counter of 2bits or more to the end of the last data area (or just before the checksum). The value of the counter, which is initially 0, increments by one everytime new data is transmitted, and returned to zero when reaching the max value. The receiving node lets the first message pass without check, but for second next message and following, it check whether the counter number is different from the previous message.",
+        "values": {}
+      },
+      {
+        "name": "Unknown_393_1",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 8,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Dala: 20 while idle, 53 while slowcharging",
+        "values": {}
+      },
+      {
+        "name": "Unknown_393_4",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 32,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Dala: Always 20 in logs",
+        "values": {}
+      },
+      {
+        "name": "CSUM_393",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 56,
+        "bit_length": 4,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "CSUM",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Deviates from other CSUM: (All nibbles summed together)-1=CSUM",
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x45E",
+    "can_id_dec": 1118,
+    "name": "x45E",
+    "dlc": 1,
+    "transmitter": "Vector__XXX",
+    "cycle_time_ms": null,
+    "comment": "??? Unknown sender module(Also empty)",
+    "signals": []
+  },
+  {
+    "can_id_hex": "0x481",
+    "can_id_dec": 1153,
+    "name": "x481",
+    "dlc": 2,
+    "transmitter": "Vector__XXX",
+    "cycle_time_ms": 500,
+    "comment": "??? Unknown sender module (500ms)",
+    "signals": [
+      {
+        "name": "Unknown_481_1",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 0,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Dala: Static 0x40, 0x4b while charging",
+        "values": {}
+      },
+      {
+        "name": "Unknown_481_2",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 8,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Dala: Static 0x00",
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x50A",
+    "can_id_dec": 1290,
+    "name": "x50A",
+    "dlc": 8,
+    "transmitter": "VCM",
+    "cycle_time_ms": null,
+    "comment": null,
+    "signals": [
+      {
+        "name": "Unknown_50A_0",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 0,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "04,84,85",
+        "values": {}
+      },
+      {
+        "name": "Unknown_50A_1",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 8,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "02,13,33,40,42,53,72,73",
+        "values": {}
+      },
+      {
+        "name": "Unknown_50A_2",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 16,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "00,a0",
+        "values": {}
+      },
+      {
+        "name": "ACCompressorPressure",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 24,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "ACStatusBits_RestUnknown",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 32,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "00,80  BIT1 = Rear defrost on/off",
+        "values": {}
+      },
+      {
+        "name": "Unknown_50A_5",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 40,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "a0",
+        "values": {}
+      },
+      {
+        "name": "Unknown_50A_6",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 48,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "04 , Only present in 2013+ (otherwise frame stops at 6bytes)",
+        "values": {}
+      },
+      {
+        "name": "Unknown_50A_7",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 56,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "00 , Only present in 2013+ (otherwise frame stops at 6bytes)",
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x50B",
+    "can_id_dec": 1291,
+    "name": "x50B",
+    "dlc": 7,
+    "transmitter": "VCM",
+    "cycle_time_ms": 100,
+    "comment": "Vehicle Control Module (100ms)",
+    "signals": [
+      {
+        "name": "DiagMuxOn_VCM",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 18,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "CANMASK",
+        "values": {
+          "0": "Storage of CAN mute/absent failures not authorized",
+          "1": "Storage of CAN mute/absent failures"
+        }
+      },
+      {
+        "name": "HCM_WakeUpSleepCmd",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 30,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "FirstFrameValueIfAlgorithmNotReady = 3",
+        "values": {
+          "0": "GoToSleep",
+          "1": "reserved",
+          "2": "reserved",
+          "3": "WakeUp"
+        }
+      },
+      {
+        "name": "Batt_Heater_Mail_Send_OK",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 53,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "",
+        "values": {
+          "0": "Mail send NG",
+          "1": "Mail send OK"
+        }
+      },
+      {
+        "name": "VcmActivation",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 17,
+        "bit_length": 2,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {
+          "0": "NON",
+          "2": "READY"
+        }
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x50C",
+    "can_id_dec": 1292,
+    "name": "x50C",
+    "dlc": 6,
+    "transmitter": "VCM",
+    "cycle_time_ms": 100,
+    "comment": "Vehicle Control Module (100ms)",
+    "signals": [
+      {
+        "name": "HCM_CLOCK_50C",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 24,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "PRUN Detection of frozen data. Message-PRUN-Diag. The transmitting node adds a message counter of 2bits or more to the end of the last data area (or just before the checksum). The value of the counter, which is initially 0, increments by one everytime new data is transmitted, and returned to zero when reaching the max value. The receiving node lets the first message pass without check, but for second next message and following, it check whether the counter number is different from the previous message.",
+        "values": {}
+      },
+      {
+        "name": "ALU_QUESTION_FOR_LBC",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 32,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "B2h = first question 5Dh = second question",
+        "values": {}
+      },
+      {
+        "name": "CRC",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 40,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "CRC",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "CRC",
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x54A",
+    "can_id_dec": 1354,
+    "name": "x54A",
+    "dlc": 8,
+    "transmitter": "HVAC",
+    "cycle_time_ms": 100,
+    "comment": "AC Auto Amp (100ms)",
+    "signals": [
+      {
+        "name": "CCStatusPlusUnknown",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 0,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "12,3c- CC Off; a0,da- CC On",
+        "values": {}
+      },
+      {
+        "name": "Unknown_54A_1",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 8,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "00 (80 in 2013+)",
+        "values": {}
+      },
+      {
+        "name": "Unknown_54A_2",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 16,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "70",
+        "values": {}
+      },
+      {
+        "name": "Unknown_54A_3",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 24,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "06,0a,0b,0f",
+        "values": {}
+      },
+      {
+        "name": "ClimateControlSetpoint",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 32,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "This data is only correct while climate control is active. If climate control isswitched OFF or activated by app, byte 4 reads as 0x00.",
+        "values": {}
+      },
+      {
+        "name": "Unknown_54A_5",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 40,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "00",
+        "values": {}
+      },
+      {
+        "name": "Unknown_54A_6",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 48,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "00",
+        "values": {}
+      },
+      {
+        "name": "AmbientTempAC",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 56,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x54B",
+    "can_id_dec": 1355,
+    "name": "x54B",
+    "dlc": 8,
+    "transmitter": "HVAC",
+    "cycle_time_ms": 100,
+    "comment": "AC Auto Amp (100ms)",
+    "signals": [
+      {
+        "name": "ClimateControlStatus1",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 0,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "status",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "00 CC on, 01 CC off (2013: 0x10 or 0x11)",
+        "values": {
+          "16": "CC On",
+          "17": "CC Off",
+          "0": "CC On",
+          "1": "CC Off"
+        }
+      },
+      {
+        "name": "ClimateVentModeTarget",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 16,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "status",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "(face/feet/defrost)",
+        "values": {
+          "128": "CC OFF",
+          "136": "Face only",
+          "144": "Face/Feet",
+          "152": "Feet only",
+          "160": "Feet/Defrost",
+          "168": "Defrost only"
+        }
+      },
+      {
+        "name": "ClimateVentModeIntake",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 24,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "status",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "(recirculating/fresh air/defrost)",
+        "values": {
+          "9": "Recirculate",
+          "18": "Fresh air",
+          "146": "Defrost"
+        }
+      },
+      {
+        "name": "FanSpeed",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 35,
+        "bit_length": 5,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 1.0,
+        "max": 7.0,
+        "unit": "speed",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "1<->7 ",
+        "values": {}
+      },
+      {
+        "name": "CCButtonPress",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 56,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "0/1",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Alternates after every CC button press, probably to alert A/V to display CC info",
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x54C",
+    "can_id_dec": 1356,
+    "name": "x54C",
+    "dlc": 8,
+    "transmitter": "HVAC",
+    "cycle_time_ms": 100,
+    "comment": "AC Auto Amp (100ms)",
+    "signals": [
+      {
+        "name": "ACEvaporatorTemperature",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 0,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "0.25C/bit?",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "drops with ac on (after short lag).  No change with heater on",
+        "values": {}
+      },
+      {
+        "name": "CC_BackScreenDefrost",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 9,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1.0,
+        "unit": "-",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Data only changes if climate control is activated or deactivated",
+        "values": {
+          "0": "Off",
+          "1": "On"
+        }
+      },
+      {
+        "name": "FanVoltage",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 40,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "0.05 V/bit",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Commanded fan speed is proportional to Voltage",
+        "values": {}
+      },
+      {
+        "name": "OutsideAmbientTemperature",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 48,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 0.5,
+        "offset": -40.5,
+        "min": -40.0,
+        "max": 60.0,
+        "unit": "degC",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Ambient temperature. This one has half-degree C resolution and seems to stay within a degree or two of the \\\"eyebrow\\\" temp display.",
+        "values": {}
+      },
+      {
+        "name": "CC_ClimateControlStatus",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 10,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1.0,
+        "unit": "-",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Data only changes if climate control is activated or deactivated",
+        "values": {
+          "0": "Off",
+          "1": "On"
+        }
+      },
+      {
+        "name": "CC_ACStatus",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 11,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1.0,
+        "unit": "-",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Data only changes if climate control is activated or deactivated",
+        "values": {
+          "0": "Off",
+          "1": "On"
+        }
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x54F",
+    "can_id_dec": 1359,
+    "name": "x54F",
+    "dlc": 8,
+    "transmitter": "HVAC",
+    "cycle_time_ms": 100,
+    "comment": "AC Auto Amp (100ms)",
+    "signals": [
+      {
+        "name": "InteriorIntakeTemp",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 0,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 0.5,
+        "offset": -14.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "degC",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Climate control's measurement of temperature inside the car. Subtracting 14 is a bit of a guess worked out by observing how auto climate control reacts when this reaches the target setting.",
+        "values": {}
+      },
+      {
+        "name": "ACPowerConsumption",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 8,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "50W/bit?",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Rises to a steady value with ac on.  Off immediately with ac off.  No change with heater on",
+        "values": {}
+      },
+      {
+        "name": "ACAutoAmpStatus",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 46,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "-",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "location?",
+        "values": {}
+      },
+      {
+        "name": "HeaterPowerConsumption",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 40,
+        "bit_length": 6,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "300W/bit?",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Goes up slowly with heater on; no change with ac on",
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x55A",
+    "can_id_dec": 1370,
+    "name": "x55A",
+    "dlc": 8,
+    "transmitter": "INVmc",
+    "cycle_time_ms": 100,
+    "comment": "Inverter (100ms)",
+    "signals": [
+      {
+        "name": "MotorTemperature",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 32,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 255.0,
+        "unit": "dC*2",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "",
+        "values": {}
+      },
+      {
+        "name": "InverterComBoardTemp",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 8,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 255.0,
+        "unit": "dC*2",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Inverter communications board temp",
+        "values": {}
+      },
+      {
+        "name": "IGBTTemperature",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 16,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 255.0,
+        "unit": "dC*2",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "",
+        "values": {}
+      },
+      {
+        "name": "IGBTDriverBoardTemperature",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 29,
+        "bit_length": 6,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 255.0,
+        "unit": "dC*2",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Temperature only active during drive (IGBT driver board?)",
+        "values": {}
+      },
+      {
+        "name": "INV_SleepEnabled",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 60,
+        "bit_length": 2,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x55B",
+    "can_id_dec": 1371,
+    "name": "x55B",
+    "dlc": 8,
+    "transmitter": "HVBAT",
+    "cycle_time_ms": 100,
+    "comment": "Lithium Battery Controller (100ms)",
+    "signals": [
+      {
+        "name": "LB_SOC",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 7,
+        "bit_length": 10,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1000.0,
+        "unit": "%+1",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "State of charge. LB_SOC is a 0.1% resolution SOC that is used on startup by Leaf Spy Pro and then ignored in favor of 0x7BB groups, and seemingly used nowhere in the car",
+        "values": {}
+      },
+      {
+        "name": "LB_ALU_ANSWER",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 16,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 85.0,
+        "max": 170.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "LB_IR_Sensor_Wave_Voltage",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 39,
+        "bit_length": 10,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 4990.0,
+        "unit": "mV (5000/1024)",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Internal resistance wave voltage",
+        "values": {}
+      },
+      {
+        "name": "LB_IR_Sensor_Malfunction",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 40,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1.0,
+        "unit": "modemask",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {
+          "0": "Normal",
+          "1": "Malfunction"
+        }
+      },
+      {
+        "name": "LB_Capacity_Empty",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 55,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1.0,
+        "unit": "modemask",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {
+          "0": "Not Empty",
+          "1": "Battery Empty"
+        }
+      },
+      {
+        "name": "LB_SleepEnabled",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 53,
+        "bit_length": 2,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 3.0,
+        "unit": "modemask",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {
+          "0": "Reserved",
+          "1": "RefuseToSleep",
+          "2": "ReadyToSleep",
+          "3": "Reserved"
+        }
+      },
+      {
+        "name": "LB_PRUN_55B",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 48,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 3.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Detection of frozen data. Message-PRUN-Diag. The transmitting node adds a message counter of 2bits or more to the end of the last data area (or just before the checksum). The value of the counter, which is initially 0, increments by one everytime new data is transmitted, and returned to zero when reaching the max value. The receiving node lets the first message pass without check, but for second next message and following, it check whether the counter number is different from the previous message.",
+        "values": {}
+      },
+      {
+        "name": "CRC_55B",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 56,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "CRC",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "CRC",
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x56E",
+    "can_id_dec": 1390,
+    "name": "x56E",
+    "dlc": 1,
+    "transmitter": "TCU",
+    "cycle_time_ms": null,
+    "comment": null,
+    "signals": [
+      {
+        "name": "Unknown_56E_0",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 0,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x59E",
+    "can_id_dec": 1438,
+    "name": "x59E",
+    "dlc": 8,
+    "transmitter": "HVBAT",
+    "cycle_time_ms": 500,
+    "comment": "Lithium Battery Controller (500ms)",
+    "signals": [
+      {
+        "name": "LB_Full_Capacity_for_QC",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 20,
+        "bit_length": 9,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 100.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 50000.0,
+        "unit": "Wh",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "",
+        "values": {}
+      },
+      {
+        "name": "LB_Remain_Capacity_for_QC",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 27,
+        "bit_length": 9,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 100.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 50000.0,
+        "unit": "Wh",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "",
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x5A9",
+    "can_id_dec": 1449,
+    "name": "x5A9",
+    "dlc": 8,
+    "transmitter": "VCM",
+    "cycle_time_ms": null,
+    "comment": null,
+    "signals": [
+      {
+        "name": "ECOmodeActive",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 0,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Active during drive, FF charge",
+        "values": {
+          "2": "ECO On",
+          "1": "ECO Off",
+          "255": "Charging"
+        }
+      },
+      {
+        "name": "RangeInstrumentCluster",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 15,
+        "bit_length": 12,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 0.2,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 819.0,
+        "unit": "km",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Taken from OVMS code. 0xFFF when charging",
+        "values": {}
+      },
+      {
+        "name": "LowBattery",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 16,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Low Battery (Message and tell-tale)",
+        "values": {}
+      },
+      {
+        "name": "CriticalBattery",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 43,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "GOM Flash (critical battery)",
+        "values": {}
+      },
+      {
+        "name": "ChargingDisabled",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 57,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Charging Disabled, Battery Lease Contract",
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x5B9",
+    "can_id_dec": 1465,
+    "name": "x5B9",
+    "dlc": 7,
+    "transmitter": "VCM",
+    "cycle_time_ms": 500,
+    "comment": "Vehicle Control Module (500ms) (Only env200 and USDM LEAF?)",
+    "signals": [
+      {
+        "name": "ActiveFuelBars",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 3,
+        "bit_length": 5,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 12.0,
+        "unit": "-",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "From VCM->Cluster",
+        "values": {}
+      },
+      {
+        "name": "ChargeMinutesRemaining",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 2,
+        "bit_length": 11,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 2047.0,
+        "unit": "minutes",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "ChargeTime_100V",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 18,
+        "bit_length": 11,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x5BC",
+    "can_id_dec": 1468,
+    "name": "x5BC",
+    "dlc": 8,
+    "transmitter": "HVBAT",
+    "cycle_time_ms": 100,
+    "comment": "Lithium Battery Controller (100ms)",
+    "signals": [
+      {
+        "name": "LB_Remain_Capacity_GIDS",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 7,
+        "bit_length": 10,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 500.0,
+        "unit": "gids",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "LB_Remaining_Capacity_Segments",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 16,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 240.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Contains chargebars and capacitybars, alternating depending on mux. Simplified lower down in the message",
+        "values": {}
+      },
+      {
+        "name": "LB_Temperature_Segment_For_Dash",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 24,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 0.4166666,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 100.0,
+        "unit": "%",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "For instrumentation cluster. Unit is %, times 5/12 according to documentation, kinda strange .Should be average of the 3 sensors inside the battery pack.",
+        "values": {}
+      },
+      {
+        "name": "LB_Capacity_Deterioration_Rate",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 33,
+        "bit_length": 7,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 100.0,
+        "unit": "%",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "SOH (State-of-Health) Effects the charge gauge, lower numbers mean more chargebars",
+        "values": {}
+      },
+      {
+        "name": "LB_Remain_Cap_Segment_Swit_Flag",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 32,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1.0,
+        "unit": "status",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "",
+        "values": {
+          "0": "Remaining capacity",
+          "1": "Full capacity"
+        }
+      },
+      {
+        "name": "LB_Output_Power_Limit_Reason",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 45,
+        "bit_length": 3,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 7.0,
+        "unit": "modemask",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Indicates why power is limited",
+        "values": {
+          "0": "Normal",
+          "1": "Capacity drop",
+          "2": "LBC Malfunction",
+          "3": "High temperature",
+          "4": "Low temperature",
+          "5": "reserved",
+          "6": "reserved",
+          "7": "reserved"
+        }
+      },
+      {
+        "name": "LB_Remain_Charge_Time_Condition",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 41,
+        "bit_length": 5,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 30.0,
+        "unit": "modemask",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {
+          "0": "Quickcharge",
+          "5": "Normal Charge 6kW Full",
+          "8": "Normal Charge 200V Full",
+          "11": "Normal Charge 100V Full",
+          "18": "Normal Charge 6kW 80%",
+          "21": "Normal Charge 200V 80%",
+          "24": "Normal Charge 100V 80%"
+        }
+      },
+      {
+        "name": "LB_Remain_Charge_Time",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 52,
+        "bit_length": 13,
+        "byte_order": "big",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 8190.0,
+        "unit": "minutes",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "1FFFh is used as \\\"Unavailable value\\\"",
+        "values": {}
+      },
+      {
+        "name": "Mux_5BC",
+        "is_multiplexer": true,
+        "mux_val": null,
+        "start_bit": 32,
+        "bit_length": 4,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Multiplexor",
+        "values": {}
+      },
+      {
+        "name": "LB_MaxGIDS",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 44,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Only 30kWh AZE0 has this. When this value is 1, the GIDS number is at its maximum.(LB_Remain_Capacity_GIDS)",
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x5C0",
+    "can_id_dec": 1472,
+    "name": "x5C0",
+    "dlc": 8,
+    "transmitter": "HVBAT",
+    "cycle_time_ms": 500,
+    "comment": "Lithium Battery Controller (500ms)",
+    "signals": [
+      {
+        "name": "LB_Historical_Data_Swich_Flag",
+        "is_multiplexer": true,
+        "mux_val": null,
+        "start_bit": 6,
+        "bit_length": 2,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 3.0,
+        "unit": "mux",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Mux for historical data signals",
+        "values": {
+          "0": "Not Calculated",
+          "1": "Maximum Data",
+          "2": "Average Data",
+          "3": "Minimum Data"
+        }
+      },
+      {
+        "name": "LB_Heating_Start_Send_Request",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 5,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1.0,
+        "unit": "status",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "0->1 Heat start Mail send request",
+        "values": {}
+      },
+      {
+        "name": "LB_Heating_Stop_Send_Request",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 4,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1.0,
+        "unit": "status",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "0->1 Heat stop Mail send request",
+        "values": {}
+      },
+      {
+        "name": "Batt_Heater_Mail_Send_Request",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 8,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1.0,
+        "unit": "status",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "",
+        "values": {
+          "0": "No request",
+          "1": "Mail send request"
+        }
+      },
+      {
+        "name": "LB_HEATEXIST",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 32,
+        "bit_length": 1,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1.0,
+        "unit": "status",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Specifies if battery pack is equipped with heating elements",
+        "values": {
+          "0": "Without Battery Heating",
+          "1": "With Battery Heating"
+        }
+      },
+      {
+        "name": "LB_NextWakeupTimeForBatterHeater",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 48,
+        "bit_length": 5,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 1800.0,
+        "unit": "minutes",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      },
+      {
+        "name": "LB_Diagnosis_Trouble_Code",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 56,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 255.0,
+        "unit": "DTC",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": null,
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x603",
+    "can_id_dec": 1539,
+    "name": "x603",
+    "dlc": 8,
+    "transmitter": "VCM",
+    "cycle_time_ms": null,
+    "comment": "Bootup Message, appears once during power on after a few sec",
+    "signals": []
+  },
+  {
+    "can_id_hex": "0x60D",
+    "can_id_dec": 1549,
+    "name": "x60D",
+    "dlc": 8,
+    "transmitter": "Vector__XXX",
+    "cycle_time_ms": 100,
+    "comment": "??? e-NV200 only, Unknown sender module (100ms) ",
+    "signals": [
+      {
+        "name": "Unknown_60D_0",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 0,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Values seen: 00 08 10 14",
+        "values": {}
+      },
+      {
+        "name": "Unknown_60D_1",
+        "is_multiplexer": false,
+        "mux_val": null,
+        "start_bit": 8,
+        "bit_length": 8,
+        "byte_order": "little",
+        "signed": false,
+        "factor": 1.0,
+        "offset": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "unit": "",
+        "receivers": [
+          "Vector__XXX"
+        ],
+        "comment": "Values seen: 00 04 06",
+        "values": {}
+      }
+    ]
+  },
+  {
+    "can_id_hex": "0x679",
+    "can_id_dec": 1657,
+    "name": "x679",
+    "dlc": 1,
+    "transmitter": "OBCpd",
+    "cycle_time_ms": null,
+    "comment": "Bootup message, sent from OBC when J1772 plug is detected",
+    "signals": []
+  }
+]

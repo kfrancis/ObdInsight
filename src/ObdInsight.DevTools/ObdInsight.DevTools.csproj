@@ -20,13 +20,9 @@
 
   <!-- Kill running instances before build to prevent file locking issues -->
   <Target Name="KillRunningInstances" BeforeTargets="Build;Rebuild;Clean">
-    <Exec Command="taskkill /F /IM ObdInsight.DevTools.exe 2&gt;nul || exit 0" 
-          IgnoreExitCode="true" 
-          ContinueOnError="true" />
+    <Exec Command="taskkill /F /IM ObdInsight.DevTools.exe 2&gt;nul || exit 0" IgnoreExitCode="true" ContinueOnError="true" />
     <!-- Small delay to ensure process is fully terminated and file handles released -->
-    <Exec Command="ping -n 2 127.0.0.1 &gt;nul" 
-          IgnoreExitCode="true" 
-          ContinueOnError="true" />
+    <Exec Command="ping -n 2 127.0.0.1 &gt;nul" IgnoreExitCode="true" ContinueOnError="true" />
   </Target>
 
 </Project>
