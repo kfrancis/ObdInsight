@@ -51,7 +51,7 @@ public partial class MainViewModel : BaseViewModel
     private ImageSource _activeVehicleImage = VehicleImageResolver.PlaceholderImage;
 
     [ObservableProperty]
-    private bool _showBatteryWidget;
+    private bool _showBatteryWidget = true;
 
     [ObservableProperty]
     private bool _showChargingWidget;
@@ -63,7 +63,7 @@ public partial class MainViewModel : BaseViewModel
     private string _rangeDisplay = "--";
 
     [ObservableProperty]
-    private string _rangeUnit = "mi";
+    private string _rangeUnit = "km";
 
     [ObservableProperty]
     private string _batteryPercentDisplay = "--";
@@ -89,7 +89,8 @@ public partial class MainViewModel : BaseViewModel
         _navigationService = navigationService;
         _connectedDeviceService = connectedDeviceService;
         _vehicleImageResolver = vehicleImageResolver;
-        Title = "OBD Insight";
+        Title = "ObdInsight";
+
 
         // Subscribe to connection changes
         _connectedDeviceService.ConnectionChanged += OnConnectionChanged;
@@ -122,7 +123,7 @@ public partial class MainViewModel : BaseViewModel
 
             // Widgets: show range always (still placeholder), show BEV widgets when we have their values.
             this.RangeDisplay = RangeRemaining.HasValue ? Math.Round(RangeRemaining.Value).ToString() : "--";
-            this.RangeUnit = "mi";
+            this.RangeUnit = "km";
 
             this.ShowBatteryWidget = BatterySoc.HasValue;
             this.BatteryPercentDisplay = BatterySoc.HasValue ? BatterySoc.Value.ToString("F0") : "--";
@@ -144,7 +145,7 @@ public partial class MainViewModel : BaseViewModel
             this.ActiveVehicleImage = _vehicleImageResolver.Resolve(null);
 
             this.RangeDisplay = "--";
-            this.RangeUnit = "mi";
+            this.RangeUnit = "km";
             this.BatteryPercentDisplay = "--";
             this.ChargingStatusDisplay = "--";
             this.SecondaryMetricValueDisplay = "--";
