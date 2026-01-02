@@ -11,9 +11,8 @@ public class VehicleObdService : IVehicleObdService
 {
     private readonly IObdAdapter _adapter;
     private readonly IVehicleDetector _detector;
-    private IObdTransport? _transport;
     private IVehicleProfile _profile;
-
+    private IObdTransport? _transport;
     public VehicleObdService(
         IObdAdapter? adapter = null,
         IVehicleDetector? detector = null,
@@ -99,9 +98,76 @@ public class VehicleObdService : IVehicleObdService
 
     #region IVehicleObdService Implementation
 
-    public bool IsDataPointSupported(VehicleDataPoint dataPoint)
+    public async Task<BatteryInfo?> GetBatteryInfoAsync(CancellationToken cancellationToken = default)
     {
-        return _profile.GetCommand(dataPoint) != null;
+        if (!_profile.IsElectric)
+            return null;
+
+        var dataPoints = new[]
+        {
+            VehicleDataPoint.BatteryStateOfCharge,
+            VehicleDataPoint.BatteryStateOfHealth,
+            VehicleDataPoint.BatteryVoltage,
+            VehicleDataPoint.BatteryCurrent,
+            VehicleDataPoint.BatteryTemp,
+            VehicleDataPoint.BatteryCapacity,
+            VehicleDataPoint.RangeRemaining,
+            VehicleDataPoint.ChargingStatus
+        };
+
+        var results = await GetDataBatchAsync(dataPoints, cancellationToken);
+        var resultMap = results.ToDictionary(r => r.DataPoint);
+
+        // Only return if we got the essential data
+        if (!resultMap.TryGetValue(VehicleDataPoint.BatteryStateOfCharge, out var socResult) || !socResult.Success)
+            return null;
+
+        return new BatteryInfo(
+            StateOfCharge: socResult.GetValue<double?>() ?? 0,
+            StateOfHealth: resultMap.GetValueOrDefault(VehicleDataPoint.BatteryStateOfHealth)?.GetValue<double?>() ?? 0,
+            Voltage: resultMap.GetValueOrDefault(VehicleDataPoint.BatteryVoltage)?.GetValue<double?>() ?? 0,
+            Current: resultMap.GetValueOrDefault(VehicleDataPoint.BatteryCurrent)?.GetValue<double?>() ?? 0,
+            Temperature: resultMap.GetValueOrDefault(VehicleDataPoint.BatteryTemp)?.GetValue<double?>() ?? 0,
+            Capacity: resultMap.GetValueOrDefault(VehicleDataPoint.BatteryCapacity)?.GetValue<double?>() ?? 0,
+            RangeRemaining: resultMap.GetValueOrDefault(VehicleDataPoint.RangeRemaining)?.GetValue<double?>() ?? 0,
+            ChargingStatus: resultMap.GetValueOrDefault(VehicleDataPoint.ChargingStatus)?.GetValue<string>() ?? "Unknown"
+        );
+    }
+
+    public async Task<double?> GetBatterySocAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_profile.IsElectric)
+            return null;
+
+        var result = await GetDataAsync(VehicleDataPoint.BatteryStateOfCharge, cancellationToken);
+        return result.GetValue<double?>();
+    }
+
+    public async Task<double?> GetBatterySohAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_profile.IsElectric)
+            return null;
+
+        var result = await GetDataAsync(VehicleDataPoint.BatteryStateOfHealth, cancellationToken);
+        return result.GetValue<double?>();
+    }
+
+    public async Task<double?> GetBatteryVoltageAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_profile.IsElectric)
+            return null;
+
+        var result = await GetDataAsync(VehicleDataPoint.BatteryVoltage, cancellationToken);
+        return result.GetValue<double?>();
+    }
+
+    public async Task<string?> GetChargingStatusAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_profile.IsElectric)
+            return null;
+
+        var result = await GetDataAsync(VehicleDataPoint.ChargingStatus, cancellationToken);
+        return result.GetValue<string>();
     }
 
     public async Task<VehicleDataResult> GetDataAsync(VehicleDataPoint dataPoint, CancellationToken cancellationToken = default)
@@ -144,33 +210,6 @@ public class VehicleObdService : IVehicleObdService
         return results;
     }
 
-    public async Task<double?> GetBatterySocAsync(CancellationToken cancellationToken = default)
-    {
-        if (!_profile.IsElectric)
-            return null;
-
-        var result = await GetDataAsync(VehicleDataPoint.BatteryStateOfCharge, cancellationToken);
-        return result.GetValue<double?>();
-    }
-
-    public async Task<double?> GetBatterySohAsync(CancellationToken cancellationToken = default)
-    {
-        if (!_profile.IsElectric)
-            return null;
-
-        var result = await GetDataAsync(VehicleDataPoint.BatteryStateOfHealth, cancellationToken);
-        return result.GetValue<double?>();
-    }
-
-    public async Task<double?> GetBatteryVoltageAsync(CancellationToken cancellationToken = default)
-    {
-        if (!_profile.IsElectric)
-            return null;
-
-        var result = await GetDataAsync(VehicleDataPoint.BatteryVoltage, cancellationToken);
-        return result.GetValue<double?>();
-    }
-
     public async Task<double?> GetRangeRemainingAsync(CancellationToken cancellationToken = default)
     {
         if (!_profile.IsElectric)
@@ -180,62 +219,57 @@ public class VehicleObdService : IVehicleObdService
         return result.GetValue<double?>();
     }
 
-    public async Task<string?> GetChargingStatusAsync(CancellationToken cancellationToken = default)
+    public bool IsDataPointSupported(VehicleDataPoint dataPoint)
     {
-        if (!_profile.IsElectric)
-            return null;
-
-        var result = await GetDataAsync(VehicleDataPoint.ChargingStatus, cancellationToken);
-        return result.GetValue<string>();
+        return _profile.GetCommand(dataPoint) != null;
     }
-
-    public async Task<BatteryInfo?> GetBatteryInfoAsync(CancellationToken cancellationToken = default)
-    {
-        if (!_profile.IsElectric)
-            return null;
-
-        var dataPoints = new[]
-        {
-            VehicleDataPoint.BatteryStateOfCharge,
-            VehicleDataPoint.BatteryStateOfHealth,
-            VehicleDataPoint.BatteryVoltage,
-            VehicleDataPoint.BatteryCurrent,
-            VehicleDataPoint.BatteryTemp,
-            VehicleDataPoint.BatteryCapacity,
-            VehicleDataPoint.RangeRemaining,
-            VehicleDataPoint.ChargingStatus
-        };
-
-        var results = await GetDataBatchAsync(dataPoints, cancellationToken);
-        var resultMap = results.ToDictionary(r => r.DataPoint);
-
-        // Only return if we got the essential data
-        if (!resultMap.TryGetValue(VehicleDataPoint.BatteryStateOfCharge, out var socResult) || !socResult.Success)
-            return null;
-
-        return new BatteryInfo(
-            StateOfCharge: socResult.GetValue<double?>() ?? 0,
-            StateOfHealth: resultMap.GetValueOrDefault(VehicleDataPoint.BatteryStateOfHealth)?.GetValue<double?>() ?? 0,
-            Voltage: resultMap.GetValueOrDefault(VehicleDataPoint.BatteryVoltage)?.GetValue<double?>() ?? 0,
-            Current: resultMap.GetValueOrDefault(VehicleDataPoint.BatteryCurrent)?.GetValue<double?>() ?? 0,
-            Temperature: resultMap.GetValueOrDefault(VehicleDataPoint.BatteryTemp)?.GetValue<double?>() ?? 0,
-            Capacity: resultMap.GetValueOrDefault(VehicleDataPoint.BatteryCapacity)?.GetValue<double?>() ?? 0,
-            RangeRemaining: resultMap.GetValueOrDefault(VehicleDataPoint.RangeRemaining)?.GetValue<double?>() ?? 0,
-            ChargingStatus: resultMap.GetValueOrDefault(VehicleDataPoint.ChargingStatus)?.GetValue<string>() ?? "Unknown"
-        );
-    }
-
     #endregion IVehicleObdService Implementation
 
     #region IObdService Implementation (delegates to standard PIDs)
 
-    public async Task<string?> GetVinAsync(CancellationToken cancellationToken = default)
+    public async Task<bool> ClearDtcCodesAsync(CancellationToken cancellationToken = default)
     {
-        var response = await _adapter.SendCommandAsync(new ObdCommand("0902", TimeSpan.FromSeconds(10)), cancellationToken);
-        if (!response.Success || string.IsNullOrEmpty(response.Value))
-            return null;
+        var response = await _adapter.SendCommandAsync(new ObdCommand("04", TimeSpan.FromSeconds(5)), cancellationToken);
+        return response.Success;
+    }
 
-        return ParseVin(response.Value);
+    public async Task<double?> GetCoolantTempCelsiusAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await GetDataAsync(VehicleDataPoint.CoolantTemp, cancellationToken);
+        return result.GetValue<double?>();
+    }
+
+    public async Task<IReadOnlyList<string>> GetDtcCodesAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await _adapter.SendCommandAsync(new ObdCommand("03", TimeSpan.FromSeconds(10)), cancellationToken);
+        if (!response.Success || string.IsNullOrEmpty(response.Value))
+            return [];
+
+        return ParseDtcCodes(response.Value);
+    }
+
+    public async Task<double?> GetEngineLoadPercentAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await GetDataAsync(VehicleDataPoint.EngineLoad, cancellationToken);
+        return result.GetValue<double?>();
+    }
+
+    public async Task<double?> GetFuelLevelPercentAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await GetDataAsync(VehicleDataPoint.FuelLevel, cancellationToken);
+        return result.GetValue<double?>();
+    }
+
+    public async Task<int?> GetRpmAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await GetDataAsync(VehicleDataPoint.Rpm, cancellationToken);
+        return result.Success ? (int?)result.GetValue<double>() : null;
+    }
+
+    public async Task<int?> GetSpeedKphAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await GetDataAsync(VehicleDataPoint.Speed, cancellationToken);
+        return result.GetValue<int>();
     }
 
     public async Task<IReadOnlyList<string>> GetSupportedPidsAsync(CancellationToken cancellationToken = default)
@@ -260,57 +294,20 @@ public class VehicleObdService : IVehicleObdService
         return supported;
     }
 
-    public async Task<int?> GetRpmAsync(CancellationToken cancellationToken = default)
-    {
-        var result = await GetDataAsync(VehicleDataPoint.Rpm, cancellationToken);
-        return result.Success ? (int?)result.GetValue<double>() : null;
-    }
-
-    public async Task<int?> GetSpeedKphAsync(CancellationToken cancellationToken = default)
-    {
-        var result = await GetDataAsync(VehicleDataPoint.Speed, cancellationToken);
-        return result.GetValue<int>();
-    }
-
-    public async Task<double?> GetCoolantTempCelsiusAsync(CancellationToken cancellationToken = default)
-    {
-        var result = await GetDataAsync(VehicleDataPoint.CoolantTemp, cancellationToken);
-        return result.GetValue<double?>();
-    }
-
     public async Task<double?> GetThrottlePositionPercentAsync(CancellationToken cancellationToken = default)
     {
         var result = await GetDataAsync(VehicleDataPoint.ThrottlePosition, cancellationToken);
         return result.GetValue<double?>();
     }
 
-    public async Task<double?> GetFuelLevelPercentAsync(CancellationToken cancellationToken = default)
+    public async Task<string?> GetVinAsync(CancellationToken cancellationToken = default)
     {
-        var result = await GetDataAsync(VehicleDataPoint.FuelLevel, cancellationToken);
-        return result.GetValue<double?>();
-    }
-
-    public async Task<double?> GetEngineLoadPercentAsync(CancellationToken cancellationToken = default)
-    {
-        var result = await GetDataAsync(VehicleDataPoint.EngineLoad, cancellationToken);
-        return result.GetValue<double?>();
-    }
-
-    public async Task<IReadOnlyList<string>> GetDtcCodesAsync(CancellationToken cancellationToken = default)
-    {
-        var response = await _adapter.SendCommandAsync(new ObdCommand("03", TimeSpan.FromSeconds(10)), cancellationToken);
+        var response = await _adapter.SendCommandAsync(new ObdCommand("0902", TimeSpan.FromSeconds(10)), cancellationToken);
         if (!response.Success || string.IsNullOrEmpty(response.Value))
-            return [];
+            return null;
 
-        return ParseDtcCodes(response.Value);
+        return ParseVin(response.Value);
     }
-
-    public async Task<bool> ClearDtcCodesAsync(CancellationToken cancellationToken = default)
-    {
-        var response = await _adapter.SendCommandAsync(new ObdCommand("04", TimeSpan.FromSeconds(5)), cancellationToken);
-        return response.Success;
-    }
-
     public async Task<ObdPidResponse> QueryPidAsync(ObdPid pid, CancellationToken cancellationToken = default)
     {
         var response = await _adapter.SendCommandAsync(ObdCommand.Create(pid.Command), cancellationToken);
@@ -330,64 +327,23 @@ public class VehicleObdService : IVehicleObdService
 
     #region Parsing Helpers
 
-    private static byte[] ParseHexResponse(string response)
+    private static string DecodeDtc(string hexBytes)
     {
-        var hexData = response.Replace(" ", "").Replace("\n", "").Replace("\r", "");
-        var bytes = new List<byte>();
+        if (hexBytes.Length != 4)
+            return string.Empty;
 
-        for (var i = 0; i + 1 < hexData.Length; i += 2)
-        {
-            if (byte.TryParse(hexData.Substring(i, 2), NumberStyles.HexNumber, null, out var b))
-            {
-                bytes.Add(b);
-            }
-        }
+        if (!byte.TryParse(hexBytes[..2], NumberStyles.HexNumber, null, out var byte1) ||
+            !byte.TryParse(hexBytes[2..], NumberStyles.HexNumber, null, out var byte2))
+            return string.Empty;
 
-        return bytes.ToArray();
-    }
+        var prefixes = new[] { 'P', 'C', 'B', 'U' };
+        var prefix = prefixes[(byte1 >> 6) & 0x03];
+        var digit1 = (byte1 >> 4) & 0x03;
+        var digit2 = byte1 & 0x0F;
+        var digit3 = (byte2 >> 4) & 0x0F;
+        var digit4 = byte2 & 0x0F;
 
-    private static string? ParseVin(string response)
-    {
-        try
-        {
-            var hexData = response.Replace(" ", "").Replace("\n", "");
-            var vinBytes = new List<byte>();
-
-            for (var i = 0; i < hexData.Length - 1; i += 2)
-            {
-                if (byte.TryParse(hexData.Substring(i, 2), NumberStyles.HexNumber, null, out var b))
-                {
-                    if (b >= 0x20 && b <= 0x7E)
-                        vinBytes.Add(b);
-                }
-            }
-
-            var vin = System.Text.Encoding.ASCII.GetString(vinBytes.ToArray());
-            return vin.Length >= 17 ? vin[..17] : vin;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static IEnumerable<string> ParseSupportedPids(string response, byte baseOffset)
-    {
-        var hexData = response.Replace(" ", "").Replace("\n", "");
-
-        if (hexData.Length >= 12)
-            hexData = hexData.Substring(4, 8);
-        else
-            yield break;
-
-        if (uint.TryParse(hexData, NumberStyles.HexNumber, null, out var bitmap))
-        {
-            for (var i = 0; i < 32; i++)
-            {
-                if ((bitmap & (1u << (31 - i))) != 0)
-                    yield return $"01{(baseOffset + i + 1):X2}";
-            }
-        }
+        return $"{prefix}{digit1:X}{digit2:X}{digit3:X}{digit4:X}";
     }
 
     private static List<string> ParseDtcCodes(string response)
@@ -409,23 +365,20 @@ public class VehicleObdService : IVehicleObdService
         return codes;
     }
 
-    private static string DecodeDtc(string hexBytes)
+    private static byte[] ParseHexResponse(string response)
     {
-        if (hexBytes.Length != 4)
-            return string.Empty;
+        var hexData = response.Replace(" ", "").Replace("\n", "").Replace("\r", "");
+        var bytes = new List<byte>();
 
-        if (!byte.TryParse(hexBytes[..2], NumberStyles.HexNumber, null, out var byte1) ||
-            !byte.TryParse(hexBytes[2..], NumberStyles.HexNumber, null, out var byte2))
-            return string.Empty;
+        for (var i = 0; i + 1 < hexData.Length; i += 2)
+        {
+            if (byte.TryParse(hexData.Substring(i, 2), NumberStyles.HexNumber, null, out var b))
+            {
+                bytes.Add(b);
+            }
+        }
 
-        var prefixes = new[] { 'P', 'C', 'B', 'U' };
-        var prefix = prefixes[(byte1 >> 6) & 0x03];
-        var digit1 = (byte1 >> 4) & 0x03;
-        var digit2 = byte1 & 0x0F;
-        var digit3 = (byte2 >> 4) & 0x0F;
-        var digit4 = byte2 & 0x0F;
-
-        return $"{prefix}{digit1:X}{digit2:X}{digit3:X}{digit4:X}";
+        return bytes.ToArray();
     }
 
     private static byte[]? ParsePidResponse(string response, ObdPid pid)
@@ -456,5 +409,48 @@ public class VehicleObdService : IVehicleObdService
         }
     }
 
+    private static IEnumerable<string> ParseSupportedPids(string response, byte baseOffset)
+    {
+        var hexData = response.Replace(" ", "").Replace("\n", "");
+
+        if (hexData.Length >= 12)
+            hexData = hexData.Substring(4, 8);
+        else
+            yield break;
+
+        if (uint.TryParse(hexData, NumberStyles.HexNumber, null, out var bitmap))
+        {
+            for (var i = 0; i < 32; i++)
+            {
+                if ((bitmap & (1u << (31 - i))) != 0)
+                    yield return $"01{(baseOffset + i + 1):X2}";
+            }
+        }
+    }
+
+    private static string? ParseVin(string response)
+    {
+        try
+        {
+            var hexData = response.Replace(" ", "").Replace("\n", "");
+            var vinBytes = new List<byte>();
+
+            for (var i = 0; i < hexData.Length - 1; i += 2)
+            {
+                if (byte.TryParse(hexData.Substring(i, 2), NumberStyles.HexNumber, null, out var b))
+                {
+                    if (b >= 0x20 && b <= 0x7E)
+                        vinBytes.Add(b);
+                }
+            }
+
+            var vin = System.Text.Encoding.ASCII.GetString(vinBytes.ToArray());
+            return vin.Length >= 17 ? vin[..17] : vin;
+        }
+        catch
+        {
+            return null;
+        }
+    }
     #endregion Parsing Helpers
 }

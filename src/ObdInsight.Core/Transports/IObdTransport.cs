@@ -17,14 +17,24 @@ namespace ObdInsight.Core.Transports;
 public interface IObdTransport : IDisposable
 {
     /// <summary>
-    /// Display name for this transport
+    /// Event raised when data is received
     /// </summary>
-    string Name { get; }
+    event EventHandler<string>? DataReceived;
+
+    /// <summary>
+    /// Event raised when data is sent
+    /// </summary>
+    event EventHandler<string>? DataSent;
 
     /// <summary>
     /// Whether the transport is currently connected
     /// </summary>
     bool IsConnected { get; }
+
+    /// <summary>
+    /// Display name for this transport
+    /// </summary>
+    string Name { get; }
 
     /// <summary>
     /// Connect to the remote device
@@ -37,13 +47,6 @@ public interface IObdTransport : IDisposable
     /// Disconnect from the remote device
     /// </summary>
     Task DisconnectAsync();
-
-    /// <summary>
-    /// Write data to the transport
-    /// </summary>
-    /// <param name="data">String data to send</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    Task WriteAsync(string data, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Read a single line (CR terminated) from the transport
@@ -63,12 +66,9 @@ public interface IObdTransport : IDisposable
     Task<string> ReadUntilAsync(string terminator, TimeSpan timeout, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Event raised when data is received
+    /// Write data to the transport
     /// </summary>
-    event EventHandler<string>? DataReceived;
-
-    /// <summary>
-    /// Event raised when data is sent
-    /// </summary>
-    event EventHandler<string>? DataSent;
+    /// <param name="data">String data to send</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task WriteAsync(string data, CancellationToken cancellationToken = default);
 }

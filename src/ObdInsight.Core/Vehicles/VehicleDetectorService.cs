@@ -14,8 +14,8 @@ namespace ObdInsight.Core.Vehicles;
 /// </remarks>
 public class VehicleDetectorService : IVehicleDetector
 {
-    private readonly List<IVehicleProfile> _profiles = [];
     private readonly StandardObdVehicleProfile _fallbackProfile = new();
+    private readonly List<IVehicleProfile> _profiles = [];
 
     /// <summary>
     /// Creates a new vehicle detector with no pre-registered profiles.
@@ -29,40 +29,6 @@ public class VehicleDetectorService : IVehicleDetector
 
     /// <inheritdoc />
     public IReadOnlyList<IVehicleProfile> RegisteredProfiles => _profiles;
-
-    /// <inheritdoc />
-    public void RegisterProfile(IVehicleProfile profile)
-    {
-        ArgumentNullException.ThrowIfNull(profile);
-
-        // Avoid duplicates
-        if (!_profiles.Any(p => p.Name == profile.Name && p.Manufacturer == profile.Manufacturer))
-        {
-            _profiles.Add(profile);
-        }
-    }
-
-    /// <inheritdoc />
-    public IVehicleProfile? DetectFromVin(string vin)
-    {
-        if (string.IsNullOrWhiteSpace(vin))
-            return null;
-
-        var vinInfo = VinInfo.Parse(vin);
-        if (vinInfo == null)
-            return null;
-
-        // Try each registered profile
-        foreach (var profile in _profiles.OrderByDescending(p => p.VinPrefixes.Count))
-        {
-            if (profile.MatchesVin(vin))
-            {
-                return profile;
-            }
-        }
-
-        return null;
-    }
 
     /// <inheritdoc />
     public async Task<VehicleDetectionResult> DetectFromEcuAsync(
@@ -129,8 +95,91 @@ public class VehicleDetectorService : IVehicleDetector
         );
     }
 
+    /// <inheritdoc />
+    public IVehicleProfile? DetectFromVin(string vin)
+    {
+        if (string.IsNullOrWhiteSpace(vin))
+            return null;
+
+        var vinInfo = VinInfo.Parse(vin);
+        if (vinInfo == null)
+            return null;
+
+        // Try each registered profile
+        foreach (var profile in _profiles.OrderByDescending(p => p.VinPrefixes.Count))
+        {
+            if (profile.MatchesVin(vin))
+            {
+                return profile;
+            }
+        }
+
+        return null;
+    }
+
+    /// <inheritdoc />
+    public void RegisterProfile(IVehicleProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+
+        // Avoid duplicates
+        if (!_profiles.Any(p => p.Name == profile.Name && p.Manufacturer == profile.Manufacturer))
+        {
+            _profiles.Add(profile);
+        }
+    }
+
+    private static HashSet<byte> ParseSupportedPidsBitmap(string response)
+    {
+        var supported = new HashSet<byte>();
+        var hexData = response.Replace(" ", "").Replace("\n", "").Replace("\r", "");
+
+        // Skip header (4100)
+        if (hexData.Length >= 12)
+            hexData = hexData.Substring(4, 8);
+        else
+            return supported;
+
+        if (uint.TryParse(hexData, System.Globalization.NumberStyles.HexNumber, null, out var bitmap))
+        {
+            for (byte i = 0; i < 32; i++)
+            {
+                if ((bitmap & (1u << (31 - i))) != 0)
+                    supported.Add((byte)(i + 1));
+            }
+        }
+
+        return supported;
+    }
+
+    private static string? ParseVinResponse(string response)
+    {
+        try
+        {
+            var hexData = response.Replace(" ", "").Replace("\n", "").Replace("\r", "");
+            var vinBytes = new List<byte>();
+
+            for (var i = 0; i < hexData.Length - 1; i += 2)
+            {
+                if (byte.TryParse(hexData.Substring(i, 2),
+                    System.Globalization.NumberStyles.HexNumber, null, out var b))
+                {
+                    if (b >= 0x20 && b <= 0x7E) // Printable ASCII
+                        vinBytes.Add(b);
+                }
+            }
+
+            var vin = System.Text.Encoding.ASCII.GetString(vinBytes.ToArray());
+            return vin.Length >= 17 ? vin[..17] : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static async Task<(string? vin, bool success)> TryGetVinAsync(
-        IObdAdapter adapter,
+                IObdAdapter adapter,
         CancellationToken cancellationToken)
     {
         try
@@ -237,54 +286,5 @@ public class VehicleDetectorService : IVehicleDetector
         {
             return null;
         }
-    }
-
-    private static string? ParseVinResponse(string response)
-    {
-        try
-        {
-            var hexData = response.Replace(" ", "").Replace("\n", "").Replace("\r", "");
-            var vinBytes = new List<byte>();
-
-            for (var i = 0; i < hexData.Length - 1; i += 2)
-            {
-                if (byte.TryParse(hexData.Substring(i, 2),
-                    System.Globalization.NumberStyles.HexNumber, null, out var b))
-                {
-                    if (b >= 0x20 && b <= 0x7E) // Printable ASCII
-                        vinBytes.Add(b);
-                }
-            }
-
-            var vin = System.Text.Encoding.ASCII.GetString(vinBytes.ToArray());
-            return vin.Length >= 17 ? vin[..17] : null;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static HashSet<byte> ParseSupportedPidsBitmap(string response)
-    {
-        var supported = new HashSet<byte>();
-        var hexData = response.Replace(" ", "").Replace("\n", "").Replace("\r", "");
-
-        // Skip header (4100)
-        if (hexData.Length >= 12)
-            hexData = hexData.Substring(4, 8);
-        else
-            return supported;
-
-        if (uint.TryParse(hexData, System.Globalization.NumberStyles.HexNumber, null, out var bitmap))
-        {
-            for (byte i = 0; i < 32; i++)
-            {
-                if ((bitmap & (1u << (31 - i))) != 0)
-                    supported.Add((byte)(i + 1));
-            }
-        }
-
-        return supported;
     }
 }

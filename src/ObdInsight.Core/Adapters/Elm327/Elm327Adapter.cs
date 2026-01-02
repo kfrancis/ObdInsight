@@ -4,6 +4,24 @@ using System.Text.RegularExpressions;
 namespace ObdInsight.Core.Adapters.Elm327;
 
 /// <summary>
+/// Log levels for ELM327 adapter events
+/// </summary>
+public enum Elm327LogLevel
+{
+    /// <summary>Detailed debugging information</summary>
+    Debug,
+
+    /// <summary>General information</summary>
+    Info,
+
+    /// <summary>Potential issues</summary>
+    Warning,
+
+    /// <summary>Errors</summary>
+    Error
+}
+
+/// <summary>
 /// ELM327-compatible OBD adapter implementation.
 /// Handles AT commands, protocol negotiation, and OBD-II command framing.
 /// </summary>
@@ -19,13 +37,7 @@ namespace ObdInsight.Core.Adapters.Elm327;
 /// </remarks>
 public partial class Elm327Adapter : IObdAdapter
 {
-    private IObdTransport? _transport;
-    private readonly TimeSpan _defaultTimeout = TimeSpan.FromSeconds(5);
-    private readonly TimeSpan _initTimeout = TimeSpan.FromSeconds(10);
-    private readonly TimeSpan _protocolSearchTimeout = TimeSpan.FromSeconds(45);
-
     private const int DefaultMaxAttempts = 3;
-    private readonly TimeSpan _retryBaseDelay = TimeSpan.FromMilliseconds(150);
 
     /// <summary>
     /// Known ELM327 error response patterns (case-insensitive).
@@ -48,24 +60,11 @@ public partial class Elm327Adapter : IObdAdapter
         "ERR"
     ];
 
-    /// <inheritdoc />
-    public string Name => "ELM327";
-
-    /// <inheritdoc />
-    public string[] SupportedDeviceNames => ["OBDII", "Veepeak", "ELM327", "OBDLink", "V-LINK", "OBD"];
-
-    /// <inheritdoc />
-    public bool IsInitialized { get; private set; }
-
-    /// <summary>
-    /// ELM327 firmware version string
-    /// </summary>
-    public string? DeviceVersion { get; private set; }
-
-    /// <summary>
-    /// Detected OBD protocol description
-    /// </summary>
-    public string? ProtocolDescription { get; private set; }
+    private readonly TimeSpan _defaultTimeout = TimeSpan.FromSeconds(5);
+    private readonly TimeSpan _initTimeout = TimeSpan.FromSeconds(10);
+    private readonly TimeSpan _protocolSearchTimeout = TimeSpan.FromSeconds(45);
+    private readonly TimeSpan _retryBaseDelay = TimeSpan.FromMilliseconds(150);
+    private IObdTransport? _transport;
 
     /// <summary>
     /// Event raised for raw communication logging
@@ -73,17 +72,23 @@ public partial class Elm327Adapter : IObdAdapter
     public event EventHandler<Elm327LogEventArgs>? Log;
 
     /// <summary>
-    /// Sets the transport without doing a full initialization sequence.
-    /// Use this when you've already done manual setup and just need the adapter
-    /// to be able to send commands through the transport.
+    /// ELM327 firmware version string
     /// </summary>
-    /// <param name="transport">The transport to use</param>
-    /// <param name="markAsInitialized">Whether to mark the adapter as initialized</param>
-    public void SetTransport(IObdTransport transport, bool markAsInitialized = true)
-    {
-        _transport = transport ?? throw new ArgumentNullException(nameof(transport));
-        IsInitialized = markAsInitialized;
-    }
+    public string? DeviceVersion { get; private set; }
+
+    /// <inheritdoc />
+    public bool IsInitialized { get; private set; }
+
+    /// <inheritdoc />
+    public string Name => "ELM327";
+
+    /// <summary>
+    /// Detected OBD protocol description
+    /// </summary>
+    public string? ProtocolDescription { get; private set; }
+
+    /// <inheritdoc />
+    public string[] SupportedDeviceNames => ["OBDII", "Veepeak", "ELM327", "OBDLink", "V-LINK", "OBD"];
 
     /// <inheritdoc />
     public async Task<bool> InitializeAsync(IObdTransport transport, CancellationToken cancellationToken = default)
@@ -164,6 +169,16 @@ public partial class Elm327Adapter : IObdAdapter
     }
 
     /// <inheritdoc />
+    public async Task ResetAsync()
+    {
+        if (_transport?.IsConnected == true)
+        {
+            await SendRawCommandAsync("ATZ", _initTimeout, CancellationToken.None);
+        }
+        IsInitialized = false;
+    }
+
+    /// <inheritdoc />
     public async Task<ObdResponse> SendCommandAsync(ObdCommand command, CancellationToken cancellationToken = default)
     {
         if (_transport == null || !_transport.IsConnected)
@@ -216,14 +231,77 @@ public partial class Elm327Adapter : IObdAdapter
         }
     }
 
-    /// <inheritdoc />
-    public async Task ResetAsync()
+    /// <summary>
+    /// Sets the transport without doing a full initialization sequence.
+    /// Use this when you've already done manual setup and just need the adapter
+    /// to be able to send commands through the transport.
+    /// </summary>
+    /// <param name="transport">The transport to use</param>
+    /// <param name="markAsInitialized">Whether to mark the adapter as initialized</param>
+    public void SetTransport(IObdTransport transport, bool markAsInitialized = true)
     {
-        if (_transport?.IsConnected == true)
+        _transport = transport ?? throw new ArgumentNullException(nameof(transport));
+        IsInitialized = markAsInitialized;
+    }
+
+    /// <summary>
+    /// Clean up ELM327 response by removing echo, prompt, and extra whitespace
+    /// </summary>
+    private static string CleanResponse(string response, string command)
+    {
+        if (string.IsNullOrEmpty(response))
+            return string.Empty;
+
+        // Remove null bytes (some adapters have buffer issues)
+        response = response.Replace("\0", "");
+
+        // Remove the command echo if present
+        var cleaned = response;
+        if (cleaned.StartsWith(command, StringComparison.OrdinalIgnoreCase))
         {
-            await SendRawCommandAsync("ATZ", _initTimeout, CancellationToken.None);
+            cleaned = cleaned[command.Length..];
         }
-        IsInitialized = false;
+
+        // Remove prompt and clean whitespace
+        cleaned = cleaned
+            .Replace(">", "")
+            .Replace("\r\n", "\n")
+            .Replace("\r", "\n")
+            .Trim();
+
+        return cleaned;
+    }
+
+    private static string ExtractVersion(string response)
+    {
+        // Look for version pattern like "ELM327 v1.5" or "ELM327 v2.1"
+        var versionPattern = VersionRegex();
+        var match = versionPattern.Match(response);
+        return match.Success ? match.Value : response.Trim();
+    }
+
+    /// <summary>
+    /// Get user-friendly error message for error pattern.
+    /// </summary>
+    private static string GetErrorMessage(string pattern)
+    {
+        return pattern switch
+        {
+            "NO DATA" => "No data from ECU",
+            "UNABLE TO CONNECT" => "Unable to connect to ECU",
+            "CAN ERROR" => "CAN bus error",
+            "BUS ERROR" => "Bus communication error",
+            "FB ERROR" => "Flow control error",
+            "RX ERROR" => "Receive error",
+            "DATA ERROR" => "Data error",
+            "BUFFER FULL" => "Buffer overflow",
+            "LV RESET" => "Low voltage reset",
+            "LP ALERT" => "Low power alert",
+            "ACT ALERT" => "Activity alert - no bus activity",
+            "STOPPED" => "Command stopped",
+            "ERR" => "Adapter error",
+            _ => $"Error: {pattern}"
+        };
     }
 
     /// <summary>
@@ -250,6 +328,9 @@ public partial class Elm327Adapter : IObdAdapter
         return null;
     }
 
+    [GeneratedRegex(@"[0-9A-Fa-f]+")]
+    private static partial Regex HexResponseRegex();
+
     /// <summary>
     /// Check if response is a UDS negative response (7F XX YY format).
     /// </summary>
@@ -260,28 +341,82 @@ public partial class Elm327Adapter : IObdAdapter
         return NegativeResponseRegex().IsMatch(cleaned);
     }
 
+    private static bool IsTransient(Exception ex) =>
+            ex is TimeoutException ||
+            ex is IOException ||
+            ex is InvalidOperationException;
+
+    [GeneratedRegex(@"^7F[0-9A-F]{4}")]
+    private static partial Regex NegativeResponseRegex();
+
     /// <summary>
-    /// Get user-friendly error message for error pattern.
+    /// Parse OBD response based on command type
     /// </summary>
-    private static string GetErrorMessage(string pattern)
+    private static string ParseResponse(string command, string rawResponse)
     {
-        return pattern switch
+        // For AT commands, return as-is
+        if (command.StartsWith("AT", StringComparison.OrdinalIgnoreCase))
         {
-            "NO DATA" => "No data from ECU",
-            "UNABLE TO CONNECT" => "Unable to connect to ECU",
-            "CAN ERROR" => "CAN bus error",
-            "BUS ERROR" => "Bus communication error",
-            "FB ERROR" => "Flow control error",
-            "RX ERROR" => "Receive error",
-            "DATA ERROR" => "Data error",
-            "BUFFER FULL" => "Buffer overflow",
-            "LV RESET" => "Low voltage reset",
-            "LP ALERT" => "Low power alert",
-            "ACT ALERT" => "Activity alert - no bus activity",
-            "STOPPED" => "Command stopped",
-            "ERR" => "Adapter error",
-            _ => $"Error: {pattern}"
-        };
+            return rawResponse;
+        }
+
+        // For OBD PIDs, strip the response header bytes
+        // Response format: 4X YY [ZZ...] where X=mode+4, YY=PID
+        // Example: command "010C" (RPM) -> response "410C 1AF8"
+        var hexPattern = HexResponseRegex();
+        var match = hexPattern.Match(rawResponse.Replace(" ", "").Replace("\n", ""));
+
+        if (match.Success)
+        {
+            return match.Value;
+        }
+
+        return rawResponse;
+    }
+
+    [GeneratedRegex(@"ELM\d+\s*v[\d.]+", RegexOptions.IgnoreCase)]
+    private static partial Regex VersionRegex();
+
+    private async Task<T> ExecuteWithRetriesAsync<T>(
+            string operationName,
+            int maxAttempts,
+            CancellationToken cancellationToken,
+            Func<Task<T>> operation)
+    {
+        Exception? last = null;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                return await operation().ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (IsTransient(ex) && attempt < maxAttempts)
+            {
+                last = ex;
+                var delay = TimeSpan.FromMilliseconds(_retryBaseDelay.TotalMilliseconds * attempt * attempt);
+                RaiseLog(Elm327LogLevel.Warning, $"{operationName} transient failure (attempt {attempt}/{maxAttempts}): {ex.Message}. Retrying in {delay.TotalMilliseconds:F0}ms");
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+                break;
+            }
+        }
+
+        throw last ?? new InvalidOperationException($"{operationName} failed");
+    }
+
+    private void RaiseLog(Elm327LogLevel level, string message)
+    {
+        Log?.Invoke(this, new Elm327LogEventArgs(level, message));
     }
 
     /// <summary>
@@ -417,141 +552,6 @@ public partial class Elm327Adapter : IObdAdapter
                 return response;
             }).ConfigureAwait(false);
     }
-
-    private async Task<T> ExecuteWithRetriesAsync<T>(
-        string operationName,
-        int maxAttempts,
-        CancellationToken cancellationToken,
-        Func<Task<T>> operation)
-    {
-        Exception? last = null;
-
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                return await operation().ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex) when (IsTransient(ex) && attempt < maxAttempts)
-            {
-                last = ex;
-                var delay = TimeSpan.FromMilliseconds(_retryBaseDelay.TotalMilliseconds * attempt * attempt);
-                RaiseLog(Elm327LogLevel.Warning, $"{operationName} transient failure (attempt {attempt}/{maxAttempts}): {ex.Message}. Retrying in {delay.TotalMilliseconds:F0}ms");
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                last = ex;
-                break;
-            }
-        }
-
-        throw last ?? new InvalidOperationException($"{operationName} failed");
-    }
-
-    private static bool IsTransient(Exception ex) =>
-        ex is TimeoutException ||
-        ex is IOException ||
-        ex is InvalidOperationException;
-
-    /// <summary>
-    /// Clean up ELM327 response by removing echo, prompt, and extra whitespace
-    /// </summary>
-    private static string CleanResponse(string response, string command)
-    {
-        if (string.IsNullOrEmpty(response))
-            return string.Empty;
-
-        // Remove null bytes (some adapters have buffer issues)
-        response = response.Replace("\0", "");
-
-        // Remove the command echo if present
-        var cleaned = response;
-        if (cleaned.StartsWith(command, StringComparison.OrdinalIgnoreCase))
-        {
-            cleaned = cleaned[command.Length..];
-        }
-
-        // Remove prompt and clean whitespace
-        cleaned = cleaned
-            .Replace(">", "")
-            .Replace("\r\n", "\n")
-            .Replace("\r", "\n")
-            .Trim();
-
-        return cleaned;
-    }
-
-    /// <summary>
-    /// Parse OBD response based on command type
-    /// </summary>
-    private static string ParseResponse(string command, string rawResponse)
-    {
-        // For AT commands, return as-is
-        if (command.StartsWith("AT", StringComparison.OrdinalIgnoreCase))
-        {
-            return rawResponse;
-        }
-
-        // For OBD PIDs, strip the response header bytes
-        // Response format: 4X YY [ZZ...] where X=mode+4, YY=PID
-        // Example: command "010C" (RPM) -> response "410C 1AF8"
-        var hexPattern = HexResponseRegex();
-        var match = hexPattern.Match(rawResponse.Replace(" ", "").Replace("\n", ""));
-
-        if (match.Success)
-        {
-            return match.Value;
-        }
-
-        return rawResponse;
-    }
-
-    private static string ExtractVersion(string response)
-    {
-        // Look for version pattern like "ELM327 v1.5" or "ELM327 v2.1"
-        var versionPattern = VersionRegex();
-        var match = versionPattern.Match(response);
-        return match.Success ? match.Value : response.Trim();
-    }
-
-    private void RaiseLog(Elm327LogLevel level, string message)
-    {
-        Log?.Invoke(this, new Elm327LogEventArgs(level, message));
-    }
-
-    [GeneratedRegex(@"[0-9A-Fa-f]+")]
-    private static partial Regex HexResponseRegex();
-
-    [GeneratedRegex(@"ELM\d+\s*v[\d.]+", RegexOptions.IgnoreCase)]
-    private static partial Regex VersionRegex();
-
-    [GeneratedRegex(@"^7F[0-9A-F]{4}")]
-    private static partial Regex NegativeResponseRegex();
-}
-
-/// <summary>
-/// Log levels for ELM327 adapter events
-/// </summary>
-public enum Elm327LogLevel
-{
-    /// <summary>Detailed debugging information</summary>
-    Debug,
-
-    /// <summary>General information</summary>
-    Info,
-
-    /// <summary>Potential issues</summary>
-    Warning,
-
-    /// <summary>Errors</summary>
-    Error
 }
 
 /// <summary>
@@ -559,15 +559,6 @@ public enum Elm327LogLevel
 /// </summary>
 public class Elm327LogEventArgs : EventArgs
 {
-    /// <summary>Log level</summary>
-    public Elm327LogLevel Level { get; }
-
-    /// <summary>Log message</summary>
-    public string Message { get; }
-
-    /// <summary>When the event occurred</summary>
-    public DateTime Timestamp { get; }
-
     /// <summary>
     /// Creates a new log event
     /// </summary>
@@ -577,4 +568,13 @@ public class Elm327LogEventArgs : EventArgs
         Message = message;
         Timestamp = DateTime.UtcNow;
     }
+
+    /// <summary>Log level</summary>
+    public Elm327LogLevel Level { get; }
+
+    /// <summary>Log message</summary>
+    public string Message { get; }
+
+    /// <summary>When the event occurred</summary>
+    public DateTime Timestamp { get; }
 }

@@ -6,23 +6,6 @@ namespace ObdInsight.Core.Vehicles;
 /// </summary>
 public class StandardObdVehicleProfile : IVehicleProfile
 {
-    public string Name => "Standard OBD-II Vehicle";
-    public string Manufacturer => "Generic";
-    public string Model => "OBD-II";
-    public Range<int> SupportedYears => new(1996, DateTime.Now.Year + 1);
-    public VehicleProtocol Protocol => VehicleProtocol.StandardObd2;
-    public bool IsElectric => false;
-    public IReadOnlyList<string> VinPrefixes => [];
-    public IReadOnlyList<VehiclePid> CustomPids => [];
-
-    public IReadOnlySet<VehicleDataCategory> SupportedCategories { get; } = new HashSet<VehicleDataCategory>
-    {
-        VehicleDataCategory.Engine,
-        VehicleDataCategory.Diagnostics,
-        VehicleDataCategory.Movement,
-        VehicleDataCategory.Fuel
-    };
-
     private static readonly Dictionary<VehicleDataPoint, (string Command, Func<byte[], object?> Decoder, string Unit)> StandardPidMap = new()
     {
         [VehicleDataPoint.Rpm] = ("010C", bytes => bytes.Length >= 2 ? ((bytes[0] * 256) + bytes[1]) / 4.0 : null, "rpm"),
@@ -35,22 +18,23 @@ public class StandardObdVehicleProfile : IVehicleProfile
         [VehicleDataPoint.AmbientTemp] = ("0146", bytes => bytes.Length >= 1 ? bytes[0] - 40 : null, "°C"),
     };
 
-    public virtual ObdCommand? GetCommand(VehicleDataPoint dataPoint)
+    public IReadOnlyList<VehiclePid> CustomPids => [];
+    public bool IsElectric => false;
+    public string Manufacturer => "Generic";
+    public string Model => "OBD-II";
+    public string Name => "Standard OBD-II Vehicle";
+    public VehicleProtocol Protocol => VehicleProtocol.StandardObd2;
+
+    public IReadOnlySet<VehicleDataCategory> SupportedCategories { get; } = new HashSet<VehicleDataCategory>
     {
-        if (dataPoint == VehicleDataPoint.Vin)
-        {
-            return new ObdCommand("0902", TimeSpan.FromSeconds(10));
-        }
+        VehicleDataCategory.Engine,
+        VehicleDataCategory.Diagnostics,
+        VehicleDataCategory.Movement,
+        VehicleDataCategory.Fuel
+    };
 
-        if (dataPoint == VehicleDataPoint.DtcCodes)
-        {
-            return new ObdCommand("03", TimeSpan.FromSeconds(10));
-        }
-
-        return StandardPidMap.TryGetValue(dataPoint, out var pidInfo)
-            ? ObdCommand.Create(pidInfo.Command)
-            : null;
-    }
+    public Range<int> SupportedYears => new(1996, DateTime.Now.Year + 1);
+    public IReadOnlyList<string> VinPrefixes => [];
 
     public virtual VehicleDataResult DecodeResponse(VehicleDataPoint dataPoint, byte[] responseBytes)
     {
@@ -72,7 +56,24 @@ public class StandardObdVehicleProfile : IVehicleProfile
         }
     }
 
-    public virtual bool MatchesVin(string vin) => false; // Generic profile doesn't match specific VINs
+    public virtual ObdCommand? GetCommand(VehicleDataPoint dataPoint)
+    {
+        if (dataPoint == VehicleDataPoint.Vin)
+        {
+            return new ObdCommand("0902", TimeSpan.FromSeconds(10));
+        }
+
+        if (dataPoint == VehicleDataPoint.DtcCodes)
+        {
+            return new ObdCommand("03", TimeSpan.FromSeconds(10));
+        }
+
+        return StandardPidMap.TryGetValue(dataPoint, out var pidInfo)
+            ? ObdCommand.Create(pidInfo.Command)
+            : null;
+    }
 
     public virtual IReadOnlyList<ObdCommand> GetInitializationCommands() => [];
+
+    public virtual bool MatchesVin(string vin) => false; // Generic profile doesn't match specific VINs
 }

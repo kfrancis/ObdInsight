@@ -155,14 +155,14 @@ public record BleScanFilter(
 public class BleDeviceDiscoveredEventArgs : EventArgs
 {
     /// <summary>
-    /// The discovered device
-    /// </summary>
-    public BleDeviceInfo Device { get; }
-
-    /// <summary>
     /// Creates a new device discovery event
     /// </summary>
     public BleDeviceDiscoveredEventArgs(BleDeviceInfo device) => Device = device;
+
+    /// <summary>
+    /// The discovered device
+    /// </summary>
+    public BleDeviceInfo Device { get; }
 }
 
 /// <summary>
@@ -171,12 +171,12 @@ public class BleDeviceDiscoveredEventArgs : EventArgs
 public class BleScanStateChangedEventArgs : EventArgs
 {
     /// <summary>
-    /// Whether scanning is currently active
-    /// </summary>
-    public bool IsScanning { get; }
-
-    /// <summary>
     /// Creates a new scan state change event
     /// </summary>
     public BleScanStateChangedEventArgs(bool isScanning) => IsScanning = isScanning;
+
+    /// <summary>
+    /// Whether scanning is currently active
+    /// </summary>
+    public bool IsScanning { get; }
 }

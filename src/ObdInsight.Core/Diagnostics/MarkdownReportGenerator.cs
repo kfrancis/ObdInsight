@@ -97,105 +97,289 @@ public static class MarkdownReportGenerator
         return sb.ToString();
     }
 
-    private static void AppendVehicleInfo(StringBuilder sb, UserVehicleInfo info)
+    /// <summary>
+    /// Masks the last 6 characters of a VIN for privacy
+    /// </summary>
+    public static string MaskVin(string vin)
     {
-        sb.AppendLine("## Vehicle Information (User Provided)");
+        if (vin.Length <= 6)
+            return new string('*', vin.Length);
+
+        return vin[..^6] + "******";
+    }
+
+    private static void AppendBleAdapterInfo(StringBuilder sb, BleAdapterInfo info)
+    {
+        sb.AppendLine("## BLE Adapter Information");
         sb.AppendLine();
-        sb.AppendLine("| Property | Value |");
-        sb.AppendLine("|----------|-------|");
-        sb.AppendLine($"| Year | {info.Year} |");
-        sb.AppendLine($"| Make | {info.Make} |");
-        sb.AppendLine($"| Model | {info.Model} |");
+        sb.AppendLine($"**Device Name:** `{info.DeviceName}`");
+        sb.AppendLine($"**MAC Address:** `{info.MacAddress}`");
 
-        if (!string.IsNullOrEmpty(info.Trim))
-            sb.AppendLine($"| Trim | {info.Trim} |");
-        if (!string.IsNullOrEmpty(info.EngineType))
-            sb.AppendLine($"| Engine/Powertrain | {info.EngineType} |");
-        if (!string.IsNullOrEmpty(info.TransmissionType))
-            sb.AppendLine($"| Transmission | {info.TransmissionType} |");
+        if (info.Rssi.HasValue)
+            sb.AppendLine($"**RSSI:** {info.Rssi} dBm");
 
         sb.AppendLine();
 
-        if (!string.IsNullOrEmpty(info.AdditionalNotes))
+        if (info.Services.Count > 0)
         {
-            sb.AppendLine("**Additional Notes:**");
-            sb.AppendLine($"> {info.AdditionalNotes}");
+            sb.AppendLine("<details>");
+            sb.AppendLine("<summary>GATT Services & Characteristics</summary>");
+            sb.AppendLine();
+            sb.AppendLine("```");
+
+            foreach (var service in info.Services)
+            {
+                sb.AppendLine($"Service: {service.ServiceUuid}");
+                foreach (var characteristic in service.Characteristics)
+                {
+                    var props = string.Join(", ", characteristic.Properties);
+                    sb.AppendLine($"  ?? {characteristic.CharacteristicUuid} [{props}]");
+                }
+            }
+
+            sb.AppendLine("```");
+            sb.AppendLine();
+            sb.AppendLine("</details>");
             sb.AppendLine();
         }
     }
 
-    private static void AppendSummary(StringBuilder sb, DiagnosticReport report)
+    private static void AppendCanProbeResults(StringBuilder sb, IReadOnlyList<CanProbeResult> results)
     {
-        sb.AppendLine("## Summary");
+        sb.AppendLine("## EV CAN Address Probes");
         sb.AppendLine();
 
-        var checksTable = new List<(string Check, bool? Passed, string Details)>();
+        var dataResults = results.Where(r => !r.Command.StartsWith("ATSH")).ToList();
+        var successful = dataResults.Where(r => r.Success).ToList();
 
-        // BLE connection
-        checksTable.Add(("BLE Connection", report.BleAdapterInfo != null,
-            report.BleAdapterInfo?.DeviceName ?? "Not connected"));
-
-        // Adapter detection
-        var adapterName = report.ObdAdapterInfo?.VersionResponse?.Trim();
-        checksTable.Add(("Adapter Detection", !string.IsNullOrEmpty(adapterName),
-            adapterName ?? "Unknown"));
-
-        // Protocol probe
-        var workingProtocols = report.ProtocolProbeResults.Count(p => p.GotResponse);
-        checksTable.Add(("Working Protocols", workingProtocols > 0,
-            workingProtocols > 0 ? $"{workingProtocols} protocol(s) responded" : "No protocols responded"));
-
-        // VIN read
-        var vin = report.VehicleId?.Vin;
-        checksTable.Add(("VIN Read", !string.IsNullOrEmpty(vin),
-            vin != null ? MaskVin(vin) : "Not available"));
-
-        // PIDs discovered
-        var pidCount = report.SupportedPids?.Mode01Pids.Count ?? 0;
-        checksTable.Add(("PID Discovery", pidCount > 0,
-            $"{pidCount} Mode 01 PIDs"));
-
-        // Standard PIDs responded
-        var respondedPids = report.StandardPidResults.Count(r => r.Success);
-        checksTable.Add(("Standard PID Responses", respondedPids > 0,
-            $"{respondedPids}/{report.StandardPidResults.Count} successful"));
-
-        // Extended PIDs responded
-        var extendedResponded = report.ExtendedPidResults.Count(r => r.Success);
-        checksTable.Add(("Extended PID Responses", extendedResponded > 0,
-            $"{extendedResponded}/{report.ExtendedPidResults.Count} successful"));
-
-        // CAN probe results
-        var canResponded = report.CanProbeResults.Count(r => r.Success && !r.Command.StartsWith("ATSH"));
-        if (report.CanProbeResults.Count > 0)
+        if (successful.Count > 0)
         {
-            checksTable.Add(("EV CAN Responses", canResponded > 0,
-                $"{canResponded} CAN address(es) responded"));
-        }
+            sb.AppendLine("### Successful CAN Responses");
+            sb.AppendLine();
+            sb.AppendLine("| Header | Command | Description | Response | Time |");
+            sb.AppendLine("|--------|---------|-------------|----------|------|");
 
-        // EV indicators
-        var isLikelyEv = report.UserVehicleInfo.EngineType?.Contains("Electric") == true ||
-                         report.UserVehicleInfo.EngineType?.Contains("BEV") == true ||
-                         report.UserVehicleInfo.EngineType?.Contains("Hybrid") == true;
-        var evDataFound = extendedResponded > 0 || canResponded > 0;
-        checksTable.Add(("EV/Hybrid Data", isLikelyEv ? evDataFound : null,
-            isLikelyEv ? (evDataFound ? "EV-specific data found" : "No EV data (may need proprietary protocol)") : "Not an EV"));
-
-        sb.AppendLine("| Check | Status | Details |");
-        sb.AppendLine("|-------|--------|---------|");
-
-        foreach (var (check, passed, details) in checksTable)
-        {
-            var status = passed switch
+            foreach (var result in successful)
             {
-                true => "?",
-                false => "?",
-                null => "?"
-            };
-            sb.AppendLine($"| {check} | {status} | {EscapeMarkdown(details)} |");
+                var response = TruncateForTable(result.RawResponse);
+                sb.AppendLine($"| `{result.Header ?? "default"}` | `{result.Command}` | {result.Description} | `{EscapeMarkdown(response)}` | {result.ResponseTime.TotalMilliseconds:F0}ms |");
+            }
+
+            sb.AppendLine();
+        }
+        else
+        {
+            sb.AppendLine("*No EV-specific CAN addresses responded. Vehicle may require different addressing.*");
+            sb.AppendLine();
+        }
+
+        // Show all probes
+        sb.AppendLine("<details>");
+        sb.AppendLine("<summary>All CAN Probe Data</summary>");
+        sb.AppendLine();
+        sb.AppendLine("```");
+
+        string? currentHeader = null;
+        foreach (var result in results)
+        {
+            if (result.Command.StartsWith("ATSH"))
+            {
+                currentHeader = result.Command.Substring(4);
+                sb.AppendLine($"--- Header: {currentHeader} ---");
+            }
+            else
+            {
+                var status = result.Success ? "OK" : "NO DATA";
+                var response = result.RawResponse?.Replace("\r", "\\r").Replace("\n", "\\n") ?? "";
+                if (response.Length > 60)
+                    response = response[..57] + "...";
+                sb.AppendLine($"[{status}] {result.Command}: {response} [{result.ResponseTime.TotalMilliseconds:F0}ms]");
+            }
+        }
+
+        sb.AppendLine("```");
+        sb.AppendLine();
+        sb.AppendLine("</details>");
+        sb.AppendLine();
+    }
+
+    private static void AppendErrors(StringBuilder sb, IReadOnlyList<DiagnosticError> errors)
+    {
+        sb.AppendLine("## Errors Encountered");
+        sb.AppendLine();
+
+        foreach (var error in errors)
+        {
+            sb.AppendLine($"- **{error.Phase}:** {error.Message}");
+            if (!string.IsNullOrEmpty(error.Details))
+            {
+                sb.AppendLine("  ```");
+                sb.AppendLine($"  {error.Details}");
+                sb.AppendLine("  ```");
+            }
         }
 
         sb.AppendLine();
+    }
+
+    private static void AppendNotes(StringBuilder sb, IReadOnlyList<string> notes)
+    {
+        sb.AppendLine("## Collection Notes");
+        sb.AppendLine();
+
+        foreach (var note in notes)
+        {
+            sb.AppendLine($"- {note}");
+        }
+
+        sb.AppendLine();
+    }
+
+    private static void AppendObdAdapterInfo(StringBuilder sb, ObdAdapterInfo info)
+    {
+        sb.AppendLine("## OBD Adapter Information");
+        sb.AppendLine();
+
+        sb.AppendLine("| Property | Value |");
+        sb.AppendLine("|----------|-------|");
+
+        if (!string.IsNullOrEmpty(info.VersionResponse))
+            sb.AppendLine($"| Version (ATI) | `{EscapeMarkdown(info.VersionResponse.Trim())}` |");
+        if (!string.IsNullOrEmpty(info.DeviceDescription))
+            sb.AppendLine($"| Description (AT@1) | `{EscapeMarkdown(info.DeviceDescription.Trim())}` |");
+        if (!string.IsNullOrEmpty(info.VoltageResponse))
+            sb.AppendLine($"| Voltage (ATRV) | `{EscapeMarkdown(info.VoltageResponse.Trim())}` |");
+        if (!string.IsNullOrEmpty(info.ProtocolDescription))
+            sb.AppendLine($"| Protocol (ATDP) | `{EscapeMarkdown(info.ProtocolDescription.Trim())}` |");
+        if (!string.IsNullOrEmpty(info.ProtocolNumber))
+            sb.AppendLine($"| Protocol # (ATDPN) | `{EscapeMarkdown(info.ProtocolNumber.Trim())}` |");
+
+        sb.AppendLine();
+
+        if (info.RawAtResponses.Count > 0)
+        {
+            sb.AppendLine("<details>");
+            sb.AppendLine("<summary>Raw AT Command Responses</summary>");
+            sb.AppendLine();
+            sb.AppendLine("```");
+
+            foreach (var (cmd, response) in info.RawAtResponses)
+            {
+                var cleanResponse = response.Replace("\r", "\\r").Replace("\n", "\\n");
+                sb.AppendLine($"{cmd}: {cleanResponse}");
+            }
+
+            sb.AppendLine("```");
+            sb.AppendLine();
+            sb.AppendLine("</details>");
+            sb.AppendLine();
+        }
+    }
+
+    private static void AppendPidProbeResults(StringBuilder sb, string title, IReadOnlyList<PidProbeResult> results)
+    {
+        sb.AppendLine($"## {title}");
+        sb.AppendLine();
+
+        // Show successful responses in main table
+        var successful = results.Where(r => r.Success).ToList();
+        var failed = results.Where(r => !r.Success).ToList();
+
+        if (successful.Count > 0)
+        {
+            sb.AppendLine("### Successful Responses");
+            sb.AppendLine();
+            sb.AppendLine("| PID | Description | Response | Time |");
+            sb.AppendLine("|-----|-------------|----------|------|");
+
+            foreach (var result in successful)
+            {
+                var response = TruncateForTable(result.RawResponse);
+                sb.AppendLine($"| `{result.Command}` | {result.Description} | `{EscapeMarkdown(response)}` | {result.ResponseTime.TotalMilliseconds:F0}ms |");
+            }
+
+            sb.AppendLine();
+        }
+        else
+        {
+            sb.AppendLine("*No PIDs in this category responded with data.*");
+            sb.AppendLine();
+        }
+
+        // Show raw data in collapsible section
+        sb.AppendLine("<details>");
+        sb.AppendLine("<summary>All PID Probe Data (Raw)</summary>");
+        sb.AppendLine();
+        sb.AppendLine("```");
+
+        foreach (var result in results)
+        {
+            var status = result.Success ? "OK" : "FAIL";
+            var response = result.RawResponse?.Replace("\r", "\\r").Replace("\n", "\\n") ?? result.Error ?? "";
+            if (response.Length > 50)
+                response = response[..47] + "...";
+            sb.AppendLine($"[{status}] {result.Command} ({result.Description}): {response} [{result.ResponseTime.TotalMilliseconds:F0}ms]");
+        }
+
+        sb.AppendLine("```");
+        sb.AppendLine();
+        sb.AppendLine("</details>");
+        sb.AppendLine();
+
+        if (failed.Count > 0)
+        {
+            sb.AppendLine($"*{failed.Count} PIDs did not respond or returned errors*");
+            sb.AppendLine();
+        }
+    }
+
+    private static void AppendProtocolProbeResults(StringBuilder sb, IReadOnlyList<ProtocolProbeResult> results)
+    {
+        sb.AppendLine("## Protocol Probe Results");
+        sb.AppendLine();
+
+        var working = results.Where(r => r.GotResponse).ToList();
+        var notWorking = results.Where(r => !r.GotResponse && r.SetSuccess).ToList();
+
+        if (working.Count > 0)
+        {
+            sb.AppendLine("### Working Protocols");
+            sb.AppendLine();
+            sb.AppendLine("| Protocol | Command | Response Time | Sample Response |");
+            sb.AppendLine("|----------|---------|---------------|-----------------|");
+
+            foreach (var result in working)
+            {
+                var response = TruncateForTable(result.TestResponse);
+                sb.AppendLine($"| {result.Description} | `{result.ProtocolCommand}` | {result.ResponseTime.TotalMilliseconds:F0}ms | `{EscapeMarkdown(response)}` |");
+            }
+
+            sb.AppendLine();
+        }
+        else
+        {
+            sb.AppendLine("**No standard OBD-II protocols responded with data.**");
+            sb.AppendLine();
+        }
+
+        if (notWorking.Count > 0)
+        {
+            sb.AppendLine("<details>");
+            sb.AppendLine("<summary>Protocols Tested (No Response)</summary>");
+            sb.AppendLine();
+            sb.AppendLine("```");
+
+            foreach (var result in notWorking)
+            {
+                var response = result.TestResponse?.Replace("\r", "\\r").Replace("\n", "\\n") ?? "NO DATA";
+                sb.AppendLine($"{result.ProtocolCommand} ({result.Description}): {response}");
+            }
+
+            sb.AppendLine("```");
+            sb.AppendLine();
+            sb.AppendLine("</details>");
+            sb.AppendLine();
+        }
     }
 
     private static void AppendRecommendations(StringBuilder sb, DiagnosticReport report)
@@ -309,165 +493,78 @@ public static class MarkdownReportGenerator
         sb.AppendLine();
     }
 
-    private static void AppendBleAdapterInfo(StringBuilder sb, BleAdapterInfo info)
+    private static void AppendSummary(StringBuilder sb, DiagnosticReport report)
     {
-        sb.AppendLine("## BLE Adapter Information");
-        sb.AppendLine();
-        sb.AppendLine($"**Device Name:** `{info.DeviceName}`");
-        sb.AppendLine($"**MAC Address:** `{info.MacAddress}`");
-
-        if (info.Rssi.HasValue)
-            sb.AppendLine($"**RSSI:** {info.Rssi} dBm");
-
+        sb.AppendLine("## Summary");
         sb.AppendLine();
 
-        if (info.Services.Count > 0)
+        var checksTable = new List<(string Check, bool? Passed, string Details)>();
+
+        // BLE connection
+        checksTable.Add(("BLE Connection", report.BleAdapterInfo != null,
+            report.BleAdapterInfo?.DeviceName ?? "Not connected"));
+
+        // Adapter detection
+        var adapterName = report.ObdAdapterInfo?.VersionResponse?.Trim();
+        checksTable.Add(("Adapter Detection", !string.IsNullOrEmpty(adapterName),
+            adapterName ?? "Unknown"));
+
+        // Protocol probe
+        var workingProtocols = report.ProtocolProbeResults.Count(p => p.GotResponse);
+        checksTable.Add(("Working Protocols", workingProtocols > 0,
+            workingProtocols > 0 ? $"{workingProtocols} protocol(s) responded" : "No protocols responded"));
+
+        // VIN read
+        var vin = report.VehicleId?.Vin;
+        checksTable.Add(("VIN Read", !string.IsNullOrEmpty(vin),
+            vin != null ? MaskVin(vin) : "Not available"));
+
+        // PIDs discovered
+        var pidCount = report.SupportedPids?.Mode01Pids.Count ?? 0;
+        checksTable.Add(("PID Discovery", pidCount > 0,
+            $"{pidCount} Mode 01 PIDs"));
+
+        // Standard PIDs responded
+        var respondedPids = report.StandardPidResults.Count(r => r.Success);
+        checksTable.Add(("Standard PID Responses", respondedPids > 0,
+            $"{respondedPids}/{report.StandardPidResults.Count} successful"));
+
+        // Extended PIDs responded
+        var extendedResponded = report.ExtendedPidResults.Count(r => r.Success);
+        checksTable.Add(("Extended PID Responses", extendedResponded > 0,
+            $"{extendedResponded}/{report.ExtendedPidResults.Count} successful"));
+
+        // CAN probe results
+        var canResponded = report.CanProbeResults.Count(r => r.Success && !r.Command.StartsWith("ATSH"));
+        if (report.CanProbeResults.Count > 0)
         {
-            sb.AppendLine("<details>");
-            sb.AppendLine("<summary>GATT Services & Characteristics</summary>");
-            sb.AppendLine();
-            sb.AppendLine("```");
+            checksTable.Add(("EV CAN Responses", canResponded > 0,
+                $"{canResponded} CAN address(es) responded"));
+        }
 
-            foreach (var service in info.Services)
+        // EV indicators
+        var isLikelyEv = report.UserVehicleInfo.EngineType?.Contains("Electric") == true ||
+                         report.UserVehicleInfo.EngineType?.Contains("BEV") == true ||
+                         report.UserVehicleInfo.EngineType?.Contains("Hybrid") == true;
+        var evDataFound = extendedResponded > 0 || canResponded > 0;
+        checksTable.Add(("EV/Hybrid Data", isLikelyEv ? evDataFound : null,
+            isLikelyEv ? (evDataFound ? "EV-specific data found" : "No EV data (may need proprietary protocol)") : "Not an EV"));
+
+        sb.AppendLine("| Check | Status | Details |");
+        sb.AppendLine("|-------|--------|---------|");
+
+        foreach (var (check, passed, details) in checksTable)
+        {
+            var status = passed switch
             {
-                sb.AppendLine($"Service: {service.ServiceUuid}");
-                foreach (var characteristic in service.Characteristics)
-                {
-                    var props = string.Join(", ", characteristic.Properties);
-                    sb.AppendLine($"  ?? {characteristic.CharacteristicUuid} [{props}]");
-                }
-            }
-
-            sb.AppendLine("```");
-            sb.AppendLine();
-            sb.AppendLine("</details>");
-            sb.AppendLine();
+                true => "?",
+                false => "?",
+                null => "?"
+            };
+            sb.AppendLine($"| {check} | {status} | {EscapeMarkdown(details)} |");
         }
-    }
-
-    private static void AppendObdAdapterInfo(StringBuilder sb, ObdAdapterInfo info)
-    {
-        sb.AppendLine("## OBD Adapter Information");
-        sb.AppendLine();
-
-        sb.AppendLine("| Property | Value |");
-        sb.AppendLine("|----------|-------|");
-
-        if (!string.IsNullOrEmpty(info.VersionResponse))
-            sb.AppendLine($"| Version (ATI) | `{EscapeMarkdown(info.VersionResponse.Trim())}` |");
-        if (!string.IsNullOrEmpty(info.DeviceDescription))
-            sb.AppendLine($"| Description (AT@1) | `{EscapeMarkdown(info.DeviceDescription.Trim())}` |");
-        if (!string.IsNullOrEmpty(info.VoltageResponse))
-            sb.AppendLine($"| Voltage (ATRV) | `{EscapeMarkdown(info.VoltageResponse.Trim())}` |");
-        if (!string.IsNullOrEmpty(info.ProtocolDescription))
-            sb.AppendLine($"| Protocol (ATDP) | `{EscapeMarkdown(info.ProtocolDescription.Trim())}` |");
-        if (!string.IsNullOrEmpty(info.ProtocolNumber))
-            sb.AppendLine($"| Protocol # (ATDPN) | `{EscapeMarkdown(info.ProtocolNumber.Trim())}` |");
 
         sb.AppendLine();
-
-        if (info.RawAtResponses.Count > 0)
-        {
-            sb.AppendLine("<details>");
-            sb.AppendLine("<summary>Raw AT Command Responses</summary>");
-            sb.AppendLine();
-            sb.AppendLine("```");
-
-            foreach (var (cmd, response) in info.RawAtResponses)
-            {
-                var cleanResponse = response.Replace("\r", "\\r").Replace("\n", "\\n");
-                sb.AppendLine($"{cmd}: {cleanResponse}");
-            }
-
-            sb.AppendLine("```");
-            sb.AppendLine();
-            sb.AppendLine("</details>");
-            sb.AppendLine();
-        }
-    }
-
-    private static void AppendProtocolProbeResults(StringBuilder sb, IReadOnlyList<ProtocolProbeResult> results)
-    {
-        sb.AppendLine("## Protocol Probe Results");
-        sb.AppendLine();
-
-        var working = results.Where(r => r.GotResponse).ToList();
-        var notWorking = results.Where(r => !r.GotResponse && r.SetSuccess).ToList();
-
-        if (working.Count > 0)
-        {
-            sb.AppendLine("### Working Protocols");
-            sb.AppendLine();
-            sb.AppendLine("| Protocol | Command | Response Time | Sample Response |");
-            sb.AppendLine("|----------|---------|---------------|-----------------|");
-
-            foreach (var result in working)
-            {
-                var response = TruncateForTable(result.TestResponse);
-                sb.AppendLine($"| {result.Description} | `{result.ProtocolCommand}` | {result.ResponseTime.TotalMilliseconds:F0}ms | `{EscapeMarkdown(response)}` |");
-            }
-
-            sb.AppendLine();
-        }
-        else
-        {
-            sb.AppendLine("**No standard OBD-II protocols responded with data.**");
-            sb.AppendLine();
-        }
-
-        if (notWorking.Count > 0)
-        {
-            sb.AppendLine("<details>");
-            sb.AppendLine("<summary>Protocols Tested (No Response)</summary>");
-            sb.AppendLine();
-            sb.AppendLine("```");
-
-            foreach (var result in notWorking)
-            {
-                var response = result.TestResponse?.Replace("\r", "\\r").Replace("\n", "\\n") ?? "NO DATA";
-                sb.AppendLine($"{result.ProtocolCommand} ({result.Description}): {response}");
-            }
-
-            sb.AppendLine("```");
-            sb.AppendLine();
-            sb.AppendLine("</details>");
-            sb.AppendLine();
-        }
-    }
-
-    private static void AppendVehicleId(StringBuilder sb, VehicleIdentification info)
-    {
-        sb.AppendLine("## Vehicle Identification (ECU)");
-        sb.AppendLine();
-
-        if (!string.IsNullOrEmpty(info.Vin))
-        {
-            sb.AppendLine($"**VIN:** `{MaskVin(info.Vin)}` (last 6 masked for privacy)");
-        }
-        else
-        {
-            sb.AppendLine("**VIN:** Not available via standard OBD-II");
-        }
-
-        if (!string.IsNullOrEmpty(info.CalibrationId))
-            sb.AppendLine($"**Calibration ID:** `{EscapeMarkdown(info.CalibrationId.Trim())}`");
-        if (!string.IsNullOrEmpty(info.EcuName))
-            sb.AppendLine($"**ECU Name:** `{EscapeMarkdown(info.EcuName.Trim())}`");
-
-        sb.AppendLine();
-
-        if (!string.IsNullOrEmpty(info.RawVinResponse))
-        {
-            sb.AppendLine("<details>");
-            sb.AppendLine("<summary>Raw VIN Response</summary>");
-            sb.AppendLine();
-            sb.AppendLine("```");
-            sb.AppendLine(info.RawVinResponse);
-            sb.AppendLine("```");
-            sb.AppendLine();
-            sb.AppendLine("</details>");
-            sb.AppendLine();
-        }
     }
 
     private static void AppendSupportedPids(StringBuilder sb, SupportedPidsInfo info)
@@ -515,163 +612,78 @@ public static class MarkdownReportGenerator
         }
     }
 
-    private static void AppendPidProbeResults(StringBuilder sb, string title, IReadOnlyList<PidProbeResult> results)
+    private static void AppendVehicleId(StringBuilder sb, VehicleIdentification info)
     {
-        sb.AppendLine($"## {title}");
+        sb.AppendLine("## Vehicle Identification (ECU)");
         sb.AppendLine();
 
-        // Show successful responses in main table
-        var successful = results.Where(r => r.Success).ToList();
-        var failed = results.Where(r => !r.Success).ToList();
-
-        if (successful.Count > 0)
+        if (!string.IsNullOrEmpty(info.Vin))
         {
-            sb.AppendLine("### Successful Responses");
-            sb.AppendLine();
-            sb.AppendLine("| PID | Description | Response | Time |");
-            sb.AppendLine("|-----|-------------|----------|------|");
-
-            foreach (var result in successful)
-            {
-                var response = TruncateForTable(result.RawResponse);
-                sb.AppendLine($"| `{result.Command}` | {result.Description} | `{EscapeMarkdown(response)}` | {result.ResponseTime.TotalMilliseconds:F0}ms |");
-            }
-
-            sb.AppendLine();
+            sb.AppendLine($"**VIN:** `{MaskVin(info.Vin)}` (last 6 masked for privacy)");
         }
         else
         {
-            sb.AppendLine("*No PIDs in this category responded with data.*");
+            sb.AppendLine("**VIN:** Not available via standard OBD-II");
+        }
+
+        if (!string.IsNullOrEmpty(info.CalibrationId))
+            sb.AppendLine($"**Calibration ID:** `{EscapeMarkdown(info.CalibrationId.Trim())}`");
+        if (!string.IsNullOrEmpty(info.EcuName))
+            sb.AppendLine($"**ECU Name:** `{EscapeMarkdown(info.EcuName.Trim())}`");
+
+        sb.AppendLine();
+
+        if (!string.IsNullOrEmpty(info.RawVinResponse))
+        {
+            sb.AppendLine("<details>");
+            sb.AppendLine("<summary>Raw VIN Response</summary>");
             sb.AppendLine();
-        }
-
-        // Show raw data in collapsible section
-        sb.AppendLine("<details>");
-        sb.AppendLine("<summary>All PID Probe Data (Raw)</summary>");
-        sb.AppendLine();
-        sb.AppendLine("```");
-
-        foreach (var result in results)
-        {
-            var status = result.Success ? "OK" : "FAIL";
-            var response = result.RawResponse?.Replace("\r", "\\r").Replace("\n", "\\n") ?? result.Error ?? "";
-            if (response.Length > 50)
-                response = response[..47] + "...";
-            sb.AppendLine($"[{status}] {result.Command} ({result.Description}): {response} [{result.ResponseTime.TotalMilliseconds:F0}ms]");
-        }
-
-        sb.AppendLine("```");
-        sb.AppendLine();
-        sb.AppendLine("</details>");
-        sb.AppendLine();
-
-        if (failed.Count > 0)
-        {
-            sb.AppendLine($"*{failed.Count} PIDs did not respond or returned errors*");
+            sb.AppendLine("```");
+            sb.AppendLine(info.RawVinResponse);
+            sb.AppendLine("```");
+            sb.AppendLine();
+            sb.AppendLine("</details>");
             sb.AppendLine();
         }
     }
 
-    private static void AppendCanProbeResults(StringBuilder sb, IReadOnlyList<CanProbeResult> results)
+    private static void AppendVehicleInfo(StringBuilder sb, UserVehicleInfo info)
     {
-        sb.AppendLine("## EV CAN Address Probes");
+        sb.AppendLine("## Vehicle Information (User Provided)");
+        sb.AppendLine();
+        sb.AppendLine("| Property | Value |");
+        sb.AppendLine("|----------|-------|");
+        sb.AppendLine($"| Year | {info.Year} |");
+        sb.AppendLine($"| Make | {info.Make} |");
+        sb.AppendLine($"| Model | {info.Model} |");
+
+        if (!string.IsNullOrEmpty(info.Trim))
+            sb.AppendLine($"| Trim | {info.Trim} |");
+        if (!string.IsNullOrEmpty(info.EngineType))
+            sb.AppendLine($"| Engine/Powertrain | {info.EngineType} |");
+        if (!string.IsNullOrEmpty(info.TransmissionType))
+            sb.AppendLine($"| Transmission | {info.TransmissionType} |");
+
         sb.AppendLine();
 
-        var dataResults = results.Where(r => !r.Command.StartsWith("ATSH")).ToList();
-        var successful = dataResults.Where(r => r.Success).ToList();
-
-        if (successful.Count > 0)
+        if (!string.IsNullOrEmpty(info.AdditionalNotes))
         {
-            sb.AppendLine("### Successful CAN Responses");
-            sb.AppendLine();
-            sb.AppendLine("| Header | Command | Description | Response | Time |");
-            sb.AppendLine("|--------|---------|-------------|----------|------|");
-
-            foreach (var result in successful)
-            {
-                var response = TruncateForTable(result.RawResponse);
-                sb.AppendLine($"| `{result.Header ?? "default"}` | `{result.Command}` | {result.Description} | `{EscapeMarkdown(response)}` | {result.ResponseTime.TotalMilliseconds:F0}ms |");
-            }
-
-            sb.AppendLine();
-        }
-        else
-        {
-            sb.AppendLine("*No EV-specific CAN addresses responded. Vehicle may require different addressing.*");
+            sb.AppendLine("**Additional Notes:**");
+            sb.AppendLine($"> {info.AdditionalNotes}");
             sb.AppendLine();
         }
-
-        // Show all probes
-        sb.AppendLine("<details>");
-        sb.AppendLine("<summary>All CAN Probe Data</summary>");
-        sb.AppendLine();
-        sb.AppendLine("```");
-
-        string? currentHeader = null;
-        foreach (var result in results)
-        {
-            if (result.Command.StartsWith("ATSH"))
-            {
-                currentHeader = result.Command.Substring(4);
-                sb.AppendLine($"--- Header: {currentHeader} ---");
-            }
-            else
-            {
-                var status = result.Success ? "OK" : "NO DATA";
-                var response = result.RawResponse?.Replace("\r", "\\r").Replace("\n", "\\n") ?? "";
-                if (response.Length > 60)
-                    response = response[..57] + "...";
-                sb.AppendLine($"[{status}] {result.Command}: {response} [{result.ResponseTime.TotalMilliseconds:F0}ms]");
-            }
-        }
-
-        sb.AppendLine("```");
-        sb.AppendLine();
-        sb.AppendLine("</details>");
-        sb.AppendLine();
-    }
-
-    private static void AppendErrors(StringBuilder sb, IReadOnlyList<DiagnosticError> errors)
-    {
-        sb.AppendLine("## Errors Encountered");
-        sb.AppendLine();
-
-        foreach (var error in errors)
-        {
-            sb.AppendLine($"- **{error.Phase}:** {error.Message}");
-            if (!string.IsNullOrEmpty(error.Details))
-            {
-                sb.AppendLine("  ```");
-                sb.AppendLine($"  {error.Details}");
-                sb.AppendLine("  ```");
-            }
-        }
-
-        sb.AppendLine();
-    }
-
-    private static void AppendNotes(StringBuilder sb, IReadOnlyList<string> notes)
-    {
-        sb.AppendLine("## Collection Notes");
-        sb.AppendLine();
-
-        foreach (var note in notes)
-        {
-            sb.AppendLine($"- {note}");
-        }
-
-        sb.AppendLine();
     }
 
     /// <summary>
-    /// Masks the last 6 characters of a VIN for privacy
+    /// Escapes special markdown characters
     /// </summary>
-    public static string MaskVin(string vin)
+    private static string EscapeMarkdown(string text)
     {
-        if (vin.Length <= 6)
-            return new string('*', vin.Length);
-
-        return vin[..^6] + "******";
+        return text
+            .Replace("|", "\\|")
+            .Replace("`", "\\`")
+            .Replace("\r", "")
+            .Replace("\n", " ");
     }
 
     /// <summary>
@@ -687,17 +699,5 @@ public static class MarkdownReportGenerator
             return cleaned;
 
         return cleaned[..(maxLength - 3)] + "...";
-    }
-
-    /// <summary>
-    /// Escapes special markdown characters
-    /// </summary>
-    private static string EscapeMarkdown(string text)
-    {
-        return text
-            .Replace("|", "\\|")
-            .Replace("`", "\\`")
-            .Replace("\r", "")
-            .Replace("\n", " ");
     }
 }

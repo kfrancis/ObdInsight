@@ -7,9 +7,9 @@ namespace ObdInsight.Core.Transports.Ble;
 public static class BinaryObdCommands
 {
     /// <summary>
-    /// Standard OBD-II functional broadcast address (7DF)
+    /// ECU response address range end
     /// </summary>
-    public const ushort FunctionalBroadcastId = 0x7DF;
+    public const ushort EcuResponseEnd = 0x7EF;
 
     /// <summary>
     /// ECU response address range start (7E8-7EF)
@@ -17,22 +17,55 @@ public static class BinaryObdCommands
     public const ushort EcuResponseStart = 0x7E8;
 
     /// <summary>
-    /// ECU response address range end
+    /// Standard OBD-II functional broadcast address (7DF)
     /// </summary>
-    public const ushort EcuResponseEnd = 0x7EF;
+    public const ushort FunctionalBroadcastId = 0x7DF;
 
     /// <summary>
-    /// Build a standard OBD-II PID request frame.
-    /// Format: [Length][Service][PID] (ISO-TP single frame)
+    /// Common test commands for probing binary protocol format.
     /// </summary>
-    /// <param name="service">OBD service (01=current data, 02=freeze frame, etc.)</param>
-    /// <param name="pid">Parameter ID</param>
-    /// <returns>CAN data bytes for the request</returns>
-    public static byte[] BuildPidRequest(byte service, byte pid)
+    public static IReadOnlyList<(string Name, byte[] Data)> ProbeCommands =>
+    [
+        // Raw OBD-II service 01 PID 00 (supported PIDs)
+        ("Raw 01 00", [0x01, 0x00]),
+
+        // With ISO-TP length prefix
+        ("ISO-TP 01 00", [0x02, 0x01, 0x00]),
+
+        // Try with CAN ID prefix (7DF = functional broadcast)
+        ("CAN+PID 7DF", [0x07, 0xDF, 0x02, 0x01, 0x00]),
+
+        // Some adapters use length-prefixed proprietary framing
+        ("Len+Cmd 3", [0x03, 0x01, 0x00, 0x00]),
+
+        // AT passthrough (some binary protocols support this)
+        ("AT passthrough ATI", [0x41, 0x54, 0x49, 0x0D]), // "ATI\r"
+
+        // Simple ping/status commands
+        ("Status 0x00", [0x00]),
+        ("Ping 0xFF", [0xFF]),
+
+        // Some adapters use STN-style binary
+        ("STN style", [0x21, 0x01, 0x00]), // Request type + service + PID
+    ];
+
+    /// <summary>
+    /// Build a raw CAN frame with ID prefix (some binary protocols use this format).
+    /// </summary>
+    /// <param name="canId">11-bit CAN ID</param>
+    /// <param name="data">Data bytes (up to 8)</param>
+    /// <returns>Frame bytes with ID prefix</returns>
+    public static byte[] BuildCanFrame(ushort canId, byte[] data)
     {
-        // Standard OBD-II uses ISO-TP single frame format:
-        // [Length][Service][PID]
-        return [0x02, service, pid];
+        ArgumentNullException.ThrowIfNull(data);
+        if (data.Length > 8)
+            throw new ArgumentException("CAN data cannot exceed 8 bytes", nameof(data));
+
+        var frame = new byte[data.Length + 2];
+        frame[0] = (byte)(canId >> 8);
+        frame[1] = (byte)(canId & 0xFF);
+        Array.Copy(data, 0, frame, 2, data.Length);
+        return frame;
     }
 
     /// <summary>
@@ -56,51 +89,18 @@ public static class BinaryObdCommands
     }
 
     /// <summary>
-    /// Build a raw CAN frame with ID prefix (some binary protocols use this format).
+    /// Build a standard OBD-II PID request frame.
+    /// Format: [Length][Service][PID] (ISO-TP single frame)
     /// </summary>
-    /// <param name="canId">11-bit CAN ID</param>
-    /// <param name="data">Data bytes (up to 8)</param>
-    /// <returns>Frame bytes with ID prefix</returns>
-    public static byte[] BuildCanFrame(ushort canId, byte[] data)
+    /// <param name="service">OBD service (01=current data, 02=freeze frame, etc.)</param>
+    /// <param name="pid">Parameter ID</param>
+    /// <returns>CAN data bytes for the request</returns>
+    public static byte[] BuildPidRequest(byte service, byte pid)
     {
-        ArgumentNullException.ThrowIfNull(data);
-        if (data.Length > 8)
-            throw new ArgumentException("CAN data cannot exceed 8 bytes", nameof(data));
-
-        var frame = new byte[data.Length + 2];
-        frame[0] = (byte)(canId >> 8);
-        frame[1] = (byte)(canId & 0xFF);
-        Array.Copy(data, 0, frame, 2, data.Length);
-        return frame;
+        // Standard OBD-II uses ISO-TP single frame format:
+        // [Length][Service][PID]
+        return [0x02, service, pid];
     }
-
-    /// <summary>
-    /// Common test commands for probing binary protocol format.
-    /// </summary>
-    public static IReadOnlyList<(string Name, byte[] Data)> ProbeCommands =>
-    [
-        // Raw OBD-II service 01 PID 00 (supported PIDs)
-        ("Raw 01 00", [0x01, 0x00]),
-        
-        // With ISO-TP length prefix
-        ("ISO-TP 01 00", [0x02, 0x01, 0x00]),
-        
-        // Try with CAN ID prefix (7DF = functional broadcast)
-        ("CAN+PID 7DF", [0x07, 0xDF, 0x02, 0x01, 0x00]),
-        
-        // Some adapters use length-prefixed proprietary framing
-        ("Len+Cmd 3", [0x03, 0x01, 0x00, 0x00]),
-        
-        // AT passthrough (some binary protocols support this)
-        ("AT passthrough ATI", [0x41, 0x54, 0x49, 0x0D]), // "ATI\r"
-        
-        // Simple ping/status commands
-        ("Status 0x00", [0x00]),
-        ("Ping 0xFF", [0xFF]),
-        
-        // Some adapters use STN-style binary
-        ("STN style", [0x21, 0x01, 0x00]), // Request type + service + PID
-    ];
 
     /// <summary>
     /// Format bytes as hex string for display.

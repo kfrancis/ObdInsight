@@ -12,15 +12,15 @@ namespace ObdInsight.Core.Transports.Tracing;
 /// </remarks>
 public sealed class TransportTracer : ITransportTracer
 {
-    private readonly Lock _lock = new();
     private readonly List<TraceEntry> _entries = [];
+    private readonly Lock _lock = new();
     private readonly Stopwatch _stopwatch = new();
+    private bool _disposed;
     private TraceSessionMetadata? _metadata;
     private int _sequenceNumber;
-    private bool _disposed;
 
     /// <inheritdoc />
-    public bool IsRecording { get; private set; }
+    public event EventHandler<TraceEntry>? EntryRecorded;
 
     /// <inheritdoc />
     public TransportSession? CurrentSession
@@ -43,7 +43,42 @@ public sealed class TransportTracer : ITransportTracer
     }
 
     /// <inheritdoc />
-    public event EventHandler<TraceEntry>? EntryRecorded;
+    public bool IsRecording { get; private set; }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        if (IsRecording)
+        {
+            try
+            {
+                StopRecording();
+            }
+            catch
+            {
+                // Suppress exceptions during dispose
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public void RecordRx(string payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RecordEntry(TraceDirection.Rx, payload);
+    }
+
+    /// <inheritdoc />
+    public void RecordTx(string payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RecordEntry(TraceDirection.Tx, payload);
+    }
 
     /// <inheritdoc />
     public void StartRecording(TraceSessionMetadata? metadata = null)
@@ -99,20 +134,6 @@ public sealed class TransportTracer : ITransportTracer
     }
 
     /// <inheritdoc />
-    public void RecordTx(string payload)
-    {
-        ArgumentNullException.ThrowIfNull(payload);
-        RecordEntry(TraceDirection.Tx, payload);
-    }
-
-    /// <inheritdoc />
-    public void RecordRx(string payload)
-    {
-        ArgumentNullException.ThrowIfNull(payload);
-        RecordEntry(TraceDirection.Rx, payload);
-    }
-
-    /// <inheritdoc />
     public void UpdateMetadata(Func<TraceSessionMetadata, TraceSessionMetadata> updater)
     {
         ArgumentNullException.ThrowIfNull(updater);
@@ -123,27 +144,6 @@ public sealed class TransportTracer : ITransportTracer
             if (_metadata != null)
             {
                 _metadata = updater(_metadata);
-            }
-        }
-    }
-
-    /// <inheritdoc />
-    public void Dispose()
-    {
-        if (_disposed)
-            return;
-
-        _disposed = true;
-
-        if (IsRecording)
-        {
-            try
-            {
-                StopRecording();
-            }
-            catch
-            {
-                // Suppress exceptions during dispose
             }
         }
     }
@@ -191,55 +191,6 @@ public sealed class JsonLTransportSessionSerializer : ITransportSessionSerialize
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
         Converters = { new JsonStringEnumConverter() }
     };
-
-    /// <inheritdoc />
-    public async Task SaveAsync(TransportSession session, string filePath, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-
-        var directory = Path.GetDirectoryName(filePath);
-        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        await using var stream = File.Create(filePath);
-        await SaveAsync(session, stream, cancellationToken);
-    }
-
-    /// <inheritdoc />
-    public async Task SaveAsync(TransportSession session, Stream stream, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        ArgumentNullException.ThrowIfNull(stream);
-
-        await using var writer = new StreamWriter(stream, leaveOpen: true);
-
-        // Write header with session info
-        var header = new SessionHeader
-        {
-            Type = "session",
-            SessionId = session.SessionId,
-            Metadata = session.Metadata
-        };
-        await writer.WriteLineAsync(JsonSerializer.Serialize(header, s_jsonOptions));
-
-        // Write each entry on its own line
-        foreach (var entry in session.Entries)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var entryWrapper = new EntryWrapper
-            {
-                Type = "entry",
-                Entry = entry
-            };
-            await writer.WriteLineAsync(JsonSerializer.Serialize(entryWrapper, s_jsonOptions));
-        }
-
-        await writer.FlushAsync(cancellationToken);
-    }
 
     /// <inheritdoc />
     public async Task<TransportSession> LoadAsync(string filePath, CancellationToken cancellationToken = default)
@@ -318,6 +269,55 @@ public sealed class JsonLTransportSessionSerializer : ITransportSessionSerialize
             Metadata = metadata,
             Entries = entries
         };
+    }
+
+    /// <inheritdoc />
+    public async Task SaveAsync(TransportSession session, string filePath, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+
+        var directory = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        await using var stream = File.Create(filePath);
+        await SaveAsync(session, stream, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task SaveAsync(TransportSession session, Stream stream, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(stream);
+
+        await using var writer = new StreamWriter(stream, leaveOpen: true);
+
+        // Write header with session info
+        var header = new SessionHeader
+        {
+            Type = "session",
+            SessionId = session.SessionId,
+            Metadata = session.Metadata
+        };
+        await writer.WriteLineAsync(JsonSerializer.Serialize(header, s_jsonOptions));
+
+        // Write each entry on its own line
+        foreach (var entry in session.Entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var entryWrapper = new EntryWrapper
+            {
+                Type = "entry",
+                Entry = entry
+            };
+            await writer.WriteLineAsync(JsonSerializer.Serialize(entryWrapper, s_jsonOptions));
+        }
+
+        await writer.FlushAsync(cancellationToken);
     }
 
     private sealed record SessionHeader

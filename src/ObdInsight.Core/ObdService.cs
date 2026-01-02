@@ -10,32 +10,32 @@ public interface IObdService
 {
     bool IsConnected { get; }
 
+    Task<bool> ClearDtcCodesAsync(CancellationToken cancellationToken = default);
+
     Task<bool> ConnectAsync(IObdTransport transport, CancellationToken cancellationToken = default);
 
     Task DisconnectAsync();
 
-    // Vehicle info
-    Task<string?> GetVinAsync(CancellationToken cancellationToken = default);
+    Task<double?> GetCoolantTempCelsiusAsync(CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<string>> GetSupportedPidsAsync(CancellationToken cancellationToken = default);
+    // Diagnostics (Mode 03)
+    Task<IReadOnlyList<string>> GetDtcCodesAsync(CancellationToken cancellationToken = default);
+
+    Task<double?> GetEngineLoadPercentAsync(CancellationToken cancellationToken = default);
+
+    Task<double?> GetFuelLevelPercentAsync(CancellationToken cancellationToken = default);
 
     // Live data (Mode 01)
     Task<int?> GetRpmAsync(CancellationToken cancellationToken = default);
 
     Task<int?> GetSpeedKphAsync(CancellationToken cancellationToken = default);
 
-    Task<double?> GetCoolantTempCelsiusAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<string>> GetSupportedPidsAsync(CancellationToken cancellationToken = default);
 
     Task<double?> GetThrottlePositionPercentAsync(CancellationToken cancellationToken = default);
 
-    Task<double?> GetFuelLevelPercentAsync(CancellationToken cancellationToken = default);
-
-    Task<double?> GetEngineLoadPercentAsync(CancellationToken cancellationToken = default);
-
-    // Diagnostics (Mode 03)
-    Task<IReadOnlyList<string>> GetDtcCodesAsync(CancellationToken cancellationToken = default);
-
-    Task<bool> ClearDtcCodesAsync(CancellationToken cancellationToken = default);
+    // Vehicle info
+    Task<string?> GetVinAsync(CancellationToken cancellationToken = default);
 
     // Generic PID query
     Task<ObdPidResponse> QueryPidAsync(ObdPid pid, CancellationToken cancellationToken = default);
@@ -84,11 +84,17 @@ public class ObdService : IObdService
     private readonly IObdAdapter _adapter;
     private IObdTransport? _transport;
 
-    public bool IsConnected => _transport?.IsConnected == true && _adapter.IsInitialized;
-
     public ObdService(IObdAdapter? adapter = null)
     {
         _adapter = adapter ?? new Elm327Adapter();
+    }
+
+    public bool IsConnected => _transport?.IsConnected == true && _adapter.IsInitialized;
+
+    public async Task<bool> ClearDtcCodesAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await _adapter.SendCommandAsync(new ObdCommand("04", TimeSpan.FromSeconds(5)), cancellationToken);
+        return response.Success;
     }
 
     public async Task<bool> ConnectAsync(IObdTransport transport, CancellationToken cancellationToken = default)
@@ -115,99 +121,10 @@ public class ObdService : IObdService
         }
     }
 
-    public async Task<int?> GetRpmAsync(CancellationToken cancellationToken = default)
-    {
-        var result = await QueryPidAsync(ObdPid.Rpm, cancellationToken);
-        return result.Success ? (int?)result.Value : null;
-    }
-
-    public async Task<int?> GetSpeedKphAsync(CancellationToken cancellationToken = default)
-    {
-        var result = await QueryPidAsync(ObdPid.VehicleSpeed, cancellationToken);
-        return result.Success ? (int?)result.Value : null;
-    }
-
     public async Task<double?> GetCoolantTempCelsiusAsync(CancellationToken cancellationToken = default)
     {
         var result = await QueryPidAsync(ObdPid.CoolantTemp, cancellationToken);
         return result.Success ? result.Value : null;
-    }
-
-    public async Task<double?> GetThrottlePositionPercentAsync(CancellationToken cancellationToken = default)
-    {
-        var result = await QueryPidAsync(ObdPid.ThrottlePosition, cancellationToken);
-        return result.Success ? result.Value : null;
-    }
-
-    public async Task<double?> GetFuelLevelPercentAsync(CancellationToken cancellationToken = default)
-    {
-        var result = await QueryPidAsync(ObdPid.FuelLevel, cancellationToken);
-        return result.Success ? result.Value : null;
-    }
-
-    public async Task<double?> GetEngineLoadPercentAsync(CancellationToken cancellationToken = default)
-    {
-        var result = await QueryPidAsync(ObdPid.EngineLoad, cancellationToken);
-        return result.Success ? result.Value : null;
-    }
-
-    public async Task<string?> GetVinAsync(CancellationToken cancellationToken = default)
-    {
-        var response = await _adapter.SendCommandAsync(new ObdCommand("0902", TimeSpan.FromSeconds(10)), cancellationToken);
-        if (!response.Success || string.IsNullOrEmpty(response.Value))
-        {
-            return null;
-        }
-
-        // VIN response is multi-line, decode hex to ASCII
-        try
-        {
-            var hexData = response.Value.Replace(" ", "").Replace("\n", "");
-            // Skip the response header bytes (49 02 01 for first line)
-            // VIN is 17 characters
-            var vinBytes = new List<byte>();
-            for (var i = 0; i < hexData.Length - 1; i += 2)
-            {
-                if (byte.TryParse(hexData.Substring(i, 2), System.Globalization.NumberStyles.HexNumber, null, out var b))
-                {
-                    if (b >= 0x20 && b <= 0x7E) // Printable ASCII
-                    {
-                        vinBytes.Add(b);
-                    }
-                }
-            }
-
-            var vin = System.Text.Encoding.ASCII.GetString(vinBytes.ToArray());
-            return vin.Length >= 17 ? vin[..17] : vin;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    public async Task<IReadOnlyList<string>> GetSupportedPidsAsync(CancellationToken cancellationToken = default)
-    {
-        var supported = new List<string>();
-
-        // Query supported PIDs in groups of 32
-        var response = await _adapter.SendCommandAsync(ObdCommand.Create("0100"), cancellationToken);
-        if (response.Success && !string.IsNullOrEmpty(response.Value))
-        {
-            supported.AddRange(ParseSupportedPids(response.Value, 0x00));
-        }
-
-        // If PID 0x20 is supported, query next range
-        if (supported.Contains("0120"))
-        {
-            response = await _adapter.SendCommandAsync(ObdCommand.Create("0120"), cancellationToken);
-            if (response.Success && !string.IsNullOrEmpty(response.Value))
-            {
-                supported.AddRange(ParseSupportedPids(response.Value, 0x20));
-            }
-        }
-
-        return supported;
     }
 
     public async Task<IReadOnlyList<string>> GetDtcCodesAsync(CancellationToken cancellationToken = default)
@@ -249,10 +166,93 @@ public class ObdService : IObdService
         return codes;
     }
 
-    public async Task<bool> ClearDtcCodesAsync(CancellationToken cancellationToken = default)
+    public async Task<double?> GetEngineLoadPercentAsync(CancellationToken cancellationToken = default)
     {
-        var response = await _adapter.SendCommandAsync(new ObdCommand("04", TimeSpan.FromSeconds(5)), cancellationToken);
-        return response.Success;
+        var result = await QueryPidAsync(ObdPid.EngineLoad, cancellationToken);
+        return result.Success ? result.Value : null;
+    }
+
+    public async Task<double?> GetFuelLevelPercentAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await QueryPidAsync(ObdPid.FuelLevel, cancellationToken);
+        return result.Success ? result.Value : null;
+    }
+
+    public async Task<int?> GetRpmAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await QueryPidAsync(ObdPid.Rpm, cancellationToken);
+        return result.Success ? (int?)result.Value : null;
+    }
+
+    public async Task<int?> GetSpeedKphAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await QueryPidAsync(ObdPid.VehicleSpeed, cancellationToken);
+        return result.Success ? (int?)result.Value : null;
+    }
+
+    public async Task<IReadOnlyList<string>> GetSupportedPidsAsync(CancellationToken cancellationToken = default)
+    {
+        var supported = new List<string>();
+
+        // Query supported PIDs in groups of 32
+        var response = await _adapter.SendCommandAsync(ObdCommand.Create("0100"), cancellationToken);
+        if (response.Success && !string.IsNullOrEmpty(response.Value))
+        {
+            supported.AddRange(ParseSupportedPids(response.Value, 0x00));
+        }
+
+        // If PID 0x20 is supported, query next range
+        if (supported.Contains("0120"))
+        {
+            response = await _adapter.SendCommandAsync(ObdCommand.Create("0120"), cancellationToken);
+            if (response.Success && !string.IsNullOrEmpty(response.Value))
+            {
+                supported.AddRange(ParseSupportedPids(response.Value, 0x20));
+            }
+        }
+
+        return supported;
+    }
+
+    public async Task<double?> GetThrottlePositionPercentAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await QueryPidAsync(ObdPid.ThrottlePosition, cancellationToken);
+        return result.Success ? result.Value : null;
+    }
+
+    public async Task<string?> GetVinAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await _adapter.SendCommandAsync(new ObdCommand("0902", TimeSpan.FromSeconds(10)), cancellationToken);
+        if (!response.Success || string.IsNullOrEmpty(response.Value))
+        {
+            return null;
+        }
+
+        // VIN response is multi-line, decode hex to ASCII
+        try
+        {
+            var hexData = response.Value.Replace(" ", "").Replace("\n", "");
+            // Skip the response header bytes (49 02 01 for first line)
+            // VIN is 17 characters
+            var vinBytes = new List<byte>();
+            for (var i = 0; i < hexData.Length - 1; i += 2)
+            {
+                if (byte.TryParse(hexData.Substring(i, 2), System.Globalization.NumberStyles.HexNumber, null, out var b))
+                {
+                    if (b >= 0x20 && b <= 0x7E) // Printable ASCII
+                    {
+                        vinBytes.Add(b);
+                    }
+                }
+            }
+
+            var vin = System.Text.Encoding.ASCII.GetString(vinBytes.ToArray());
+            return vin.Length >= 17 ? vin[..17] : vin;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public async Task<ObdPidResponse> QueryPidAsync(ObdPid pid, CancellationToken cancellationToken = default)
@@ -274,6 +274,28 @@ public class ObdService : IObdService
         // Decode the value using the PID's decoder
         var value = pid.Decoder?.Invoke(dataBytes) ?? 0;
         return new ObdPidResponse(pid, true, value, dataBytes, null);
+    }
+
+    private static string DecodeDtc(string hexBytes)
+    {
+        if (hexBytes.Length != 4)
+            return string.Empty;
+
+        if (!byte.TryParse(hexBytes[..2], System.Globalization.NumberStyles.HexNumber, null, out var byte1) ||
+            !byte.TryParse(hexBytes[2..], System.Globalization.NumberStyles.HexNumber, null, out var byte2))
+        {
+            return string.Empty;
+        }
+
+        // First 2 bits determine prefix: 00=P, 01=C, 10=B, 11=U
+        var prefixes = new[] { 'P', 'C', 'B', 'U' };
+        var prefix = prefixes[(byte1 >> 6) & 0x03];
+        var digit1 = (byte1 >> 4) & 0x03;
+        var digit2 = byte1 & 0x0F;
+        var digit3 = (byte2 >> 4) & 0x0F;
+        var digit4 = byte2 & 0x0F;
+
+        return $"{prefix}{digit1:X}{digit2:X}{digit3:X}{digit4:X}";
     }
 
     private static byte[]? ParsePidResponse(string response, ObdPid pid)
@@ -337,27 +359,5 @@ public class ObdService : IObdService
                 }
             }
         }
-    }
-
-    private static string DecodeDtc(string hexBytes)
-    {
-        if (hexBytes.Length != 4)
-            return string.Empty;
-
-        if (!byte.TryParse(hexBytes[..2], System.Globalization.NumberStyles.HexNumber, null, out var byte1) ||
-            !byte.TryParse(hexBytes[2..], System.Globalization.NumberStyles.HexNumber, null, out var byte2))
-        {
-            return string.Empty;
-        }
-
-        // First 2 bits determine prefix: 00=P, 01=C, 10=B, 11=U
-        var prefixes = new[] { 'P', 'C', 'B', 'U' };
-        var prefix = prefixes[(byte1 >> 6) & 0x03];
-        var digit1 = (byte1 >> 4) & 0x03;
-        var digit2 = byte1 & 0x0F;
-        var digit3 = (byte2 >> 4) & 0x0F;
-        var digit4 = byte2 & 0x0F;
-
-        return $"{prefix}{digit1:X}{digit2:X}{digit3:X}{digit4:X}";
     }
 }

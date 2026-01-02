@@ -9,15 +9,25 @@ namespace ObdInsight.Core.Transports.Ble;
 /// - Lower latency (no ASCII encoding/parsing overhead)
 /// - Direct CAN frame access
 /// - Faster multi-PID requests
-/// 
+///
 /// Command format varies by adapter - use probing to discover the protocol.
 /// </remarks>
 public interface IBinaryBleTransport : IDisposable
 {
     /// <summary>
-    /// Whether the transport is connected
+    /// Event raised when connection state changes
     /// </summary>
-    bool IsConnected { get; }
+    event EventHandler<BleConnectionState>? ConnectionStateChanged;
+
+    /// <summary>
+    /// Event raised when binary data is received
+    /// </summary>
+    event EventHandler<ReadOnlyMemory<byte>>? DataReceived;
+
+    /// <summary>
+    /// Current connection state
+    /// </summary>
+    BleConnectionState ConnectionState { get; }
 
     /// <summary>
     /// The device address currently connected to
@@ -25,9 +35,14 @@ public interface IBinaryBleTransport : IDisposable
     string DeviceAddress { get; }
 
     /// <summary>
-    /// Current connection state
+    /// Whether the transport is connected
     /// </summary>
-    BleConnectionState ConnectionState { get; }
+    bool IsConnected { get; }
+
+    /// <summary>
+    /// Clear any pending data in the receive buffer
+    /// </summary>
+    void ClearReceiveBuffer();
 
     /// <summary>
     /// Connect to the device using binary protocol
@@ -41,6 +56,14 @@ public interface IBinaryBleTransport : IDisposable
     /// Disconnect from the device
     /// </summary>
     Task DisconnectAsync();
+
+    /// <summary>
+    /// Read any available data from the receive buffer
+    /// </summary>
+    /// <param name="timeout">How long to wait for data</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Received bytes, or empty if timeout</returns>
+    Task<byte[]> ReadAvailableAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Send a raw binary command and wait for response
@@ -57,27 +80,4 @@ public interface IBinaryBleTransport : IDisposable
     /// <param name="data">Data to write</param>
     /// <param name="cancellationToken">Cancellation token</param>
     Task WriteRawAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Read any available data from the receive buffer
-    /// </summary>
-    /// <param name="timeout">How long to wait for data</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Received bytes, or empty if timeout</returns>
-    Task<byte[]> ReadAvailableAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Clear any pending data in the receive buffer
-    /// </summary>
-    void ClearReceiveBuffer();
-
-    /// <summary>
-    /// Event raised when binary data is received
-    /// </summary>
-    event EventHandler<ReadOnlyMemory<byte>>? DataReceived;
-
-    /// <summary>
-    /// Event raised when connection state changes
-    /// </summary>
-    event EventHandler<BleConnectionState>? ConnectionStateChanged;
 }

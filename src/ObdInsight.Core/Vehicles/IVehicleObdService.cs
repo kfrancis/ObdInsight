@@ -7,9 +7,9 @@ namespace ObdInsight.Core.Vehicles;
 public interface IVehicleObdService : IObdService
 {
     /// <summary>
-    /// The current vehicle profile being used for data interpretation.
+    /// Gets all data categories supported by the current vehicle profile.
     /// </summary>
-    IVehicleProfile VehicleProfile { get; }
+    IReadOnlySet<VehicleDataCategory> SupportedCategories => VehicleProfile.SupportedCategories;
 
     /// <summary>
     /// Whether the vehicle profile supports electric vehicle data.
@@ -17,9 +17,35 @@ public interface IVehicleObdService : IObdService
     bool SupportsEvData => VehicleProfile.IsElectric;
 
     /// <summary>
-    /// Gets all data categories supported by the current vehicle profile.
+    /// The current vehicle profile being used for data interpretation.
     /// </summary>
-    IReadOnlySet<VehicleDataCategory> SupportedCategories => VehicleProfile.SupportedCategories;
+    IVehicleProfile VehicleProfile { get; }
+
+    /// <summary>
+    /// Gets comprehensive battery information in a single request.
+    /// </summary>
+    Task<BatteryInfo?> GetBatteryInfoAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the high-voltage battery state of charge (%).
+    /// </summary>
+    Task<double?> GetBatterySocAsync(CancellationToken cancellationToken = default);
+
+    // EV-specific convenience methods (return null for non-EV vehicles)
+    /// <summary>
+    /// Gets the battery state of health (%).
+    /// </summary>
+    Task<double?> GetBatterySohAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the high-voltage battery pack voltage.
+    /// </summary>
+    Task<double?> GetBatteryVoltageAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the current charging status (if applicable).
+    /// </summary>
+    Task<string?> GetChargingStatusAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Queries a vehicle-specific data point using the profile's encoding/decoding.
@@ -34,41 +60,14 @@ public interface IVehicleObdService : IObdService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Checks if a specific data point is supported by the current vehicle profile.
-    /// </summary>
-    bool IsDataPointSupported(VehicleDataPoint dataPoint);
-
-    // EV-specific convenience methods (return null for non-EV vehicles)
-
-    /// <summary>
-    /// Gets the high-voltage battery state of charge (%).
-    /// </summary>
-    Task<double?> GetBatterySocAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets the battery state of health (%).
-    /// </summary>
-    Task<double?> GetBatterySohAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets the high-voltage battery pack voltage.
-    /// </summary>
-    Task<double?> GetBatteryVoltageAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Gets the estimated remaining range.
     /// </summary>
     Task<double?> GetRangeRemainingAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets the current charging status (if applicable).
+    /// Checks if a specific data point is supported by the current vehicle profile.
     /// </summary>
-    Task<string?> GetChargingStatusAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets comprehensive battery information in a single request.
-    /// </summary>
-    Task<BatteryInfo?> GetBatteryInfoAsync(CancellationToken cancellationToken = default);
+    bool IsDataPointSupported(VehicleDataPoint dataPoint);
 }
 
 /// <summary>

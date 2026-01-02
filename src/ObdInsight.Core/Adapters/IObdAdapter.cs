@@ -17,6 +17,11 @@ namespace ObdInsight.Core.Adapters;
 public interface IObdAdapter
 {
     /// <summary>
+    /// Whether the adapter has been initialized and is ready for commands
+    /// </summary>
+    bool IsInitialized { get; }
+
+    /// <summary>
     /// Display name of the adapter (e.g., "ELM327", "STN1110")
     /// </summary>
     string Name { get; }
@@ -27,11 +32,6 @@ public interface IObdAdapter
     string[] SupportedDeviceNames { get; }
 
     /// <summary>
-    /// Whether the adapter has been initialized and is ready for commands
-    /// </summary>
-    bool IsInitialized { get; }
-
-    /// <summary>
     /// Initialize the adapter over the given transport.
     /// </summary>
     /// <param name="transport">The transport to use for communication</param>
@@ -40,17 +40,17 @@ public interface IObdAdapter
     Task<bool> InitializeAsync(IObdTransport transport, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Reset the adapter to its default state.
+    /// </summary>
+    Task ResetAsync();
+
+    /// <summary>
     /// Send an OBD command and wait for the response.
     /// </summary>
     /// <param name="command">The command to send</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The response from the adapter/ECU</returns>
     Task<ObdResponse> SendCommandAsync(ObdCommand command, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Reset the adapter to its default state.
-    /// </summary>
-    Task ResetAsync();
 }
 
 /// <summary>

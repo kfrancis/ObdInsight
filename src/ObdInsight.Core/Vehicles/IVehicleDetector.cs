@@ -1,16 +1,35 @@
 namespace ObdInsight.Core.Vehicles;
 
 /// <summary>
+/// How the vehicle was detected
+/// </summary>
+public enum VehicleDetectionMethod
+{
+    /// <summary>Matched by VIN prefix</summary>
+    VinMatch,
+
+    /// <summary>Matched by supported PID fingerprint</summary>
+    PidFingerprint,
+
+    /// <summary>Matched by manufacturer-specific command response</summary>
+    ManufacturerProbe,
+
+    /// <summary>User manually selected the profile</summary>
+    UserSelected,
+
+    /// <summary>No specific match found, using generic OBD-II</summary>
+    FallbackGeneric
+}
+
+/// <summary>
 /// Service for automatically detecting vehicle type from VIN or supported PIDs.
 /// </summary>
 public interface IVehicleDetector
 {
     /// <summary>
-    /// Attempts to detect the vehicle profile from a VIN.
+    /// Gets all registered vehicle profiles.
     /// </summary>
-    /// <param name="vin">The 17-character Vehicle Identification Number</param>
-    /// <returns>The matching vehicle profile, or null if unknown</returns>
-    IVehicleProfile? DetectFromVin(string vin);
+    IReadOnlyList<IVehicleProfile> RegisteredProfiles { get; }
 
     /// <summary>
     /// Attempts to detect the vehicle profile by probing the ECU.
@@ -24,9 +43,11 @@ public interface IVehicleDetector
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets all registered vehicle profiles.
+    /// Attempts to detect the vehicle profile from a VIN.
     /// </summary>
-    IReadOnlyList<IVehicleProfile> RegisteredProfiles { get; }
+    /// <param name="vin">The 17-character Vehicle Identification Number</param>
+    /// <returns>The matching vehicle profile, or null if unknown</returns>
+    IVehicleProfile? DetectFromVin(string vin);
 
     /// <summary>
     /// Registers a custom vehicle profile.
@@ -50,28 +71,6 @@ public record VehicleDetectionResult(
     /// </summary>
     public bool IsSpecificVehicle => Method != VehicleDetectionMethod.FallbackGeneric;
 }
-
-/// <summary>
-/// How the vehicle was detected
-/// </summary>
-public enum VehicleDetectionMethod
-{
-    /// <summary>Matched by VIN prefix</summary>
-    VinMatch,
-
-    /// <summary>Matched by supported PID fingerprint</summary>
-    PidFingerprint,
-
-    /// <summary>Matched by manufacturer-specific command response</summary>
-    ManufacturerProbe,
-
-    /// <summary>User manually selected the profile</summary>
-    UserSelected,
-
-    /// <summary>No specific match found, using generic OBD-II</summary>
-    FallbackGeneric
-}
-
 /// <summary>
 /// Information extracted from a VIN
 /// </summary>

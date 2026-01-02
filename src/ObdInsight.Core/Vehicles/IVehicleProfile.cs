@@ -1,115 +1,6 @@
 namespace ObdInsight.Core.Vehicles;
 
 /// <summary>
-/// Defines the communication protocol style for a vehicle.
-/// Different vehicles may use standard OBD-II or manufacturer-specific protocols.
-/// </summary>
-public enum VehicleProtocol
-{
-    /// <summary>
-    /// Standard OBD-II protocol (ISO 15765-4 CAN, ISO 14230 KWP2000, etc.)
-    /// </summary>
-    StandardObd2,
-
-    /// <summary>
-    /// Nissan/Infiniti CAR CAN protocol for Leaf and other EVs
-    /// </summary>
-    NissanCarCan,
-
-    /// <summary>
-    /// Tesla proprietary protocol
-    /// </summary>
-    Tesla,
-
-    /// <summary>
-    /// Chevrolet Volt/Bolt extended PIDs
-    /// </summary>
-    GmEv,
-
-    /// <summary>
-    /// BMW i-Series protocol
-    /// </summary>
-    BmwI,
-
-    /// <summary>
-    /// Volkswagen/Audi UDS-based protocol
-    /// </summary>
-    VagUds
-}
-
-/// <summary>
-/// Defines vehicle-specific capabilities and data interpretation.
-/// Implementations provide custom PID support, data decoders, and vehicle metadata.
-/// </summary>
-public interface IVehicleProfile
-{
-    /// <summary>
-    /// Display name of the vehicle profile (e.g., "2017 Nissan Leaf")
-    /// </summary>
-    string Name { get; }
-
-    /// <summary>
-    /// Manufacturer name
-    /// </summary>
-    string Manufacturer { get; }
-
-    /// <summary>
-    /// Vehicle model name
-    /// </summary>
-    string Model { get; }
-
-    /// <summary>
-    /// Model years this profile supports
-    /// </summary>
-    Range<int> SupportedYears { get; }
-
-    /// <summary>
-    /// Primary communication protocol for this vehicle
-    /// </summary>
-    VehicleProtocol Protocol { get; }
-
-    /// <summary>
-    /// Whether this is an electric or hybrid vehicle
-    /// </summary>
-    bool IsElectric { get; }
-
-    /// <summary>
-    /// VIN prefixes that identify this vehicle type (WMI codes)
-    /// </summary>
-    IReadOnlyList<string> VinPrefixes { get; }
-
-    /// <summary>
-    /// Custom PIDs supported by this vehicle beyond standard OBD-II
-    /// </summary>
-    IReadOnlyList<VehiclePid> CustomPids { get; }
-
-    /// <summary>
-    /// Data categories this profile can provide (e.g., Battery, Range, Charging)
-    /// </summary>
-    IReadOnlySet<VehicleDataCategory> SupportedCategories { get; }
-
-    /// <summary>
-    /// Gets the command to request a specific data point from this vehicle
-    /// </summary>
-    ObdCommand? GetCommand(VehicleDataPoint dataPoint);
-
-    /// <summary>
-    /// Decodes raw response bytes into a typed value for the given data point
-    /// </summary>
-    VehicleDataResult DecodeResponse(VehicleDataPoint dataPoint, byte[] responseBytes);
-
-    /// <summary>
-    /// Validates whether this profile matches a given VIN
-    /// </summary>
-    bool MatchesVin(string vin);
-
-    /// <summary>
-    /// Gets initialization commands needed for this vehicle (beyond standard ELM327 init)
-    /// </summary>
-    IReadOnlyList<ObdCommand> GetInitializationCommands();
-}
-
-/// <summary>
 /// Categories of data a vehicle profile can provide
 /// </summary>
 public enum VehicleDataCategory
@@ -198,6 +89,115 @@ public enum VehicleDataPoint
 }
 
 /// <summary>
+/// Defines the communication protocol style for a vehicle.
+/// Different vehicles may use standard OBD-II or manufacturer-specific protocols.
+/// </summary>
+public enum VehicleProtocol
+{
+    /// <summary>
+    /// Standard OBD-II protocol (ISO 15765-4 CAN, ISO 14230 KWP2000, etc.)
+    /// </summary>
+    StandardObd2,
+
+    /// <summary>
+    /// Nissan/Infiniti CAR CAN protocol for Leaf and other EVs
+    /// </summary>
+    NissanCarCan,
+
+    /// <summary>
+    /// Tesla proprietary protocol
+    /// </summary>
+    Tesla,
+
+    /// <summary>
+    /// Chevrolet Volt/Bolt extended PIDs
+    /// </summary>
+    GmEv,
+
+    /// <summary>
+    /// BMW i-Series protocol
+    /// </summary>
+    BmwI,
+
+    /// <summary>
+    /// Volkswagen/Audi UDS-based protocol
+    /// </summary>
+    VagUds
+}
+
+/// <summary>
+/// Defines vehicle-specific capabilities and data interpretation.
+/// Implementations provide custom PID support, data decoders, and vehicle metadata.
+/// </summary>
+public interface IVehicleProfile
+{
+    /// <summary>
+    /// Custom PIDs supported by this vehicle beyond standard OBD-II
+    /// </summary>
+    IReadOnlyList<VehiclePid> CustomPids { get; }
+
+    /// <summary>
+    /// Whether this is an electric or hybrid vehicle
+    /// </summary>
+    bool IsElectric { get; }
+
+    /// <summary>
+    /// Manufacturer name
+    /// </summary>
+    string Manufacturer { get; }
+
+    /// <summary>
+    /// Vehicle model name
+    /// </summary>
+    string Model { get; }
+
+    /// <summary>
+    /// Display name of the vehicle profile (e.g., "2017 Nissan Leaf")
+    /// </summary>
+    string Name { get; }
+
+    /// <summary>
+    /// Primary communication protocol for this vehicle
+    /// </summary>
+    VehicleProtocol Protocol { get; }
+
+    /// <summary>
+    /// Data categories this profile can provide (e.g., Battery, Range, Charging)
+    /// </summary>
+    IReadOnlySet<VehicleDataCategory> SupportedCategories { get; }
+
+    /// <summary>
+    /// Model years this profile supports
+    /// </summary>
+    Range<int> SupportedYears { get; }
+
+    /// <summary>
+    /// VIN prefixes that identify this vehicle type (WMI codes)
+    /// </summary>
+    IReadOnlyList<string> VinPrefixes { get; }
+
+    /// <summary>
+    /// Decodes raw response bytes into a typed value for the given data point
+    /// </summary>
+    VehicleDataResult DecodeResponse(VehicleDataPoint dataPoint, byte[] responseBytes);
+
+    /// <summary>
+    /// Gets the command to request a specific data point from this vehicle
+    /// </summary>
+    ObdCommand? GetCommand(VehicleDataPoint dataPoint);
+
+    /// <summary>
+    /// Gets initialization commands needed for this vehicle (beyond standard ELM327 init)
+    /// </summary>
+    IReadOnlyList<ObdCommand> GetInitializationCommands();
+
+    /// <summary>
+    /// Validates whether this profile matches a given VIN
+    /// </summary>
+    bool MatchesVin(string vin);
+}
+
+/// <summary>
 /// Result of decoding a vehicle data response
 /// </summary>
 public record VehicleDataResult(
@@ -250,14 +250,14 @@ public record VehiclePid(
 /// </summary>
 public readonly struct Range<T> where T : IComparable<T>
 {
-    public T Start { get; }
-    public T End { get; }
-
     public Range(T start, T end)
     {
         Start = start;
         End = end;
     }
+
+    public T End { get; }
+    public T Start { get; }
 
     public bool Contains(T value) =>
         value.CompareTo(Start) >= 0 && value.CompareTo(End) <= 0;
