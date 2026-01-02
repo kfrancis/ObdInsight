@@ -11,6 +11,7 @@ public partial class MainViewModel : BaseViewModel
 {
     private readonly INavigationService _navigationService;
     private readonly IConnectedDeviceService _connectedDeviceService;
+    private readonly VehicleImageResolver _vehicleImageResolver;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RefreshDataCommand))]
@@ -38,13 +39,56 @@ public partial class MainViewModel : BaseViewModel
     [ObservableProperty]
     private string? _chargingStatus;
 
-    public MainViewModel(INavigationService navigationService, IConnectedDeviceService connectedDeviceService)
+    // Mockup-oriented header + widget placeholders
+
+    [ObservableProperty]
+    private string _activeVehicleName = "No Vehicle";
+
+    [ObservableProperty]
+    private string _activeVehicleSubtitle = "Connect an adapter to begin";
+
+    [ObservableProperty]
+    private ImageSource _activeVehicleImage = VehicleImageResolver.PlaceholderImage;
+
+    [ObservableProperty]
+    private bool _showBatteryWidget;
+
+    [ObservableProperty]
+    private bool _showChargingWidget;
+
+    [ObservableProperty]
+    private bool _showSecondaryWidget;
+
+    [ObservableProperty]
+    private string _rangeDisplay = "--";
+
+    [ObservableProperty]
+    private string _rangeUnit = "mi";
+
+    [ObservableProperty]
+    private string _batteryPercentDisplay = "--";
+
+    [ObservableProperty]
+    private string _chargingStatusDisplay = "--";
+
+    [ObservableProperty]
+    private string _secondaryMetricValueDisplay = "--";
+
+    [ObservableProperty]
+    private string _secondaryMetricUnit = string.Empty;
+
+    public MainViewModel(
+        INavigationService navigationService,
+        IConnectedDeviceService connectedDeviceService,
+        VehicleImageResolver vehicleImageResolver)
     {
         ArgumentNullException.ThrowIfNull(navigationService);
         ArgumentNullException.ThrowIfNull(connectedDeviceService);
+        ArgumentNullException.ThrowIfNull(vehicleImageResolver);
 
         _navigationService = navigationService;
         _connectedDeviceService = connectedDeviceService;
+        _vehicleImageResolver = vehicleImageResolver;
         Title = "OBD Insight";
 
         // Subscribe to connection changes
@@ -66,13 +110,49 @@ public partial class MainViewModel : BaseViewModel
         if (IsConnected)
         {
             AdapterName = _connectedDeviceService.DeviceName;
-            VehicleName = "Unknown Vehicle"; // Will be updated after vehicle detection
+
+            // Vehicle selection/detection is not wired yet.
+            // Default the UI to the first targeted vehicle: Nissan Leaf.
+            VehicleName = "Nissan Leaf";
             ConnectionStatus = $"Connected to {_connectedDeviceService.DeviceName}";
+
+            this.ActiveVehicleName = VehicleName;
+            this.ActiveVehicleSubtitle = AdapterName is null ? "Connected" : $"Adapter: {AdapterName}";
+            this.ActiveVehicleImage = "vehicle_nissan_leaf.svg";
+
+            // Widgets: show range always (still placeholder), show BEV widgets when we have their values.
+            this.RangeDisplay = RangeRemaining.HasValue ? Math.Round(RangeRemaining.Value).ToString() : "--";
+            this.RangeUnit = "mi";
+
+            this.ShowBatteryWidget = BatterySoc.HasValue;
+            this.BatteryPercentDisplay = BatterySoc.HasValue ? BatterySoc.Value.ToString("F0") : "--";
+
+            this.ShowChargingWidget = !string.IsNullOrWhiteSpace(ChargingStatus);
+            this.ChargingStatusDisplay = ChargingStatus ?? "--";
+
+            this.ShowSecondaryWidget = BatteryVoltage.HasValue;
+            this.SecondaryMetricValueDisplay = BatteryVoltage.HasValue ? BatteryVoltage.Value.ToString("F1") : "--";
+            this.SecondaryMetricUnit = BatteryVoltage.HasValue ? "V" : string.Empty;
         }
         else
         {
             ClearVehicleData();
             ConnectionStatus = "Not Connected";
+
+            this.ActiveVehicleName = "No Vehicle";
+            this.ActiveVehicleSubtitle = "Connect an adapter to begin";
+            this.ActiveVehicleImage = _vehicleImageResolver.Resolve(null);
+
+            this.RangeDisplay = "--";
+            this.RangeUnit = "mi";
+            this.BatteryPercentDisplay = "--";
+            this.ChargingStatusDisplay = "--";
+            this.SecondaryMetricValueDisplay = "--";
+            this.SecondaryMetricUnit = string.Empty;
+
+            this.ShowBatteryWidget = false;
+            this.ShowChargingWidget = false;
+            this.ShowSecondaryWidget = false;
         }
     }
 

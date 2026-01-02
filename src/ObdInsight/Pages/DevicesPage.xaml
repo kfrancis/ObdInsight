@@ -6,201 +6,128 @@
              x:DataType="vm:DevicesViewModel"
              Title="{Binding Title}">
 
-    <Grid RowDefinitions="Auto,*,Auto,Auto" Padding="15">
+    <Grid RowDefinitions="Auto,*,Auto" Padding="0">
 
-        <!-- Header with scan controls -->
-        <VerticalStackLayout Grid.Row="0" Spacing="10">
-            <Label
-                Text="Scan for nearby BLE devices"
-                FontSize="16"
-                HorizontalOptions="Center" />
+        <!-- Hero Section with OBD Adapter Image -->
+        <Grid Grid.Row="0" HeightRequest="320">
+            <Border StrokeThickness="0" Background="{StaticResource AppHeroGradientBrush}">
+                <Grid Padding="20,40,20,20">
+                    <!-- Large centered OBD adapter image -->
+                    <Image Source="obd_adapter.png" Aspect="AspectFit"
+                           VerticalOptions="Center" HorizontalOptions="Center"
+                           HeightRequest="180" Margin="40,0" />
+                </Grid>
+            </Border>
+        </Grid>
 
-            <HorizontalStackLayout HorizontalOptions="Center" Spacing="10">
-                <Button
-                    Text="Start Scan"
-                    Command="{Binding StartScanCommand}"
-                    IsVisible="{Binding IsScanning, Converter={StaticResource InvertedBoolConverter}}" />
-                <Button
-                    Text="Stop Scan"
-                    Command="{Binding StopScanCommand}"
-                    IsVisible="{Binding IsScanning}"
-                    BackgroundColor="{StaticResource Gray500}" />
-            </HorizontalStackLayout>
+        <!-- Main Content -->
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Padding="20" Spacing="20">
 
-            <!-- Status text -->
-            <Label
-                Text="{Binding ScanStatus}"
-                FontSize="12"
-                TextColor="{StaticResource Gray500}"
-                HorizontalOptions="Center"
-                IsVisible="{Binding ScanStatus, Converter={StaticResource NullToBoolConverter}}" />
+                <!-- Device Section -->
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="OBD2 Adapter" FontSize="24" FontAttributes="Bold" HorizontalTextAlignment="Center" />
+                    <Label Text="Connect a wireless OBD2 adapter to access car diagnostics."
+                           FontSize="14"
+                           TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}"
+                           HorizontalTextAlignment="Center" Margin="20,0" />
 
-            <!-- Scanning indicator -->
-            <HorizontalStackLayout
-                HorizontalOptions="Center"
-                Spacing="10"
-                IsVisible="{Binding IsScanning}">
-                <ActivityIndicator
-                    IsRunning="True"
-                    Color="{StaticResource Primary}"
-                    HeightRequest="20"
-                    WidthRequest="20" />
-                <Label Text="Scanning..." />
-            </HorizontalStackLayout>
-        </VerticalStackLayout>
-
-        <!-- Device list -->
-        <CollectionView
-            Grid.Row="1"
-            ItemsSource="{Binding DiscoveredDevices}"
-            SelectedItem="{Binding SelectedDevice}"
-            SelectionMode="Single"
-            Margin="0,15">
-
-            <CollectionView.EmptyView>
-                <VerticalStackLayout
-                    VerticalOptions="Center"
-                    HorizontalOptions="Center"
-                    Spacing="10">
-                    <Label
-                        Text="No devices found"
-                        FontSize="18"
-                        TextColor="{StaticResource Gray500}"
-                        HorizontalOptions="Center" />
-                    <Label
-                        Text="Tap 'Start Scan' to search for BLE devices"
-                        FontSize="14"
-                        TextColor="{StaticResource Gray400}"
-                        HorizontalOptions="Center" />
-                    <Label
-                        Text="Likely OBD adapters will be highlighted in green"
-                        FontSize="12"
-                        TextColor="{StaticResource Gray400}"
-                        HorizontalOptions="Center" />
+                    <!-- Connect Button -->
+                    <Button Text="Connect" Command="{Binding StartScanCommand}"
+                            BackgroundColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}"
+                            CornerRadius="8" HeightRequest="50" Margin="40,10" />
                 </VerticalStackLayout>
-            </CollectionView.EmptyView>
 
-            <CollectionView.ItemTemplate>
-                <DataTemplate x:DataType="vm:DeviceListItem">
-                    <Border
-                        Margin="5"
-                        Padding="15"
-                        StrokeThickness="{Binding IsLikelyObdAdapter, Converter={StaticResource BoolToStrokeThicknessConverter}}"
-                        Stroke="{Binding BorderColor}"
-                        StrokeShape="RoundRectangle 8"
-                        BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray900}}">
-                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
-                            <HorizontalStackLayout Spacing="8">
-                                <Label
-                                    Text="{Binding Device.Name}"
-                                    FontAttributes="Bold"
-                                    FontSize="16" />
-                                <!-- OBD Badge for likely adapters -->
-                                <Border
-                                    IsVisible="{Binding IsLikelyObdAdapter}"
-                                    BackgroundColor="Green"
-                                    StrokeThickness="0"
-                                    StrokeShape="RoundRectangle 4"
-                                    Padding="6,2">
-                                    <Label
-                                        Text="OBD"
-                                        TextColor="White"
-                                        FontSize="10"
-                                        FontAttributes="Bold" />
-                                </Border>
-                            </HorizontalStackLayout>
-                            <Label
-                                Grid.Column="1"
-                                Text="{Binding Device.Rssi, StringFormat='{0} dBm'}"
-                                TextColor="{StaticResource Gray500}"
-                                FontSize="12"
-                                VerticalOptions="Center" />
-                            <Label
-                                Grid.Row="1"
-                                Grid.ColumnSpan="2"
-                                Text="{Binding Device.Address}"
-                                TextColor="{StaticResource Gray500}"
-                                FontSize="12" />
-                            <HorizontalStackLayout
-                                Grid.Row="2"
-                                Grid.ColumnSpan="2"
-                                Spacing="5"
-                                Margin="0,5,0,0">
-                                <Label
-                                    Text="Services:"
-                                    FontSize="11"
-                                    TextColor="{StaticResource Gray400}" />
-                                <Label
-                                    Text="{Binding Device.AdvertisedServices.Count}"
-                                    FontSize="11"
-                                    TextColor="{StaticResource Gray400}" />
-                            </HorizontalStackLayout>
+                <!-- Compatibility Section -->
+                <Border Stroke="{AppThemeBinding Light={StaticResource AppOutlineLight}, Dark={StaticResource AppOutlineDark}}"
+                        StrokeThickness="1" StrokeShape="RoundRectangle 12" Padding="20"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource AppCardBackgroundLight}, Dark={StaticResource AppCardBackgroundDark}}">
+                    <VerticalStackLayout Spacing="15">
+                        <Label Text="Compatibility" FontSize="16" FontAttributes="Bold" />
+                        <Label Text="This app supports all standard OBD2 adapters." FontSize="12"
+                               TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}" />
+
+                        <!-- Bluetooth Toggle -->
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
+                            <Label Text="&#xf294;" FontFamily="FontAwesome" FontSize="24"
+                                   TextColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}"
+                                   VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="Bluetooth (BLE)" FontSize="14" FontAttributes="Bold" VerticalOptions="Center" />
+                            <Switch Grid.Column="2" IsToggled="{Binding BluetoothEnabled}"
+                                    OnColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}" />
                         </Grid>
 
-                        <VisualStateManager.VisualStateGroups>
-                            <VisualStateGroup Name="CommonStates">
-                                <VisualState Name="Normal" />
-                                <VisualState Name="Selected">
-                                    <VisualState.Setters>
-                                        <Setter Property="Stroke" Value="{StaticResource Primary}" />
-                                        <Setter Property="StrokeThickness" Value="2" />
-                                    </VisualState.Setters>
-                                </VisualState>
-                            </VisualStateGroup>
-                        </VisualStateManager.VisualStateGroups>
-                    </Border>
-                </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
+                        <BoxView HeightRequest="1" Color="{AppThemeBinding Light={StaticResource AppOutlineLight}, Dark={StaticResource AppOutlineDark}}" />
 
-        <!-- Footer with connect button -->
-        <VerticalStackLayout Grid.Row="2" Spacing="10">
-            <!-- Error Display -->
-            <Border
-                IsVisible="{Binding HasError}"
-                Stroke="Red"
-                StrokeThickness="1"
-                StrokeShape="RoundRectangle 5"
-                Padding="10"
-                BackgroundColor="#FFEEEE">
-                <Label
-                    Text="{Binding ErrorMessage}"
-                    TextColor="Red" />
-            </Border>
+                        <!-- Wi-Fi Toggle -->
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
+                            <Label Text="&#xf1eb;" FontFamily="FontAwesome" FontSize="24"
+                                   TextColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}"
+                                   VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="Wi-Fi" FontSize="14" FontAttributes="Bold" VerticalOptions="Center" />
+                            <Switch Grid.Column="2" IsToggled="{Binding WiFiEnabled}"
+                                    OnColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
 
-            <!-- Loading indicator -->
-            <ActivityIndicator
-                IsRunning="{Binding IsBusy}"
-                IsVisible="{Binding IsBusy}"
-                HorizontalOptions="Center"
-                Color="{StaticResource Primary}" />
+                <!-- Scanning State - Collapsible Device List -->
+                <Border IsVisible="{Binding IsScanning}"
+                        Stroke="{AppThemeBinding Light={StaticResource AppOutlineLight}, Dark={StaticResource AppOutlineDark}}"
+                        StrokeThickness="1" StrokeShape="RoundRectangle 12" Padding="15"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource AppCardBackgroundLight}, Dark={StaticResource AppCardBackgroundDark}}">
+                    <VerticalStackLayout Spacing="10">
+                        <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
+                            <ActivityIndicator IsRunning="True" Color="{StaticResource Primary}" HeightRequest="20" WidthRequest="20" />
+                            <Label Text="Scanning for devices..." FontAttributes="Bold" />
+                        </HorizontalStackLayout>
 
-            <Button
-                Text="Connect"
-                Command="{Binding ConnectToDeviceCommand}"
-                HorizontalOptions="Fill"
-                IsVisible="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
-        </VerticalStackLayout>
+                        <!-- Device List -->
+                        <CollectionView ItemsSource="{Binding DiscoveredDevices}" SelectedItem="{Binding SelectedDevice}"
+                                      SelectionMode="Single" HeightRequest="200">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DeviceListItem">
+                                    <Border Margin="0,5" Padding="10" StrokeThickness="1" Stroke="{Binding BorderColor}"
+                                            StrokeShape="RoundRectangle 8"
+                                            BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceLight}, Dark={StaticResource AppSurfaceDark}}">
+                                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                                            <Label Text="{Binding Device.Name}" FontAttributes="Bold" />
+                                            <Label Grid.Column="1" Text="{Binding Device.Rssi, StringFormat='{0} dBm'}"
+                                                   TextColor="{StaticResource Gray500}" FontSize="12" />
+                                            <Label Grid.Row="1" Text="{Binding Device.Address}"
+                                                   TextColor="{StaticResource Gray500}" FontSize="12" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
 
-        <!-- Debug Log Panel - Shows connection debugging info -->
-        <Border 
-            x:Name="DebugPanel"
-            Grid.Row="3" 
-            Stroke="{StaticResource Gray400}"
-            StrokeThickness="1"
-            StrokeShape="RoundRectangle 5"
-            Padding="8"
-            Margin="0,10,0,0"
-            HeightRequest="150"
-            BackgroundColor="{AppThemeBinding Light=#F5F5F5, Dark=#1A1A1A}">
-            <ScrollView x:Name="DebugScrollView">
-                <Label 
-                    x:Name="DebugLogLabel"
-                    Text="{Binding DebugLog}"
-                    FontSize="10"
-                    TextColor="{StaticResource Gray600}"
-                    LineBreakMode="WordWrap" />
-            </ScrollView>
+                        <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
+                            <Button Text="Stop Scan" Command="{Binding StopScanCommand}" BackgroundColor="{StaticResource Gray500}" />
+                            <Button Text="Connect" Command="{Binding ConnectToDeviceCommand}"
+                                    IsEnabled="{Binding SelectedDevice, Converter={StaticResource NullToBoolConverter}}" />
+                        </HorizontalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Learn More Link -->
+                <Label Text="Looking for a compatible adapter? Learn more" FontSize="12"
+                       TextColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}"
+                       HorizontalTextAlignment="Center" Margin="0,10">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding LearnMoreCommand}" />
+                    </Label.GestureRecognizers>
+                </Label>
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Error Display -->
+        <Border Grid.Row="2" IsVisible="{Binding HasError}"
+                Stroke="{AppThemeBinding Light={StaticResource AppDangerLight}, Dark={StaticResource AppDangerDark}}"
+                StrokeThickness="1" StrokeShape="RoundRectangle 5" Padding="10" Margin="15"
+                BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight}, Dark={StaticResource AppSurfaceRaisedDark}}">
+            <Label Text="{Binding ErrorMessage}"
+                   TextColor="{AppThemeBinding Light={StaticResource AppDangerLight}, Dark={StaticResource AppDangerDark}}" />
         </Border>
     </Grid>
 </ContentPage>

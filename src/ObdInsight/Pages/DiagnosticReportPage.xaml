@@ -61,7 +61,7 @@
                 StrokeThickness="2"
                 StrokeShape="RoundRectangle 10"
                 Padding="15"
-                BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray900}}">
+                BackgroundColor="{AppThemeBinding Light={StaticResource AppCardBackgroundLight}, Dark={StaticResource AppCardBackgroundDark}}">
                 <VerticalStackLayout Spacing="10">
 
                     <!-- Phase indicator -->
@@ -120,7 +120,7 @@
                         Stroke="{StaticResource Gray200}"
                         StrokeShape="RoundRectangle 5"
                         Padding="10"
-                        BackgroundColor="{AppThemeBinding Light=#F5F5F5, Dark=#333333}">
+                        BackgroundColor="{AppThemeBinding Light=#333333, Dark=#333333}">
                         <VerticalStackLayout Spacing="5">
                             <HorizontalStackLayout Spacing="10">
                                 <Label Text="Current:" Style="{StaticResource FieldLabel}" />
@@ -152,17 +152,17 @@
             <!-- Completion message -->
             <Border
                 IsVisible="{Binding IsComplete}"
-                Stroke="Green"
+                Stroke="{AppThemeBinding Light={StaticResource AppPositiveLight}, Dark={StaticResource AppPositiveDark}}"
                 StrokeThickness="2"
                 StrokeShape="RoundRectangle 10"
                 Padding="15"
-                BackgroundColor="#E8F5E9">
+                BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight}, Dark={StaticResource AppSurfaceRaisedDark}}">
                 <VerticalStackLayout Spacing="10">
                     <Label
                         Text="? Report Generated Successfully"
                         FontAttributes="Bold"
                         FontSize="18"
-                        TextColor="Green"
+                        TextColor="{AppThemeBinding Light={StaticResource AppPositiveLight}, Dark={StaticResource AppPositiveDark}}"
                         HorizontalOptions="Center" />
                     <Label
                         Text="{Binding ReportFilePath}"
@@ -301,14 +301,14 @@
             <!-- Error Display -->
             <Border
                 IsVisible="{Binding HasError}"
-                Stroke="Red"
+                Stroke="{AppThemeBinding Light={StaticResource AppDangerLight}, Dark={StaticResource AppDangerDark}}"
                 StrokeThickness="1"
                 StrokeShape="RoundRectangle 5"
                 Padding="10"
-                BackgroundColor="#FFEEEE">
+                BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight}, Dark={StaticResource AppSurfaceRaisedDark}}">
                 <Label
                     Text="{Binding ErrorMessage}"
-                    TextColor="Red" />
+                    TextColor="{AppThemeBinding Light={StaticResource AppDangerLight}, Dark={StaticResource AppDangerDark}}" />
             </Border>
 
             <!-- Start Button -->

@@ -28,6 +28,86 @@
     <Color x:Key="Gray900">#212121</Color>
     <Color x:Key="Gray950">#141414</Color>
 
+    <!--
+        Semantic design tokens.
+        These are the keys pages/components should target.
+
+        NOTE: This app uses a dark-first visual design (per mockup).
+        To keep the UI consistent across platforms, the Light theme tokens are
+        intentionally set to the same palette family as Dark.
+
+        IMPORTANT: Color values cannot be composed from other resources in XAML.
+    -->
+
+    <!-- App surfaces -->
+    <Color x:Key="AppSurfaceLight">#0F0F10</Color>
+    <Color x:Key="AppSurfaceDark">#0F0F10</Color>
+
+    <Color x:Key="AppSurfaceRaisedLight">#17181A</Color>
+    <Color x:Key="AppSurfaceRaisedDark">#17181A</Color>
+
+    <Color x:Key="AppSurfaceTintLight">#121316</Color>
+    <Color x:Key="AppSurfaceTintDark">#121316</Color>
+
+    <!-- Text -->
+    <Color x:Key="AppTextPrimaryLight">#FFFFFF</Color>
+    <Color x:Key="AppTextPrimaryDark">#FFFFFF</Color>
+
+    <Color x:Key="AppTextSecondaryLight">#B5B8C0</Color>
+    <Color x:Key="AppTextSecondaryDark">#B5B8C0</Color>
+
+    <Color x:Key="AppTextMutedLight">#7C828E</Color>
+    <Color x:Key="AppTextMutedDark">#7C828E</Color>
+
+    <!-- Brand / accents -->
+    <Color x:Key="AppAccentLight">#4FD1C5</Color>
+    <Color x:Key="AppAccentDark">#4FD1C5</Color>
+
+    <Color x:Key="AppPositiveLight">#3DDC84</Color>
+    <Color x:Key="AppPositiveDark">#3DDC84</Color>
+
+    <Color x:Key="AppWarningLight">#FBBF24</Color>
+    <Color x:Key="AppWarningDark">#FBBF24</Color>
+
+    <Color x:Key="AppDangerLight">#FF6B6B</Color>
+    <Color x:Key="AppDangerDark">#FF6B6B</Color>
+
+    <!-- Outlines / separators -->
+    <Color x:Key="AppOutlineLight">#2A2C33</Color>
+    <Color x:Key="AppOutlineDark">#2A2C33</Color>
+
+    <!-- Widget cards -->
+    <Color x:Key="AppCardBackgroundLight">#17181A</Color>
+    <Color x:Key="AppCardBackgroundDark">#17181A</Color>
+
+    <Color x:Key="AppCardStrokeLight">#2A2C33</Color>
+    <Color x:Key="AppCardStrokeDark">#2A2C33</Color>
+
+    <!-- Tab bar -->
+    <Color x:Key="AppTabBarBackgroundLight">#090A0C</Color>
+    <Color x:Key="AppTabBarBackgroundDark">#090A0C</Color>
+
+    <Color x:Key="AppTabSelectedLight">#4FD1C5</Color>
+    <Color x:Key="AppTabSelectedDark">#4FD1C5</Color>
+
+    <Color x:Key="AppTabUnselectedLight">#7C8A95</Color>
+    <Color x:Key="AppTabUnselectedDark">#7C8A95</Color>
+
+    <!-- Gradient colors for hero section -->
+    <Color x:Key="AppGradientTealStartLight">#4FD1C5</Color>
+    <Color x:Key="AppGradientTealStartDark">#4FD1C5</Color>
+
+    <Color x:Key="AppGradientTealEndLight">#38B2A3</Color>
+    <Color x:Key="AppGradientTealEndDark">#38B2A3</Color>
+
+    <!-- Gradient colors for cards -->
+    <Color x:Key="AppCardGradientStartLight">#1A1B1D</Color>
+    <Color x:Key="AppCardGradientStartDark">#1A1B1D</Color>
+
+    <Color x:Key="AppCardGradientEndLight">#17181A</Color>
+    <Color x:Key="AppCardGradientEndDark">#17181A</Color>
+
+    <!-- Brushes -->
     <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource Primary}" />
     <SolidColorBrush x:Key="SecondaryBrush" Color="{StaticResource Secondary}" />
     <SolidColorBrush x:Key="TertiaryBrush" Color="{StaticResource Tertiary}" />

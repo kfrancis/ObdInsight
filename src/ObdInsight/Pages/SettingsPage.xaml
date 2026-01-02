@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:ObdInsight.ViewModels"
+             x:Class="ObdInsight.Pages.SettingsPage"
+             x:DataType="vm:SettingsViewModel"
+             Title="{Binding Title}">
+
+    <ScrollView>
+        <VerticalStackLayout
+            Padding="{StaticResource AppPagePadding}"
+            Spacing="{StaticResource AppSpacingLg}">
+
+            <Label Text="Settings" Style="{StaticResource AppTextHero}" />
+
+            <!-- App Settings -->
+            <Border Style="{StaticResource AppCard}" StrokeShape="RoundRectangle 16">
+                <VerticalStackLayout Spacing="{StaticResource AppSpacingMd}">
+                    <Label Text="Application" Style="{StaticResource AppTextTitle}" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Units" VerticalOptions="Center" />
+                        <Picker
+                            Grid.Column="1"
+                            SelectedItem="{Binding SelectedUnit}"
+                            ItemsSource="{Binding AvailableUnits}"
+                            WidthRequest="120" />
+                    </Grid>
+
+                    <BoxView
+                        HeightRequest="1"
+                        Color="{AppThemeBinding Light={StaticResource AppOutlineLight}, Dark={StaticResource AppOutlineDark}}" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Theme" VerticalOptions="Center" />
+                        <Label
+                            Grid.Column="1"
+                            Text="Dark"
+                            TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}"
+                            VerticalOptions="Center" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Vehicle Settings -->
+            <Border Style="{StaticResource AppCard}" StrokeShape="RoundRectangle 16">
+                <VerticalStackLayout Spacing="{StaticResource AppSpacingMd}">
+                    <Label Text="Vehicle" Style="{StaticResource AppTextTitle}" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Active Vehicle" VerticalOptions="Center" />
+                        <Label
+                            Grid.Column="1"
+                            Text="{Binding ActiveVehicleName}"
+                            TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}"
+                            VerticalOptions="Center" />
+                    </Grid>
+
+                    <Button
+                        Text="Manage Vehicles"
+                        Command="{Binding ManageVehiclesCommand}"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight}, Dark={StaticResource AppSurfaceRaisedDark}}" />
+
+                    <Button
+                        Text="Configure Car Profile"
+                        Command="{Binding ManageCarProfileCommand}"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight}, Dark={StaticResource AppSurfaceRaisedDark}}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- About -->
+            <Border Style="{StaticResource AppCard}" StrokeShape="RoundRectangle 16">
+                <VerticalStackLayout Spacing="{StaticResource AppSpacingMd}">
+                    <Label Text="About" Style="{StaticResource AppTextTitle}" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Version" VerticalOptions="Center" />
+                        <Label
+                            Grid.Column="1"
+                            Text="{Binding AppVersion}"
+                            TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}"
+                            VerticalOptions="Center" />
+                    </Grid>
+
+                    <BoxView
+                        HeightRequest="1"
+                        Color="{AppThemeBinding Light={StaticResource AppOutlineLight}, Dark={StaticResource AppOutlineDark}}" />
+
+                    <Button
+                        Text="View Licenses"
+                        Command="{Binding ViewLicensesCommand}"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight}, Dark={StaticResource AppSurfaceRaisedDark}}" />
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

@@ -6,154 +6,176 @@
              x:DataType="vm:MainViewModel"
              Title="{Binding Title}">
 
-    <ScrollView>
-        <VerticalStackLayout
-            Padding="20"
-            Spacing="20">
+    <Grid RowDefinitions="6*,4*">
 
-            <!-- Connection Status Card -->
+        <!-- Hero Section with Teal Gradient -->
+        <Grid Grid.Row="0">
             <Border
-                Stroke="{StaticResource Primary}"
-                StrokeThickness="2"
-                StrokeShape="RoundRectangle 10"
-                Padding="15"
-                BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray900}}">
-                <VerticalStackLayout Spacing="10">
-                    <Label
-                        Text="Connection Status"
-                        FontAttributes="Bold"
-                        FontSize="18" />
-                    <Label
-                        Text="{Binding ConnectionStatus}"
-                        FontSize="16"
-                        TextColor="{Binding IsConnected, Converter={StaticResource BoolToColorConverter}}" />
-                    <HorizontalStackLayout Spacing="10" IsVisible="{Binding IsConnected}">
-                        <Label Text="Adapter:" FontAttributes="Bold" />
-                        <Label Text="{Binding AdapterName}" />
-                    </HorizontalStackLayout>
-                    <HorizontalStackLayout Spacing="10" IsVisible="{Binding IsConnected}">
-                        <Label Text="Vehicle:" FontAttributes="Bold" />
-                        <Label Text="{Binding VehicleName}" />
-                    </HorizontalStackLayout>
-                </VerticalStackLayout>
+                StrokeThickness="0"
+                Background="{StaticResource AppHeroGradientBrush}">
+                <Grid>
+                    <!-- Large vehicle image, centered -->
+                    <Image
+                        Source="{Binding ActiveVehicleImage}"
+                        Aspect="AspectFit"
+                        VerticalOptions="Center"
+                        HorizontalOptions="Center"
+                        Margin="40,60,40,40" />
+
+                    <!-- Vehicle info overlay at bottom -->
+                    <Grid
+                        VerticalOptions="End"
+                        RowDefinitions="Auto,Auto,Auto"
+                        Padding="20,20,20,30">
+
+                        <!-- Semi-transparent overlay for text readability -->
+                        <Grid.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#00000000" Offset="0.0" />
+                                <GradientStop Color="#80000000" Offset="1.0" />
+                            </LinearGradientBrush>
+                        </Grid.Background>
+
+                        <Label
+                            Text="{Binding ActiveVehicleName}"
+                            Style="{StaticResource AppTextHero}"
+                            HorizontalTextAlignment="Center"
+                            LineBreakMode="TailTruncation" />
+
+                        <Label
+                            Grid.Row="1"
+                            Text="{Binding ActiveVehicleSubtitle}"
+                            Style="{StaticResource AppTextCaption}"
+                            HorizontalTextAlignment="Center"
+                            LineBreakMode="TailTruncation"
+                            Margin="0,8,0,0" />
+
+                        <!-- Connection status + Devices button -->
+                        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+                            <Label
+                                Text="{Binding ConnectionStatus}"
+                                Style="{StaticResource AppTextCaption}"
+                                VerticalOptions="Center" />
+                            <Button
+                                Grid.Column="1"
+                                Text="Devices"
+                                Command="{Binding ScanForDevicesCommand}"
+                                Padding="16,8"
+                                FontSize="{StaticResource AppFontSizeCaption}" />
+                        </Grid>
+                    </Grid>
+                </Grid>
             </Border>
+        </Grid>
 
-            <!-- Action Buttons -->
-            <Button
-                Text="Scan for Devices"
-                Command="{Binding ScanForDevicesCommand}"
-                IsVisible="{Binding IsNotBusy}"
-                HorizontalOptions="Fill" />
-
-            <HorizontalStackLayout
-                Spacing="10"
-                HorizontalOptions="Center"
-                IsVisible="{Binding IsConnected}">
-                <Button
-                    Text="Refresh"
-                    Command="{Binding RefreshDataCommand}"
-                    IsEnabled="{Binding IsNotBusy}" />
-                <Button
-                    Text="Disconnect"
-                    Command="{Binding DisconnectCommand}"
-                    BackgroundColor="{StaticResource Gray500}"
-                    IsEnabled="{Binding IsNotBusy}" />
-            </HorizontalStackLayout>
-
-            <!-- Loading Indicator -->
-            <ActivityIndicator
-                IsRunning="{Binding IsBusy}"
-                IsVisible="{Binding IsBusy}"
-                HorizontalOptions="Center"
-                Color="{StaticResource Primary}" />
-
-            <!-- Error Display -->
-            <Border
-                IsVisible="{Binding HasError}"
-                Stroke="Red"
-                StrokeThickness="1"
-                StrokeShape="RoundRectangle 5"
-                Padding="10"
-                BackgroundColor="#FFEEEE">
-                <Label
-                    Text="{Binding ErrorMessage}"
-                    TextColor="Red" />
-            </Border>
-
-            <!-- Vehicle Data (shown when connected) -->
-            <Border
-                IsVisible="{Binding IsConnected}"
-                Stroke="{StaticResource Primary}"
-                StrokeThickness="1"
-                StrokeShape="RoundRectangle 10"
-                Padding="15"
-                BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray900}}">
-                <VerticalStackLayout Spacing="15">
-                    <Label
-                        Text="Vehicle Data"
-                        FontAttributes="Bold"
-                        FontSize="18" />
-
-                    <!-- Battery SOC -->
-                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding BatterySoc, Converter={StaticResource NullToBoolConverter}}">
-                        <Label Text="Battery SOC" VerticalOptions="Center" />
-                        <Label
-                            Grid.Column="1"
-                            Text="{Binding BatterySoc, StringFormat='{0:F1}%'}"
-                            FontAttributes="Bold"
-                            FontSize="20" />
-                    </Grid>
-
-                    <!-- Battery Voltage -->
-                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding BatteryVoltage, Converter={StaticResource NullToBoolConverter}}">
-                        <Label Text="Battery Voltage" VerticalOptions="Center" />
-                        <Label
-                            Grid.Column="1"
-                            Text="{Binding BatteryVoltage, StringFormat='{0:F1} V'}"
-                            FontAttributes="Bold"
-                            FontSize="20" />
-                    </Grid>
-
-                    <!-- Range Remaining -->
-                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding RangeRemaining, Converter={StaticResource NullToBoolConverter}}">
-                        <Label Text="Range Remaining" VerticalOptions="Center" />
-                        <Label
-                            Grid.Column="1"
-                            Text="{Binding RangeRemaining, StringFormat='{0:F0} mi'}"
-                            FontAttributes="Bold"
-                            FontSize="20" />
-                    </Grid>
-
-                    <!-- Charging Status -->
-                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding ChargingStatus, Converter={StaticResource NullToBoolConverter}}">
-                        <Label Text="Charging Status" VerticalOptions="Center" />
-                        <Label
-                            Grid.Column="1"
-                            Text="{Binding ChargingStatus}"
-                            FontAttributes="Bold"
-                            FontSize="16" />
-                    </Grid>
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Welcome message when not connected -->
+        <!-- Content: widget cards grid -->
+        <ScrollView Grid.Row="1">
             <VerticalStackLayout
-                IsVisible="{Binding IsConnected, Converter={StaticResource InvertedBoolConverter}}"
-                Spacing="15"
-                Padding="20">
-                <Image
-                    Source="dotnet_bot.png"
-                    HeightRequest="150"
-                    Aspect="AspectFit" />
-                <Label
-                    Text="Welcome to OBD Insight"
-                    Style="{StaticResource Headline}"
-                    HorizontalOptions="Center" />
-                <Label
-                    Text="Connect to your OBD adapter to view vehicle diagnostics and data."
-                    HorizontalTextAlignment="Center"
-                    FontSize="16" />
+                Padding="{StaticResource AppPagePadding}"
+                Spacing="{StaticResource AppSpacingMd}">
+
+                <!-- Primary widgets grid -->
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="{StaticResource AppSpacingMd}" RowSpacing="{StaticResource AppSpacingMd}">
+
+                    <!-- Range (always shown) -->
+                    <Border
+                        Style="{StaticResource AppWidgetCard}"
+                        StrokeShape="RoundRectangle 16"
+                        Background="{StaticResource AppCardGradientBrush}">
+                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+                            <Label Text="Range" Style="{StaticResource AppWidgetLabel}" />
+                            <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto" ColumnSpacing="0">
+                                <Label
+                                    Text="{Binding RangeDisplay}"
+                                    Style="{StaticResource AppWidgetValue}" />
+                                <Label
+                                    Grid.Column="1"
+                                    Text="{Binding RangeUnit}"
+                                    Style="{StaticResource AppWidgetUnit}" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Battery Percent (BEV/Hybrid typically) -->
+                    <Border
+                        Style="{StaticResource AppWidgetCard}"
+                        StrokeShape="RoundRectangle 16"
+                        Background="{StaticResource AppCardGradientBrush}"
+                        IsVisible="{Binding ShowBatteryWidget}">
+                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+                            <Label Text="Battery" Style="{StaticResource AppWidgetLabel}" />
+                            <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto" ColumnSpacing="0">
+                                <Label
+                                    Text="{Binding BatteryPercentDisplay}"
+                                    Style="{StaticResource AppWidgetValue}" />
+                                <Label
+                                    Grid.Column="1"
+                                    Text="%"
+                                    Style="{StaticResource AppWidgetUnit}" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Charging (optional) -->
+                    <Border
+                        Style="{StaticResource AppWidgetCard}"
+                        StrokeShape="RoundRectangle 16"
+                        Background="{StaticResource AppCardGradientBrush}"
+                        IsVisible="{Binding ShowChargingWidget}">
+                        <Grid RowDefinitions="Auto,Auto">
+                            <Label Text="Charging" Style="{StaticResource AppWidgetLabel}" />
+                            <Label
+                                Grid.Row="1"
+                                Text="{Binding ChargingStatusDisplay}"
+                                Style="{StaticResource AppTextTitle}"
+                                LineBreakMode="TailTruncation" />
+                        </Grid>
+                    </Border>
+
+                    <!-- Secondary metric (placeholder) -->
+                    <Border
+                        Style="{StaticResource AppWidgetCard}"
+                        StrokeShape="RoundRectangle 16"
+                        Background="{StaticResource AppCardGradientBrush}"
+                        IsVisible="{Binding ShowSecondaryWidget}">
+                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+                            <Label Text="Metric" Style="{StaticResource AppWidgetLabel}" />
+                            <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto" ColumnSpacing="0">
+                                <Label
+                                    Text="{Binding SecondaryMetricValueDisplay}"
+                                    Style="{StaticResource AppWidgetValue}" />
+                                <Label
+                                    Grid.Column="1"
+                                    Text="{Binding SecondaryMetricUnit}"
+                                    Style="{StaticResource AppWidgetUnit}" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                </Grid>
+
+                <!-- Actions / quick links -->
+                <Border
+                    Style="{StaticResource AppCard}"
+                    StrokeShape="RoundRectangle 16"
+                    Background="{StaticResource AppCardGradientBrush}">
+                    <VerticalStackLayout Spacing="{StaticResource AppSpacingSm}">
+                        <Label Text="Quick Actions" Style="{StaticResource AppTextTitle}" />
+                        <Button
+                            Text="Refresh"
+                            Command="{Binding RefreshDataCommand}"
+                            IsEnabled="{Binding IsNotBusy}" />
+                        <Button
+                            Text="Disconnect"
+                            Command="{Binding DisconnectCommand}"
+                            BackgroundColor="{StaticResource Gray500}"
+                            IsEnabled="{Binding IsNotBusy}"
+                            IsVisible="{Binding IsConnected}" />
+                    </VerticalStackLayout>
+                </Border>
+
             </VerticalStackLayout>
-        </VerticalStackLayout>
-    </ScrollView>
+        </ScrollView>
+
+    </Grid>
 </ContentPage>

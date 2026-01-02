@@ -64,6 +64,18 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
     [ObservableProperty]
     private string _debugLog = string.Empty;
 
+    /// <summary>
+    /// Bluetooth connection toggle
+    /// </summary>
+    [ObservableProperty]
+    private bool _bluetoothEnabled = true;
+
+    /// <summary>
+    /// WiFi connection toggle
+    /// </summary>
+    [ObservableProperty]
+    private bool _wiFiEnabled = false;
+
     public DevicesViewModel(
         INavigationService navigationService, 
         IBleTransportFactory bleTransportFactory,
@@ -492,6 +504,23 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
         finally
         {
             _isStopping = false;
+        }
+    }
+
+    /// <summary>
+    /// Opens browser to learn more about compatible adapters
+    /// </summary>
+    [RelayCommand]
+    private async Task LearnMoreAsync()
+    {
+        try
+        {
+            await Launcher.OpenAsync("https://www.example.com/obd-adapters");
+        }
+        catch (Exception ex)
+        {
+            Log($"Failed to open browser: {ex.Message}");
+            SetError("Could not open browser. Please check your internet connection.");
         }
     }
 

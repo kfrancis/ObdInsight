@@ -11,20 +11,42 @@
     <TabBar>
         <ShellContent
             Title="Home"
-            Icon="home.png"
             ContentTemplate="{DataTemplate local:MainPage}"
-            Route="main" />
+            Route="main">
+            <ShellContent.Icon>
+                <FontImageSource Glyph="&#xf015;" FontFamily="FontAwesome"
+                               Color="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}" />
+            </ShellContent.Icon>
+        </ShellContent>
 
         <ShellContent
             Title="Devices"
-            Icon="devices.png"
             ContentTemplate="{DataTemplate pages:DevicesPage}"
-            Route="devices" />
+            Route="devices">
+            <ShellContent.Icon>
+                <FontImageSource Glyph="&#xf293;" FontFamily="FontAwesome"
+                               Color="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}" />
+            </ShellContent.Icon>
+        </ShellContent>
 
         <ShellContent
             Title="Diagnostics"
-            Icon="diagnostics.png"
             ContentTemplate="{DataTemplate pages:DiagnosticReportPage}"
-            Route="diagnostics" />
+            Route="diagnostics">
+            <ShellContent.Icon>
+                <FontImageSource Glyph="&#xf0f3;" FontFamily="FontAwesome"
+                               Color="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}" />
+            </ShellContent.Icon>
+        </ShellContent>
+
+        <ShellContent
+            Title="Settings"
+            ContentTemplate="{DataTemplate pages:SettingsPage}"
+            Route="settings">
+            <ShellContent.Icon>
+                <FontImageSource Glyph="&#xf013;" FontFamily="FontAwesome"
+                               Color="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}" />
+            </ShellContent.Icon>
+        </ShellContent>
     </TabBar>
 </Shell>
