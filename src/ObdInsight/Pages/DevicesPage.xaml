@@ -8,6 +8,10 @@
     x:DataType="vm:DevicesViewModel"
     BackgroundColor="{StaticResource Background}">
 
+    <ContentPage.Resources>
+
+    </ContentPage.Resources>
+
     <Grid Padding="0" RowDefinitions="Auto,*,Auto">
         <!--  Base gradient  -->
         <BoxView>
@@ -70,14 +74,15 @@
                             FontSize="24"
                             HorizontalTextAlignment="Center"
                             Text="OBD2 Adapter" />
+
                         <Label
                             Margin="20,0"
                             FontSize="14"
+                            IsVisible="{Binding NotShowingDeviceList}"
                             HorizontalTextAlignment="Center"
                             Text="Connect a wireless OBD2 adapter to access car diagnostics."
                             TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
                                                         Dark={StaticResource AppTextSecondaryDark}}" />
-
                         <!--  Connect Button  -->
                         <Button
                             Margin="40,10"
@@ -86,7 +91,112 @@
                             Command="{Binding StartScanCommand}"
                             CornerRadius="8"
                             HeightRequest="50"
+                            IsVisible="{Binding NotShowingDeviceList}"
                             Text="Connect" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <!--  Scanning State - Collapsible Device List  -->
+                <Border
+    Padding="15"
+    BackgroundColor="{AppThemeBinding Light={StaticResource AppCardBackgroundLight},
+                                      Dark={StaticResource AppCardBackgroundDark}}"
+    IsVisible="{Binding ShowDeviceList}"
+    Stroke="{AppThemeBinding Light={StaticResource AppOutlineLight},
+                             Dark={StaticResource AppOutlineDark}}"
+    StrokeShape="RoundRectangle 12"
+    StrokeThickness="1">
+                    <VerticalStackLayout Spacing="10">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                            <ActivityIndicator
+                                HeightRequest="20"
+                                WidthRequest="20"
+                                IsRunning="{Binding IsScanning}"
+                                IsVisible="{Binding IsScanning}"
+                                Color="#F2F3EF"
+                                VerticalOptions="Center" />
+
+                            <Label
+                                Grid.Column="1"
+                                FontAttributes="Bold"
+                                LineBreakMode="TailTruncation"
+                                Text="{Binding ScanHeaderText}"
+                                VerticalOptions="Center" />
+
+                            <HorizontalStackLayout Grid.Column="2" Spacing="8" VerticalOptions="Center">
+                                <Button
+                                    Padding="10,6"
+                                    FontSize="12"
+                                    BackgroundColor="{StaticResource Gray500}"
+                                    Command="{Binding StopScanCommand}"
+                                    IsVisible="{Binding IsScanning}"
+                                    Text="Stop" />
+
+                                <Button
+                                    Padding="10,6"
+                                    FontSize="12"
+                                    Command="{Binding ConnectToDeviceCommand}"
+                                    IsEnabled="{Binding CanConnectToSelected}"
+                                    IsVisible="{Binding IsDeviceConnected, Converter={StaticResource InvertedBoolConverter}}"
+                                    Text="Connect" />
+
+                                <Button
+                                    Padding="10,6"
+                                    FontSize="12"
+                                    BackgroundColor="{AppThemeBinding Light={StaticResource AppDangerLight}, Dark={StaticResource AppDangerDark}}"
+                                    Command="{Binding DisconnectCommand}"
+                                    IsVisible="{Binding IsDeviceConnected}"
+                                    Text="Disconnect" />
+                            </HorizontalStackLayout>
+                        </Grid>
+
+                        <!--  Device List  -->
+                        <CollectionView
+                            HeightRequest="200"
+                            ItemsSource="{Binding DiscoveredDevices}"
+                            SelectedItem="{Binding SelectedDevice}"
+                            ItemSizingStrategy="MeasureFirstItem"
+                            SelectionMode="Single">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DeviceListItem">
+                                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" Margin="0,5" Padding="10">
+                                        <HorizontalStackLayout Spacing="8">
+                                            <Label FontAttributes="Bold" Text="{Binding Device.Name}" />
+                                            <Border
+                                                    Padding="6,2"
+                                                    BackgroundColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}"
+                                                    IsVisible="{Binding ShowBadge}"
+                                                    StrokeShape="RoundRectangle 10">
+                                                <Label FontSize="10" Text="{Binding BadgeText}" TextColor="White" />
+                                            </Border>
+                                        </HorizontalStackLayout>
+
+                                        <Label
+                                                Grid.Column="1"
+                                                FontSize="12"
+                                                Text="{Binding Device.Rssi, StringFormat='{0} dBm'}"
+                                                TextColor="{StaticResource White}" />
+
+                                        <Label
+                                                Grid.Row="1"
+                                                FontSize="12"
+                                                IsVisible="False"
+                                                Text="{Binding Device.Address}"
+                                                TextColor="{StaticResource White}" />
+                                        <VisualStateManager.VisualStateGroups>
+                                            <VisualStateGroup Name="CommonStates">
+                                                <VisualState Name="Normal" />
+                                                <VisualState Name="Selected">
+                                                    <VisualState.Setters>
+                                                        <Setter Property="BackgroundColor" Value="#377A84" />
+                                                    </VisualState.Setters>
+                                                </VisualState>
+                                            </VisualStateGroup>
+                                        </VisualStateManager.VisualStateGroups>
+                                    </Grid>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
                     </VerticalStackLayout>
                 </Border>
 
@@ -155,73 +265,6 @@
                                 OnColor="{AppThemeBinding Light={StaticResource AppAccentLight},
                                                           Dark={StaticResource AppAccentDark}}" />
                         </Grid>
-                    </VerticalStackLayout>
-                </Border>
-
-                <!--  Scanning State - Collapsible Device List  -->
-                <Border
-                    Padding="15"
-                    BackgroundColor="{AppThemeBinding Light={StaticResource AppCardBackgroundLight},
-                                                      Dark={StaticResource AppCardBackgroundDark}}"
-                    IsVisible="{Binding IsScanning}"
-                    Stroke="{AppThemeBinding Light={StaticResource AppOutlineLight},
-                                             Dark={StaticResource AppOutlineDark}}"
-                    StrokeShape="RoundRectangle 12"
-                    StrokeThickness="1">
-                    <VerticalStackLayout Spacing="10">
-                        <HorizontalStackLayout HorizontalOptions="Center" Spacing="10">
-                            <ActivityIndicator
-                                HeightRequest="20"
-                                IsRunning="True"
-                                WidthRequest="20"
-                                Color="#F2F3EF" />
-                            <Label FontAttributes="Bold" Text="Scanning for devices..." />
-                        </HorizontalStackLayout>
-
-                        <!--  Device List  -->
-                        <CollectionView
-                            HeightRequest="200"
-                            ItemsSource="{Binding DiscoveredDevices}"
-                            SelectedItem="{Binding SelectedDevice}"
-                            SelectionMode="Single">
-                            <CollectionView.ItemTemplate>
-                                <DataTemplate x:DataType="vm:DeviceListItem">
-                                    <Border
-                                        Margin="0,5"
-                                        Padding="10"
-                                        BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceLight},
-                                                                          Dark={StaticResource AppSurfaceDark}}"
-                                        Stroke="{Binding BorderColor}"
-                                        StrokeShape="RoundRectangle 8"
-                                        StrokeThickness="1">
-                                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
-                                            <Label FontAttributes="Bold" Text="{Binding Device.Name}" />
-                                            <Label
-                                                Grid.Column="1"
-                                                FontSize="12"
-                                                Text="{Binding Device.Rssi, StringFormat='{0} dBm'}"
-                                                TextColor="{StaticResource Gray500}" />
-                                            <Label
-                                                Grid.Row="1"
-                                                FontSize="12"
-                                                Text="{Binding Device.Address}"
-                                                TextColor="{StaticResource Gray500}" />
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </CollectionView.ItemTemplate>
-                        </CollectionView>
-
-                        <HorizontalStackLayout HorizontalOptions="Center" Spacing="10">
-                            <Button
-                                BackgroundColor="{StaticResource Gray500}"
-                                Command="{Binding StopScanCommand}"
-                                Text="Stop Scan" />
-                            <Button
-                                Command="{Binding ConnectToDeviceCommand}"
-                                IsEnabled="{Binding SelectedDevice, Converter={StaticResource NullToBoolConverter}}"
-                                Text="Connect" />
-                        </HorizontalStackLayout>
                     </VerticalStackLayout>
                 </Border>
 
