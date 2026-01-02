@@ -4,6 +4,8 @@ using ObdInsight.Core.Transports.Ble;
 using ObdInsight.Services;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using ObdInsight.Core.Vehicles;
+using ObdInsight.Core.Transports;
 
 namespace ObdInsight.ViewModels;
 
@@ -38,6 +40,9 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
     private bool _isStopping;
     private IBleScanner? _scanner;
     private CancellationTokenSource? _scanTimeoutCts;
+
+    private readonly IVehicleDetector _vehicleDetector;
+    private readonly VehicleSessionService _vehicleSession;
 
     [ObservableProperty]
     private bool _isBluetoothAvailable;
@@ -86,15 +91,21 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
     public DevicesViewModel(
         INavigationService navigationService,
         IBleTransportFactory bleTransportFactory,
-        IConnectedDeviceService connectedDeviceService)
+        IConnectedDeviceService connectedDeviceService,
+        IVehicleDetector vehicleDetector,
+        VehicleSessionService vehicleSession)
     {
         ArgumentNullException.ThrowIfNull(navigationService);
         ArgumentNullException.ThrowIfNull(bleTransportFactory);
         ArgumentNullException.ThrowIfNull(connectedDeviceService);
+        ArgumentNullException.ThrowIfNull(vehicleDetector);
+        ArgumentNullException.ThrowIfNull(vehicleSession);
 
         _navigationService = navigationService;
         _bleTransportFactory = bleTransportFactory;
         _connectedDeviceService = connectedDeviceService;
+        _vehicleDetector = vehicleDetector;
+        _vehicleSession = vehicleSession;
         Title = "Select Device";
 
         Log("DevicesViewModel initialized");
@@ -103,7 +114,7 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
         if (_bleTransportFactory is PluginBleTransportFactory pluginFactory)
         {
             UpdateBluetoothStatus(pluginFactory);
-            
+
             // Subscribe to Plugin.BLE state changes
             Plugin.BLE.CrossBluetoothLE.Current.StateChanged += OnBluetoothStateChanged;
             Log($"Bluetooth status: Available={IsBluetoothAvailable}, On={IsBluetoothOn}");
@@ -245,6 +256,9 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
         IsScanning = false;
     }
 
+    private const int CHARGER_TXID = 0x797;
+    private const int CHARGER_RXID = 0x79A;
+
     /// <summary>
     /// Connects to the selected BLE device.
     /// </summary>
@@ -322,6 +336,45 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
                     SelectedDevice.Device.Address,
                     profile);
 
+                // Attempt to identify the vehicle via VIN and map to a known profile.
+                try
+                {
+                    if (transport is IObdTransport obdTransport)
+                    {
+
+                        // Try to wake up ECUs first
+                        await SendAsync(obdTransport, "ATSH7DF", TimeSpan.FromSeconds(2));
+                        await SendAsync(obdTransport, "0100", TimeSpan.FromSeconds(2));
+                        await Task.Delay(200);
+
+                        // Now configure for Charger
+                        await SendAsync(obdTransport, $"ATSH{CHARGER_TXID:X3}", TimeSpan.FromSeconds(2));
+                        await SendAsync(obdTransport, $"ATCRA{CHARGER_RXID:X3}", TimeSpan.FromSeconds(2));
+                        await SendAsync(obdTransport, $"ATFCSH{CHARGER_TXID:X3}", TimeSpan.FromSeconds(2));
+                        await SendAsync(obdTransport, "ATFCSD300000", TimeSpan.FromSeconds(2));
+                        await SendAsync(obdTransport, "ATFCSM1", TimeSpan.FromSeconds(2));
+
+                        //using var detectCts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                        var vin = await VinQuery.TryGetVinAsync(obdTransport, CancellationToken.None); // detectCts.Token);
+                        var vehicleProfile = !string.IsNullOrWhiteSpace(vin)
+                            ? _vehicleDetector.DetectFromVin(vin)
+                            : null;
+
+                        _vehicleSession.SetVehicle(vin, vehicleProfile);
+                        Log($"Vehicle detection: VIN={(vin ?? "(none)")}, Profile={(vehicleProfile?.Name ?? "(unknown)")}");
+                    }
+                    else
+                    {
+                        _vehicleSession.Clear();
+                        Log("Vehicle detection skipped: transport does not implement IObdTransport");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _vehicleSession.Clear();
+                    Log($"Vehicle detection failed: {ex.GetType().Name}: {ex.Message}");
+                }
+
                 Log($"Navigating back to main page");
 
                 try
@@ -349,6 +402,43 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
         });
 
         Log("ConnectToDeviceAsync completed");
+    }
+
+    async Task<string> SendAsync(IObdTransport transport, string cmd, TimeSpan timeout)
+    {
+        //transport.DrainBuffer();
+        await transport.WriteAsync(cmd + "\r");
+
+        var response = new System.Text.StringBuilder();
+        var startTime = DateTime.UtcNow;
+        var lastDataTime = DateTime.UtcNow;
+
+        while (DateTime.UtcNow - startTime < timeout)
+        {
+            try
+            {
+                var chunk = await transport.ReadUntilAsync(">", TimeSpan.FromMilliseconds(500));
+                response.Append(chunk);
+
+                if (chunk.Contains(">"))
+                    break;
+
+                lastDataTime = DateTime.UtcNow;
+            }
+            catch (TimeoutException)
+            {
+                if (DateTime.UtcNow - lastDataTime > TimeSpan.FromSeconds(2))
+                    break;
+            }
+        }
+
+        var result = response.ToString()
+            .Replace(cmd, "")
+            .Replace(">", "")
+            .Trim();
+
+        //LogToSession($"RX: {result.Replace("\r", "\\r").Replace("\n", "\\n")}");
+        return result;
     }
 
     /// <summary>
@@ -383,10 +473,10 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
 
         // Default to Veepeak profile for OBD-named devices
         var upperName = device.Name?.ToUpperInvariant() ?? string.Empty;
-        
+
         if (upperName.Contains("VEEPEAK"))
             return BleDeviceProfile.VeepeakBle;
-        
+
         if (upperName.Contains("OBDLINK") || upperName.Contains("OBD LINK"))
             return BleDeviceProfile.ObdLinkMx;
 
@@ -495,7 +585,7 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
     private async Task StartScanAsync()
     {
         Log("StartScanAsync called");
-        
+
         if (!IsBluetoothAvailable)
         {
             Log("ERROR: Bluetooth not available");
@@ -568,7 +658,7 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
     private async Task StopScanAsync()
     {
         Log("StopScanAsync called");
-        
+
         // Prevent re-entry
         lock (_scanLock)
         {
@@ -605,7 +695,7 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
             ScanStatus = DiscoveredDevices.Count > 0
                 ? $"Scan stopped - {DiscoveredDevices.Count} device(s) found"
                 : "Scan stopped";
-                
+
             Log($"Scan stopped. {DiscoveredDevices.Count} device(s) found");
         }
         finally
@@ -638,9 +728,9 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
     {
         var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
         var logLine = $"[{timestamp}] {message}";
-        
+
         Debug.WriteLine($"[DevicesVM] {logLine}");
-        
+
         MainThread.BeginInvokeOnMainThread(() =>
         {
             // Keep last 50 lines to avoid memory issues

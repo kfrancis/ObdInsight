@@ -3,6 +3,8 @@ using ObdInsight.Core.Transports.Ble;
 using ObdInsight.Pages;
 using ObdInsight.Services;
 using ObdInsight.ViewModels;
+using ObdInsight.Core.Vehicles;
+using ObdInsight.Drivers;
 
 namespace ObdInsight
 {
@@ -26,6 +28,14 @@ namespace ObdInsight
             builder.Services.AddSingleton<IBleTransportFactory, PluginBleTransportFactory>();
             builder.Services.AddSingleton<IConnectedDeviceService, ConnectedDeviceService>();
             builder.Services.AddSingleton<VehicleImageResolver>();
+            builder.Services.AddSingleton<VehicleSessionService>();
+
+            builder.Services.AddSingleton<IVehicleDetector>(sp =>
+            {
+                var detector = new VehicleDetectorService();
+                VehicleProfileRegistry.RegisterAllProfiles(detector);
+                return detector;
+            });
 
             // Register ViewModels
             builder.Services.AddSingleton<MainViewModel>();

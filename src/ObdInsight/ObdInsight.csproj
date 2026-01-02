@@ -73,6 +73,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\ObdInsight.Core\ObdInsight.Core.csproj" />
+		<ProjectReference Include="..\ObdInsight.Drivers\ObdInsight.Drivers.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
