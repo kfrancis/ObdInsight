@@ -1,3 +1,4 @@
+
 namespace ObdInsight.Core.Vehicles;
 
 /// <summary>

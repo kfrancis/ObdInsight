@@ -195,6 +195,49 @@ public interface IVehicleProfile
     /// Validates whether this profile matches a given VIN
     /// </summary>
     bool MatchesVin(string vin);
+
+    /// <summary>
+    /// Decodes raw response bytes into multiple typed values from a single response.
+    /// Used for commands that return multiple data points (e.g., Nissan Leaf Group 01).
+    /// </summary>
+    /// <param name="command">The command that was sent</param>
+    /// <param name="responseBytes">The raw response bytes</param>
+    /// <returns>Dictionary of data points to their decoded values</returns>
+    IReadOnlyDictionary<VehicleDataPoint, VehicleDataResult> DecodeMultiResponse(
+        string command,
+        byte[] responseBytes)
+    {
+        // Default implementation: try single-value decode
+        var pid = CustomPids.FirstOrDefault(p => p.Command == command);
+        if (pid != null)
+        {
+            var result = DecodeResponse(pid.DataPoint, responseBytes);
+            return new Dictionary<VehicleDataPoint, VehicleDataResult> { { pid.DataPoint, result } };
+        }
+        return new Dictionary<VehicleDataPoint, VehicleDataResult>();
+    }
+
+    /// <summary>
+    /// Gets the most efficient command to retrieve a set of data points.
+    /// May return a single command if multiple data points can be retrieved together.
+    /// </summary>
+    /// <param name="dataPoints">The data points to retrieve</param>
+    /// <returns>Commands to send, with their associated data points</returns>
+    IReadOnlyList<(ObdCommand Command, IReadOnlyList<VehicleDataPoint> DataPoints)> GetOptimizedCommands(
+        IEnumerable<VehicleDataPoint> dataPoints)
+    {
+        // Default implementation: one command per data point
+        var result = new List<(ObdCommand, IReadOnlyList<VehicleDataPoint>)>();
+        foreach (var dp in dataPoints)
+        {
+            var cmd = GetCommand(dp);
+            if (cmd != null)
+            {
+                result.Add((cmd, new[] { dp }));
+            }
+        }
+        return result;
+    }
 }
 
 /// <summary>
@@ -243,6 +286,80 @@ public record VehiclePid(
     /// Number of expected response frames (for multi-frame responses)
     /// </summary>
     public int ExpectedFrames { get; init; } = 1;
+
+    /// <summary>
+    /// All data points this PID provides when it returns multiple values.
+    /// If null, only the primary DataPoint is returned.
+    /// </summary>
+    /// <remarks>
+    /// Some vehicle commands (like Nissan Leaf Mode 21 Group 01) return
+    /// multiple data points in a single response. This property lists
+    /// all data points that can be extracted from this command.
+    /// </remarks>
+    public IReadOnlyList<VehicleDataPoint>? ProvidesDataPoints { get; init; }
+
+    /// <summary>
+    /// Decoder that extracts multiple values from a single response.
+    /// Used when ProvidesDataPoints contains multiple entries.
+    /// </summary>
+    /// <remarks>
+    /// The returned dictionary maps each data point to its decoded value.
+    /// This is more efficient than making separate queries for each value.
+    /// </remarks>
+    public Func<byte[], IReadOnlyDictionary<VehicleDataPoint, object?>>? MultiDecoder { get; init; }
+
+    /// <summary>
+    /// Whether this PID returns multiple data points in a single response.
+    /// </summary>
+    public bool IsMultiValue => ProvidesDataPoints is { Count: > 1 } || MultiDecoder != null;
+
+    /// <summary>
+    /// Gets all data points provided by this PID (including primary and additional).
+    /// </summary>
+    public IEnumerable<VehicleDataPoint> AllDataPoints
+    {
+        get
+        {
+            if (ProvidesDataPoints != null)
+            {
+                foreach (var dp in ProvidesDataPoints)
+                    yield return dp;
+            }
+            else
+            {
+                yield return DataPoint;
+            }
+        }
+    }
+}
+
+/// <summary>
+/// Result of decoding multiple values from a single response
+/// </summary>
+public record MultiValueResult(
+    string Command,
+    bool Success,
+    IReadOnlyDictionary<VehicleDataPoint, object?> Values,
+    string? Error = null
+)
+{
+    /// <summary>
+    /// Create a successful multi-value result
+    /// </summary>
+    public static MultiValueResult Ok(string command, IReadOnlyDictionary<VehicleDataPoint, object?> values) =>
+        new(command, true, values);
+
+    /// <summary>
+    /// Create a failed multi-value result
+    /// </summary>
+    public static MultiValueResult Fail(string command, string error) =>
+        new(command, false, new Dictionary<VehicleDataPoint, object?>(), error);
+
+    /// <summary>
+    /// Gets the value for a specific data point
+    /// </summary>
+    public T? GetValue<T>(VehicleDataPoint dataPoint) =>
+        Values.TryGetValue(dataPoint, out var value) && value is T typed ? typed : default;
 }
 
 /// <summary>

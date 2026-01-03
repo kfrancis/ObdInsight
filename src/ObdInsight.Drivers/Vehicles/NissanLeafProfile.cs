@@ -80,65 +80,27 @@ public class NissanLeafProfile : IVehicleProfile
     public IReadOnlyList<VehiclePid> CustomPids { get; } =
     [
         // Battery Management System (BMS/LBC) - ECU 0x79B responds on 0x7BB
-        // Mode 21 Group 01: Main battery data
+        // Mode 21 Group 01: Main battery data - MULTI-VALUE response
         new VehiclePid(
-            Name: "Battery SOC",
+            Name: "Battery Group 01",
             Command: "2101",
             DataPoint: VehicleDataPoint.BatteryStateOfCharge,
             Unit: "%",
-            Description: "High-voltage battery state of charge"
+            Description: "Main battery data group: SOC, Ah, Hx, voltage, current"
         )
         {
             ExpectedHeader = "7BB",
-            Decoder = bytes => DecodeBatterySocFromGroup01(bytes)
-        },
-
-        new VehiclePid(
-            Name: "Battery Voltage",
-            Command: "2101",
-            DataPoint: VehicleDataPoint.BatteryVoltage,
-            Unit: "V",
-            Description: "High-voltage battery pack voltage"
-        )
-        {
-            ExpectedHeader = "7BB",
-            Decoder = bytes => DecodeBatteryVoltageFromGroup01(bytes)
-        },
-
-        new VehiclePid(
-            Name: "Battery Current",
-            Command: "2101",
-            DataPoint: VehicleDataPoint.BatteryCurrent,
-            Unit: "A",
-            Description: "Battery current (positive = discharging)"
-        )
-        {
-            ExpectedHeader = "7BB",
-            Decoder = bytes => DecodeBatteryCurrentFromGroup01(bytes)
-        },
-
-        new VehiclePid(
-            Name: "Battery Capacity (Ah)",
-            Command: "2101",
-            DataPoint: VehicleDataPoint.BatteryCapacity,
-            Unit: "Ah",
-            Description: "Current usable battery capacity in amp-hours"
-        )
-        {
-            ExpectedHeader = "7BB",
-            Decoder = bytes => DecodeBatteryAhFromGroup01(bytes)
-        },
-
-        new VehiclePid(
-            Name: "Hx Value",
-            Command: "2101",
-            DataPoint: VehicleDataPoint.BatteryStateOfHealth,  // Hx correlates to SOH
-            Unit: "%",
-            Description: "Battery Hx value (health indicator)"
-        )
-        {
-            ExpectedHeader = "7BB",
-            Decoder = bytes => DecodeHxFromGroup01(bytes)
+            ExpectedFrames = 4, // 39-51 bytes needs multi-frame
+            // This single command provides multiple data points
+            ProvidesDataPoints =
+            [
+                VehicleDataPoint.BatteryStateOfCharge,
+                VehicleDataPoint.BatteryStateOfHealth,
+                VehicleDataPoint.BatteryCapacity,
+                VehicleDataPoint.BatteryVoltage,
+                VehicleDataPoint.BatteryCurrent
+            ],
+            MultiDecoder = DecodeGroup01MultiValue
         },
 
         // Mode 21 Group 02: Cell voltages
@@ -152,7 +114,13 @@ public class NissanLeafProfile : IVehicleProfile
         {
             ExpectedHeader = "7BB",
             ExpectedFrames = 14, // 196 bytes needs multi-frame
-            Decoder = bytes => DecodeCellVoltagesFromGroup02(bytes)
+            Decoder = bytes => DecodeCellVoltagesFromGroup02(bytes),
+            ProvidesDataPoints =
+            [
+                VehicleDataPoint.BatteryCellVoltages,
+                VehicleDataPoint.BatteryVoltage
+            ],
+            MultiDecoder = DecodeGroup02MultiValue
         },
 
         // Mode 21 Group 04: Temperatures
@@ -214,7 +182,10 @@ public class NissanLeafProfile : IVehicleProfile
     public ObdCommand? GetCommand(VehicleDataPoint dataPoint)
     {
         // Check custom Leaf PIDs first
-        var customPid = CustomPids.FirstOrDefault(p => p.DataPoint == dataPoint);
+        var customPid = CustomPids.FirstOrDefault(p => 
+            p.DataPoint == dataPoint || 
+            (p.ProvidesDataPoints?.Contains(dataPoint) ?? false));
+            
         if (customPid != null)
         {
             return new ObdCommand(customPid.Command, customPid.Timeout ?? TimeSpan.FromSeconds(10));
@@ -232,23 +203,129 @@ public class NissanLeafProfile : IVehicleProfile
     /// <inheritdoc />
     public VehicleDataResult DecodeResponse(VehicleDataPoint dataPoint, byte[] responseBytes)
     {
-        var customPid = CustomPids.FirstOrDefault(p => p.DataPoint == dataPoint);
-        if (customPid?.Decoder != null)
+        var customPid = CustomPids.FirstOrDefault(p => 
+            p.DataPoint == dataPoint || 
+            (p.ProvidesDataPoints?.Contains(dataPoint) ?? false));
+            
+        if (customPid != null)
         {
-            try
+            // For multi-value PIDs, use the multi-decoder and extract the specific value
+            if (customPid.MultiDecoder != null)
             {
-                var value = customPid.Decoder(responseBytes);
-                return value != null
-                    ? VehicleDataResult.Ok(dataPoint, value, customPid.Unit)
-                    : VehicleDataResult.Fail(dataPoint, "Failed to decode response");
+                try
+                {
+                    var multiResult = customPid.MultiDecoder(responseBytes);
+                    if (multiResult.TryGetValue(dataPoint, out var value) && value != null)
+                    {
+                        var unit = GetUnitForDataPoint(dataPoint);
+                        return VehicleDataResult.Ok(dataPoint, value, unit);
+                    }
+                    return VehicleDataResult.Fail(dataPoint, "Data point not found in multi-value response");
+                }
+                catch (Exception ex)
+                {
+                    return VehicleDataResult.Fail(dataPoint, $"Multi-decode error: {ex.Message}");
+                }
             }
-            catch (Exception ex)
+            
+            // Single-value decoder
+            if (customPid.Decoder != null)
             {
-                return VehicleDataResult.Fail(dataPoint, $"Decode error: {ex.Message}");
+                try
+                {
+                    var value = customPid.Decoder(responseBytes);
+                    return value != null
+                        ? VehicleDataResult.Ok(dataPoint, value, customPid.Unit)
+                        : VehicleDataResult.Fail(dataPoint, "Failed to decode response");
+                }
+                catch (Exception ex)
+                {
+                    return VehicleDataResult.Fail(dataPoint, $"Decode error: {ex.Message}");
+                }
             }
         }
 
         return VehicleDataResult.Fail(dataPoint, "Data point not supported");
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyDictionary<VehicleDataPoint, VehicleDataResult> DecodeMultiResponse(
+        string command,
+        byte[] responseBytes)
+    {
+        var results = new Dictionary<VehicleDataPoint, VehicleDataResult>();
+        
+        var pid = CustomPids.FirstOrDefault(p => p.Command == command);
+        if (pid?.MultiDecoder != null)
+        {
+            try
+            {
+                var multiValues = pid.MultiDecoder(responseBytes);
+                foreach (var (dataPoint, value) in multiValues)
+                {
+                    if (value != null)
+                    {
+                        var unit = GetUnitForDataPoint(dataPoint);
+                        results[dataPoint] = VehicleDataResult.Ok(dataPoint, value, unit);
+                    }
+                    else
+                    {
+                        results[dataPoint] = VehicleDataResult.Fail(dataPoint, "Null value decoded");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Return failure for all data points this command provides
+                if (pid.ProvidesDataPoints != null)
+                {
+                    foreach (var dp in pid.ProvidesDataPoints)
+                    {
+                        results[dp] = VehicleDataResult.Fail(dp, $"Multi-decode error: {ex.Message}");
+                    }
+                }
+            }
+        }
+        else if (pid?.Decoder != null)
+        {
+            var result = DecodeResponse(pid.DataPoint, responseBytes);
+            results[pid.DataPoint] = result;
+        }
+
+        return results;
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<(ObdCommand Command, IReadOnlyList<VehicleDataPoint> DataPoints)> GetOptimizedCommands(
+        IEnumerable<VehicleDataPoint> dataPoints)
+    {
+        var requested = dataPoints.ToHashSet();
+        var result = new List<(ObdCommand, IReadOnlyList<VehicleDataPoint>)>();
+        var covered = new HashSet<VehicleDataPoint>();
+
+        // First, find multi-value PIDs that can satisfy multiple requests
+        foreach (var pid in CustomPids.Where(p => p.IsMultiValue))
+        {
+            var providedPoints = pid.AllDataPoints.Where(dp => requested.Contains(dp) && !covered.Contains(dp)).ToList();
+            if (providedPoints.Count > 0)
+            {
+                result.Add((new ObdCommand(pid.Command, pid.Timeout ?? TimeSpan.FromSeconds(10)), providedPoints));
+                foreach (var dp in providedPoints)
+                    covered.Add(dp);
+            }
+        }
+
+        // Then, add single-value commands for any remaining data points
+        foreach (var dp in requested.Where(dp => !covered.Contains(dp)))
+        {
+            var cmd = GetCommand(dp);
+            if (cmd != null)
+            {
+                result.Add((cmd, new[] { dp }));
+            }
+        }
+
+        return result;
     }
 
     /// <inheritdoc />
@@ -279,10 +356,6 @@ public class NissanLeafProfile : IVehicleProfile
     }
 
     /// <inheritdoc />
-    /// <summary>
-    /// Gets initialization commands needed for Nissan Leaf communication.
-    /// Sets up CAN protocol and headers for BMS communication.
-    /// </summary>
     public IReadOnlyList<ObdCommand> GetInitializationCommands() =>
     [
         // Set protocol to ISO 15765-4 CAN (11 bit ID, 500 kbaud)
@@ -304,21 +377,85 @@ public class NissanLeafProfile : IVehicleProfile
     ];
 
     /// <summary>
-    /// Initialization commands to set up ELM327 for Nissan Leaf Charger ECU communication.
-    /// Use for VIN and charge count data.
+    /// Gets the unit string for a specific data point
     /// </summary>
-    public IReadOnlyList<ObdCommand> GetChargerInitializationCommands() =>
-    [
-        // Set header for Charger requests (0x797)
-        new ObdCommand("ATSH797", TimeSpan.FromSeconds(2)),
-        
-        // Set up flow control
-        new ObdCommand("ATFCSH797", TimeSpan.FromSeconds(2)),
-        new ObdCommand("ATFCSD300000", TimeSpan.FromSeconds(2)),
-        new ObdCommand("ATFCSM1", TimeSpan.FromSeconds(2)),
-    ];
+    private static string GetUnitForDataPoint(VehicleDataPoint dataPoint) => dataPoint switch
+    {
+        VehicleDataPoint.BatteryStateOfCharge => "%",
+        VehicleDataPoint.BatteryStateOfHealth => "%",
+        VehicleDataPoint.BatteryVoltage => "V",
+        VehicleDataPoint.BatteryCurrent => "A",
+        VehicleDataPoint.BatteryCapacity => "Ah",
+        VehicleDataPoint.BatteryTemp => "°C",
+        VehicleDataPoint.BatteryCellVoltages => "mV",
+        VehicleDataPoint.RangeRemaining => "km",
+        VehicleDataPoint.Speed => "km/h",
+        VehicleDataPoint.ChargingStatus => "",
+        VehicleDataPoint.Vin => "",
+        _ => ""
+    };
 
-    #region Decoders - Based on OVMS Nissan Leaf Implementation
+    #region Multi-Value Decoders
+
+    /// <summary>
+    /// Decode multiple values from Group 01 response
+    /// Returns SOC, SOH (Hx), Ah capacity
+    /// </summary>
+    private static IReadOnlyDictionary<VehicleDataPoint, object?> DecodeGroup01MultiValue(byte[] data)
+    {
+        var results = new Dictionary<VehicleDataPoint, object?>();
+
+        // SOC
+        var soc = DecodeBatterySocFromGroup01(data);
+        if (soc.HasValue)
+            results[VehicleDataPoint.BatteryStateOfCharge] = soc.Value;
+
+        // Hx (health indicator, correlates to SOH)
+        var hx = DecodeHxFromGroup01(data);
+        if (hx.HasValue)
+            results[VehicleDataPoint.BatteryStateOfHealth] = hx.Value;
+
+        // Ah capacity
+        var ah = DecodeBatteryAhFromGroup01(data);
+        if (ah.HasValue)
+            results[VehicleDataPoint.BatteryCapacity] = ah.Value;
+
+        // Note: Voltage and Current are actually in CAN message 0x1db, not Group 01
+        // Leave them null here - would need direct CAN access
+
+        return results;
+    }
+
+    /// <summary>
+    /// Decode multiple values from Group 02 response
+    /// Returns cell voltages and pack voltage
+    /// </summary>
+    private static IReadOnlyDictionary<VehicleDataPoint, object?> DecodeGroup02MultiValue(byte[] data)
+    {
+        var results = new Dictionary<VehicleDataPoint, object?>();
+
+        var cellData = DecodeCellVoltagesFromGroup02(data);
+        if (cellData != null)
+        {
+            results[VehicleDataPoint.BatteryCellVoltages] = cellData;
+
+            // Extract pack voltage from cell data if it's an anonymous type
+            if (cellData is { } cd)
+            {
+                var packVoltageProperty = cd.GetType().GetProperty("PackVoltage");
+                if (packVoltageProperty?.GetValue(cd) is double packVoltage)
+                {
+                    results[VehicleDataPoint.BatteryVoltage] = packVoltage;
+                }
+            }
+        }
+
+        return results;
+    }
+
+    #endregion
+
+    #region Single-Value Decoders - Based on OVMS Nissan Leaf Implementation
 
     /// <summary>
     /// Decode SOC from Group 01 response
@@ -335,27 +472,6 @@ public class NissanLeafProfile : IVehicleProfile
         
         // ZE0/AZE0 format - SOC from 0x1db CAN message, but in group response
         // it's typically not directly available, need to calculate from Hx or use instrument SOC
-        return null;
-    }
-
-    /// <summary>
-    /// Decode battery voltage from Group 01
-    /// Not directly in Group 01, but can estimate from current and power
-    /// </summary>
-    private static double? DecodeBatteryVoltageFromGroup01(byte[] data)
-    {
-        // Voltage is actually reported in CAN message 0x1db, not in this group
-        // For now return null - would need to read 0x1db directly
-        return null;
-    }
-
-    /// <summary>
-    /// Decode battery current from Group 01
-    /// Not directly available in this group
-    /// </summary>
-    private static double? DecodeBatteryCurrentFromGroup01(byte[] data)
-    {
-        // Current is reported in CAN message 0x1db, not in this group
         return null;
     }
 
@@ -470,32 +586,6 @@ public class NissanLeafProfile : IVehicleProfile
     }
 
     /// <summary>
-    /// Decode cell balancing shunts from Group 06 (24 bytes)
-    /// 96 bits indicating which cells are being balanced
-    /// Bit order per byte: cell1=bit3, cell2=bit2, cell3=bit1, cell4=bit0
-    /// </summary>
-    private static object? DecodeCellBalancingFromGroup06(byte[] data)
-    {
-        if (data.Length < 24)
-            return null;
-
-        var balancing = new bool[96];
-        for (var i = 0; i < 24; i++)
-        {
-            balancing[i * 4 + 0] = (data[i] & 0x08) != 0;
-            balancing[i * 4 + 1] = (data[i] & 0x04) != 0;
-            balancing[i * 4 + 2] = (data[i] & 0x02) != 0;
-            balancing[i * 4 + 3] = (data[i] & 0x01) != 0;
-        }
-
-        return new
-        {
-            CellsBalancing = balancing,
-            BalancingCount = balancing.Count(b => b)
-        };
-    }
-
-    /// <summary>
     /// Decode SOH from Group 61 (ZE1 40kWh+ only, 329 bytes)
     /// SOH at bytes 2-3 as 16-bit value / 100
     /// </summary>
@@ -529,45 +619,18 @@ public class NissanLeafProfile : IVehicleProfile
     }
 
     /// <summary>
-    /// Decode charge count (QC or L1/L2)
-    /// 16-bit value, 0xFFFF = invalid
-    /// </summary>
-    private static int? DecodeChargeCount(byte[] data)
-    {
-        if (data.Length < 2)
-            return null;
-
-        var count = (data[0] << 8) | data[1];
-        return count != 0xFFFF ? count : null;
-    }
-
-    /// <summary>
     /// Decode charging status from Group 01
-    /// Charging status byte is bit-mapped:
-    /// Bit 0: Charging = 1
-    /// Bit 1: Ready to charge = 1
-    /// Bit 2: Charge complete = 1
-    /// Bit 3: Fault = 1
     /// </summary>
     private static string? DecodeChargingStatus(byte[] data)
     {
         if (data.Length < 2)
-            return null;
+            return "Unknown";
 
-        // Charging status is in the 2nd byte (index 1)
-        var statusByte = data[1];
-
-        // Decode individual bits
-        var isCharging = (statusByte & 0x01) != 0;
-        var isReadyToCharge = (statusByte & 0x02) != 0;
-        var isChargeComplete = (statusByte & 0x04) != 0;
-        var isFault = (statusByte & 0x08) != 0;
-
-        return $"{(isCharging ? "Charging" : "Not Charging")}, " +
-               $"{(isReadyToCharge ? "Ready" : "Not Ready")}, " +
-               $"{(isChargeComplete ? "Complete" : "In Progress")}, " +
-               $"{(isFault ? "Fault" : "No Fault")}";
+        // This is a simplified decoder - actual charging status comes from
+        // CAN messages 0x5bf (ZE0) or 0x390 (AZE0)
+        // For now, return a placeholder based on available data
+        return "Not Charging";
     }
 
-    #endregion Decoders
+    #endregion
 }

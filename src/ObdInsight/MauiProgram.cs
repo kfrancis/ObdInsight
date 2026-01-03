@@ -37,6 +37,13 @@ namespace ObdInsight
                 return detector;
             });
 
+            // Register VehicleDataStore as singleton for widget bindings
+            builder.Services.AddSingleton<IVehicleDataStore>(sp =>
+            {
+                var logger = sp.GetService<ILogger<VehicleDataStore>>();
+                return new VehicleDataStore(logger);
+            });
+
             // Register ViewModels
             builder.Services.AddSingleton<MainViewModel>();
             builder.Services.AddTransient<DevicesViewModel>();

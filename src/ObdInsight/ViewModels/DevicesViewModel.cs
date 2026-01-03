@@ -375,11 +375,12 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
                     Log($"Vehicle detection failed: {ex.GetType().Name}: {ex.Message}");
                 }
 
-                Log($"Navigating back to main page");
+                Log($"Navigating to home tab");
 
                 try
                 {
-                    await _navigationService.NavigateToAsync("..");
+                    // Navigate to the main tab (home page) after successful connection
+                    await _navigationService.NavigateToAsync("//main");
                     Log("Navigation completed successfully");
                 }
                 catch (Exception navEx)

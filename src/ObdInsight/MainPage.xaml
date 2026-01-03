@@ -3,6 +3,7 @@
     x:Class="ObdInsight.MainPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:ObdInsight.Controls"
     xmlns:vm="clr-namespace:ObdInsight.ViewModels"
     Title="{Binding Title}"
     x:DataType="vm:MainViewModel"
@@ -79,70 +80,38 @@
                 <Grid
                     ColumnDefinitions="*,*"
                     ColumnSpacing="{StaticResource AppSpacingMd}"
+                    RowDefinitions="Auto,Auto"
                     RowSpacing="{StaticResource AppSpacingMd}">
 
-                    <!--  Range (always shown)  -->
-                    <Border
-                        Background="{StaticResource AppCardGradientBrush}"
-                        StrokeShape="RoundRectangle 16"
-                        Style="{StaticResource AppWidgetCard}">
-                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
-                            <Label Style="{StaticResource AppWidgetLabel}" Text="Range" />
-                            <Grid
-                                Grid.Row="1"
-                                ColumnDefinitions="Auto,Auto"
-                                ColumnSpacing="0">
-                                <Label Style="{StaticResource AppWidgetValue}" Text="{Binding RangeDisplay}" />
-                                <Label
-                                    Grid.Column="1"
-                                    Style="{StaticResource AppWidgetUnit}"
-                                    Text="{Binding RangeUnit}" />
-                            </Grid>
-                        </Grid>
-                    </Border>
+                    <!--  Range Widget (new)  -->
+                    <controls:RangeWidget
+                        AutoHideWhenUnavailable="False"
+                        DataStore="{Binding VehicleDataStore}" />
 
-                    <!--  Battery Percent (BEV/Hybrid typically)  -->
-                    <Border
-                        Background="{StaticResource AppCardGradientBrush}"
-                        StrokeShape="RoundRectangle 16"
-                        Style="{StaticResource AppWidgetCard}">
-                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
-                            <Label Style="{StaticResource AppWidgetLabel}" Text="Battery" />
-                            <Grid
-                                Grid.Row="1"
-                                ColumnDefinitions="Auto,Auto"
-                                ColumnSpacing="0">
-                                <Label Style="{StaticResource AppWidgetValue}" Text="{Binding BatteryPercentDisplay}" />
-                                <Label
-                                    Grid.Column="1"
-                                    Style="{StaticResource AppWidgetUnit}"
-                                    Text="%" />
-                            </Grid>
-                        </Grid>
-                    </Border>
+                    <!--  Battery Widget (new)  -->
+                    <controls:BatteryWidget
+                        Grid.Column="1"
+                        AutoHideWhenUnavailable="False"
+                        DataStore="{Binding VehicleDataStore}" />
 
-                    <!--  Charging (optional)  -->
-                    <Border
-                        Background="{StaticResource AppCardGradientBrush}"
-                        StrokeShape="RoundRectangle 16"
-                        Style="{StaticResource AppWidgetCard}">
-                        <Grid RowDefinitions="Auto,Auto">
-                            <Label Style="{StaticResource AppWidgetLabel}" Text="Charging" />
-                            <Label
-                                Grid.Row="1"
-                                LineBreakMode="TailTruncation"
-                                Style="{StaticResource AppTextTitle}"
-                                Text="{Binding ChargingStatusDisplay}" />
-                        </Grid>
-                    </Border>
+                    <!--  Charging Widget (new)  -->
+                    <controls:ChargingWidget
+                        Grid.Row="1"
+                        AutoHideWhenUnavailable="False"
+                        DataStore="{Binding VehicleDataStore}" />
 
-                    <!--  Secondary metric (placeholder)  -->
+                    <!--  Secondary metric (legacy placeholder for now)  -->
                     <Border
+                        Grid.Row="1"
+                        Grid.Column="1"
                         Background="{StaticResource AppCardGradientBrush}"
                         StrokeShape="RoundRectangle 16"
                         Style="{StaticResource AppWidgetCard}">
-                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
-                            <Label Style="{StaticResource AppWidgetLabel}" Text="Metric" />
+                        <Grid
+                            Padding="16"
+                            ColumnDefinitions="*,Auto"
+                            RowDefinitions="Auto,Auto">
+                            <Label Style="{StaticResource AppWidgetLabel}" Text="Voltage" />
                             <Grid
                                 Grid.Row="1"
                                 ColumnDefinitions="Auto,Auto"

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="ObdInsight.Controls.ChargingWidget"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    x:Name="ThisWidget">
+
+    <Border
+        x:Name="WidgetBorder"
+        Background="{StaticResource AppCardGradientBrush}"
+        StrokeShape="RoundRectangle 16"
+        Style="{StaticResource AppWidgetCard}">
+        <Grid Padding="16" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+            
+            <!--  Title with status indicator  -->
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Label 
+                    Style="{StaticResource AppWidgetLabel}" 
+                    Text="{Binding WidgetTitle, Source={x:Reference ThisWidget}}" />
+                
+                <!--  Charging indicator dot  -->
+                <Ellipse
+                    Grid.Column="2"
+                    Fill="{Binding StatusColor, Source={x:Reference ThisWidget}}"
+                    HeightRequest="10"
+                    VerticalOptions="Center"
+                    WidthRequest="10" />
+            </Grid>
+
+            <!--  Status text  -->
+            <Label
+                Grid.Row="1"
+                LineBreakMode="TailTruncation"
+                Style="{StaticResource AppTextTitle}"
+                Text="{Binding StatusText, Source={x:Reference ThisWidget}}" />
+
+            <!--  Charging power (when charging)  -->
+            <Grid
+                Grid.Row="2"
+                ColumnDefinitions="*,Auto"
+                IsVisible="{Binding IsActivelyCharging, Source={x:Reference ThisWidget}}">
+                <Label
+                    Style="{StaticResource AppTextCaption}"
+                    Text="Power"
+                    TextColor="{AppThemeBinding Light={StaticResource AppTextMutedLight}, Dark={StaticResource AppTextMutedDark}}" />
+                <Label
+                    Grid.Column="1"
+                    Style="{StaticResource AppTextCaption}"
+                    Text="{Binding ChargePowerText, Source={x:Reference ThisWidget}}" />
+            </Grid>
+
+            <!--  Time to full (when charging)  -->
+            <Grid
+                Grid.Row="3"
+                ColumnDefinitions="*,Auto"
+                IsVisible="{Binding ShowTimeToFull, Source={x:Reference ThisWidget}}">
+                <Label
+                    Style="{StaticResource AppTextCaption}"
+                    Text="Time to Full"
+                    TextColor="{AppThemeBinding Light={StaticResource AppTextMutedLight}, Dark={StaticResource AppTextMutedDark}}" />
+                <Label
+                    Grid.Column="1"
+                    Style="{StaticResource AppTextCaption}"
+                    Text="{Binding TimeToFullText, Source={x:Reference ThisWidget}}" />
+            </Grid>
+            
+        </Grid>
+    </Border>
+
+</ContentView>
