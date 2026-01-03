@@ -56,10 +56,8 @@ internal class Program
             choices.Add("── Device Selection ──");
             choices.Add("Scan for BLE devices");
             choices.Add("Set device address manually");
-            if (!string.IsNullOrEmpty(session.DeviceAddress))
-            {
-                choices.Add("Discover device services");
-            }
+            choices.Add("Discover device services");
+            choices.Add("Read all characteristics");
             if (recentDevices.Count > 0)
             {
                 choices.Add("Manage saved devices");
@@ -83,6 +81,7 @@ internal class Program
             if (!string.IsNullOrEmpty(session.DeviceAddress))
             {
                 choices.Add("── Diagnostics ──");
+                choices.Add("Device information");
                 choices.Add("OBD command console");
                 choices.Add("Vehicle detection mode");
                 choices.Add("Nissan Leaf diagnostics (OVMS-style)");
@@ -156,6 +155,10 @@ internal class Program
                         await DeviceCommands.DiscoverServicesAsync(session);
                         break;
 
+                    case "Read all characteristics":
+                        await DeviceCommands.ReadAllCharacteristicsAsync(session);
+                        break;
+
                     case "Manage saved devices":
                         await ManageSavedDevicesAsync(session);
                         break;
@@ -170,6 +173,10 @@ internal class Program
                         break;
 
                     // Diagnostics
+                    case "Device information":
+                        await DeviceCommands.ShowDeviceInfoAsync(session);
+                        break;
+
                     case "OBD command console":
                         await DiagnosticCommands.RunCommandLoopAsync(session);
                         break;
