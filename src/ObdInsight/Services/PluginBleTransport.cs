@@ -9,7 +9,7 @@ namespace ObdInsight.Services;
 /// <summary>
 /// Plugin.BLE-based BLE transport implementation for OBD communication.
 /// </summary>
-public partial class PluginBleTransport : IBleTransport
+public partial class PluginBleTransport : IBleTransport, IAsyncDisposable
 {
     private readonly IAdapter _adapter;
     private readonly BleDeviceProfile _profile;
@@ -172,8 +172,45 @@ public partial class PluginBleTransport : IBleTransport
         if (_disposed) return;
         _disposed = true;
 
-        DisconnectAsync().GetAwaiter().GetResult();
+        // For sync Dispose, we do best-effort cleanup without blocking.
+        // Callers should prefer DisposeAsync() for proper cleanup.
+        try
+        {
+            if (_notifyCharacteristic is not null)
+            {
+                _notifyCharacteristic.ValueUpdated -= OnCharacteristicValueUpdated;
+            }
+
+            // Don't attempt async operations in sync Dispose
+            _service = null;
+            _writeCharacteristic = null;
+            _notifyCharacteristic = null;
+            _device = null;
+        }
+        catch
+        {
+            // Best effort cleanup; Dispose must not throw.
+        }
+
         _writeLock.Dispose();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        try
+        {
+            await DisconnectAsync();
+        }
+        catch
+        {
+            // Best effort cleanup
+        }
+
+        _writeLock.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     /// <inheritdoc/>

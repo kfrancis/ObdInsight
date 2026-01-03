@@ -43,6 +43,7 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
 
     private readonly IVehicleDetector _vehicleDetector;
     private readonly VehicleSessionService _vehicleSession;
+    private readonly AdapterAutoConnectService _autoConnectService;
 
     [ObservableProperty]
     private bool _isBluetoothAvailable;
@@ -88,27 +89,39 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
     [ObservableProperty]
     private string? _connectedDeviceName;
 
+    [ObservableProperty]
+    private bool _autoConnectToLastAdapter;
+
+    [ObservableProperty]
+    private string? _lastAdapterDisplay;
+
     public DevicesViewModel(
         INavigationService navigationService,
         IBleTransportFactory bleTransportFactory,
         IConnectedDeviceService connectedDeviceService,
         IVehicleDetector vehicleDetector,
-        VehicleSessionService vehicleSession)
+        VehicleSessionService vehicleSession,
+        AdapterAutoConnectService autoConnectService)
     {
         ArgumentNullException.ThrowIfNull(navigationService);
         ArgumentNullException.ThrowIfNull(bleTransportFactory);
         ArgumentNullException.ThrowIfNull(connectedDeviceService);
         ArgumentNullException.ThrowIfNull(vehicleDetector);
         ArgumentNullException.ThrowIfNull(vehicleSession);
+        ArgumentNullException.ThrowIfNull(autoConnectService);
 
         _navigationService = navigationService;
         _bleTransportFactory = bleTransportFactory;
         _connectedDeviceService = connectedDeviceService;
         _vehicleDetector = vehicleDetector;
         _vehicleSession = vehicleSession;
+        _autoConnectService = autoConnectService;
         Title = "Select Device";
 
         Log("DevicesViewModel initialized");
+
+        AutoConnectToLastAdapter = _autoConnectService.IsAutoConnectEnabled;
+        RefreshLastAdapterDisplay();
 
         // Check Bluetooth status and subscribe to state changes
         if (_bleTransportFactory is PluginBleTransportFactory pluginFactory)
@@ -335,6 +348,12 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
                     SelectedDevice.Device.Name,
                     SelectedDevice.Device.Address,
                     profile);
+
+                _autoConnectService.SaveLastAdapter(
+                    SelectedDevice.Device.Address,
+                    SelectedDevice.Device.Name,
+                    profile.Name);
+                RefreshLastAdapterDisplay();
 
                 // Attempt to identify the vehicle via VIN and map to a known profile.
                 try
@@ -819,6 +838,37 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
     {
         ConnectToDeviceCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanConnectToSelected));
+    }
+
+    public bool HasLastAdapter => !string.IsNullOrWhiteSpace(_autoConnectService.GetLastAdapter().Address);
+
+    private void RefreshLastAdapterDisplay()
+    {
+        var last = _autoConnectService.GetLastAdapter();
+        var label = string.IsNullOrWhiteSpace(last.Address)
+            ? null
+            : string.IsNullOrWhiteSpace(last.Name)
+                ? last.Address
+                : $"{last.Name} ({last.Address})";
+
+        LastAdapterDisplay = label;
+        OnPropertyChanged(nameof(HasLastAdapter));
+        ClearLastAdapterCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnAutoConnectToLastAdapterChanging(bool value)
+    {
+        // Ensure changes flow from UI -> preferences
+        _autoConnectService.IsAutoConnectEnabled = value;
+    }
+
+    private bool CanClearLastAdapter() => HasLastAdapter;
+
+    [RelayCommand(CanExecute = nameof(CanClearLastAdapter))]
+    private void ClearLastAdapter()
+    {
+        _autoConnectService.ClearLastAdapter();
+        RefreshLastAdapterDisplay();
     }
 }
 

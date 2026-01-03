@@ -55,13 +55,15 @@ public sealed class ConnectedDeviceService : IConnectedDeviceService, IDisposabl
         ArgumentNullException.ThrowIfNull(deviceAddress);
         ArgumentNullException.ThrowIfNull(profile);
 
+        IBleTransport? oldTransport = null;
+
         lock (_lock)
         {
-            // Dispose old transport if exists
+            // Capture old transport if exists and it's different
             if (_transport is not null && _transport != transport)
             {
-                _transport.ConnectionStateChanged -= OnTransportConnectionStateChanged;
-                _transport.Dispose();
+                oldTransport = _transport;
+                oldTransport.ConnectionStateChanged -= OnTransportConnectionStateChanged;
             }
 
             _transport = transport;
@@ -71,6 +73,29 @@ public sealed class ConnectedDeviceService : IConnectedDeviceService, IDisposabl
 
             // Subscribe to connection state changes from transport
             _transport.ConnectionStateChanged += OnTransportConnectionStateChanged;
+        }
+
+        // Clean up old transport asynchronously outside the lock
+        if (oldTransport is not null)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    if (oldTransport is IAsyncDisposable asyncDisposable)
+                    {
+                        await asyncDisposable.DisposeAsync();
+                    }
+                    else
+                    {
+                        oldTransport.Dispose();
+                    }
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+            });
         }
 
         RaiseConnectionChanged(true, deviceName, deviceAddress);
@@ -103,7 +128,14 @@ public sealed class ConnectedDeviceService : IConnectedDeviceService, IDisposabl
                 // Ignore disconnect errors
             }
 
-            transportToDispose.Dispose();
+            if (transportToDispose is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync();
+            }
+            else
+            {
+                transportToDispose.Dispose();
+            }
         }
 
         RaiseConnectionChanged(false, null, null);

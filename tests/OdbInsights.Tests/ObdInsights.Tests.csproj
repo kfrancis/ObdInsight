@@ -20,4 +20,8 @@
     <EmbeddedResource Include="TestData\*.jsonl" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Services\" />
+  </ItemGroup>
+
 </Project>

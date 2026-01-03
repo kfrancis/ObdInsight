@@ -127,6 +127,17 @@ public record BleDeviceProfile(
     ];
 
     /// <summary>
+    /// Try to find a matching profile by profile name.
+    /// </summary>
+    public static BleDeviceProfile? FindByName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return null;
+
+        return AllProfiles.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Try to find a matching profile by service UUID.
     /// </summary>
     public static BleDeviceProfile? FindByServiceUuid(Guid serviceUuid)

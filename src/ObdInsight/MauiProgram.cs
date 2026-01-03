@@ -27,6 +27,7 @@ namespace ObdInsight
             builder.Services.AddSingleton<INavigationService, ShellNavigationService>();
             builder.Services.AddSingleton<IBleTransportFactory, PluginBleTransportFactory>();
             builder.Services.AddSingleton<IConnectedDeviceService, ConnectedDeviceService>();
+            builder.Services.AddSingleton<AdapterAutoConnectService>();
             builder.Services.AddSingleton<VehicleImageResolver>();
             builder.Services.AddSingleton<VehicleSessionService>();
 

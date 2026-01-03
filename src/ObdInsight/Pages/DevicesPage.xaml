@@ -37,12 +37,6 @@
         <!--  Hero Section with OBD Adapter Image  -->
         <Grid Grid.Row="0">
             <Border StrokeThickness="0">
-                <!--<Border.StrokeShape>
-                -->
-                <!--  Only TopLeft corner rounded  -->
-                <!--
-                    <RoundRectangle CornerRadius="0,0,20,20" Clip="" />
-                </Border.StrokeShape>-->
                 <Grid>
                     <!--  Large centered OBD adapter image  -->
                     <Image
@@ -83,6 +77,53 @@
                             Text="Connect a wireless OBD2 adapter to access car diagnostics."
                             TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
                                                         Dark={StaticResource AppTextSecondaryDark}}" />
+
+                        <!-- Remember / Auto-connect -->
+                        <Border
+                            Margin="0,10,0,0"
+                            Padding="12"
+                            BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight},
+                                                              Dark={StaticResource AppSurfaceRaisedDark}}"
+                            Stroke="{AppThemeBinding Light={StaticResource AppOutlineLight},
+                                                     Dark={StaticResource AppOutlineDark}}"
+                            StrokeShape="RoundRectangle 10"
+                            StrokeThickness="1">
+                            <VerticalStackLayout Spacing="8">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                    <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                        <Label FontAttributes="Bold" FontSize="14" Text="Auto-connect" />
+                                        <Label
+                                            FontSize="12"
+                                            Text="Connect to the last adapter automatically on app start"
+                                            TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
+                                                                Dark={StaticResource AppTextSecondaryDark}}" />
+                                    </VerticalStackLayout>
+                                    <Switch
+                                        Grid.Column="1"
+                                        IsToggled="{Binding AutoConnectToLastAdapter}"
+                                        OnColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                                  Dark={StaticResource AppAccentDark}}" />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" IsVisible="{Binding HasLastAdapter}">
+                                    <Label
+                                        Grid.Column="0"
+                                        FontSize="12"
+                                        LineBreakMode="TailTruncation"
+                                        Text="{Binding LastAdapterDisplay}"
+                                        TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
+                                                            Dark={StaticResource AppTextSecondaryDark}}" />
+                                    <Button
+                                        Grid.Column="1"
+                                        Padding="10,6"
+                                        FontSize="12"
+                                        BackgroundColor="{StaticResource Gray500}"
+                                        Command="{Binding ClearLastAdapterCommand}"
+                                        Text="Forget" />
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
+
                         <!--  Connect Button  -->
                         <Button
                             Margin="40,10"
