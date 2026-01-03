@@ -15,10 +15,10 @@
 
     <Shell.TitleView>
         <Grid
-            Padding="0"
+            Padding="15,0,0,0"
             BackgroundColor="Transparent"
             ColumnDefinitions="Auto,Auto,*"
-            ColumnSpacing="8"
+            ColumnSpacing="5"
             HeightRequest="44"
             VerticalOptions="Center">
 

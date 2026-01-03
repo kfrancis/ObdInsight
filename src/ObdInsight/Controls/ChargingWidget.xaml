@@ -7,17 +7,18 @@
 
     <Border
         x:Name="WidgetBorder"
-        Background="{StaticResource AppCardGradientBrush}"
-        StrokeShape="RoundRectangle 16"
+        StrokeShape="RoundRectangle 20"
+        StrokeThickness="0"
         Style="{StaticResource AppWidgetCard}">
-        <Grid Padding="16" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
-            
+        <Grid
+            Padding="16"
+            RowDefinitions="Auto,Auto,Auto,Auto"
+            RowSpacing="8">
+
             <!--  Title with status indicator  -->
             <Grid ColumnDefinitions="Auto,*,Auto">
-                <Label 
-                    Style="{StaticResource AppWidgetLabel}" 
-                    Text="{Binding WidgetTitle, Source={x:Reference ThisWidget}}" />
-                
+                <Label Style="{StaticResource AppWidgetLabel}" Text="{Binding WidgetTitle, Source={x:Reference ThisWidget}}" />
+
                 <!--  Charging indicator dot  -->
                 <Ellipse
                     Grid.Column="2"
@@ -42,7 +43,8 @@
                 <Label
                     Style="{StaticResource AppTextCaption}"
                     Text="Power"
-                    TextColor="{AppThemeBinding Light={StaticResource AppTextMutedLight}, Dark={StaticResource AppTextMutedDark}}" />
+                    TextColor="{AppThemeBinding Light={StaticResource AppTextMutedLight},
+                                                Dark={StaticResource AppTextMutedDark}}" />
                 <Label
                     Grid.Column="1"
                     Style="{StaticResource AppTextCaption}"
@@ -57,13 +59,14 @@
                 <Label
                     Style="{StaticResource AppTextCaption}"
                     Text="Time to Full"
-                    TextColor="{AppThemeBinding Light={StaticResource AppTextMutedLight}, Dark={StaticResource AppTextMutedDark}}" />
+                    TextColor="{AppThemeBinding Light={StaticResource AppTextMutedLight},
+                                                Dark={StaticResource AppTextMutedDark}}" />
                 <Label
                     Grid.Column="1"
                     Style="{StaticResource AppTextCaption}"
                     Text="{Binding TimeToFullText, Source={x:Reference ThisWidget}}" />
             </Grid>
-            
+
         </Grid>
     </Border>
 

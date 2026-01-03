@@ -5,75 +5,70 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:controls="clr-namespace:ObdInsight.Controls"
     xmlns:vm="clr-namespace:ObdInsight.ViewModels"
-    Title="{Binding Title}"
-    x:DataType="vm:MainViewModel"
-    BackgroundColor="{StaticResource Background}">
+    x:DataType="vm:MainViewModel">
 
-    <Grid RowDefinitions="6*,4*">
+    <ScrollView x:Name="MainScrollView" Scrolled="OnScrolled">
+        <VerticalStackLayout>
 
-        <!--  Hero Section with Teal Gradient  -->
-        <Grid Grid.Row="0">
-            <Border Background="{StaticResource AppHeroGradientBrush}" StrokeThickness="0">
-                <Grid>
-                    <!--  Large vehicle image, centered  -->
-                    <Image
-                        Margin="40,60,40,40"
-                        Aspect="AspectFit"
-                        HorizontalOptions="Center"
-                        Source="{Binding ActiveVehicleImage}"
-                        VerticalOptions="Center" />
+            <!--  Hero Section with Teal Gradient  -->
+            <Grid x:Name="HeroSection" HeightRequest="400">
+                <Border StrokeThickness="0">
+                    <Grid>
+                        <!--  Large vehicle image, centered  -->
+                        <Image
+                            x:Name="VehicleImage"
+                            Margin="40,60,40,40"
+                            Aspect="AspectFit"
+                            HorizontalOptions="Center"
+                            Source="car.png"
+                            VerticalOptions="Center" />
 
-                    <!--  Vehicle info overlay at bottom  -->
-                    <Grid
-                        Padding="20,20,20,30"
-                        RowDefinitions="Auto,Auto,Auto"
-                        VerticalOptions="End">
-
-                        <!--  Semi-transparent overlay for text readability  -->
-                        <Grid.Background>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                <GradientStop Offset="0.0" Color="#00000000" />
-                                <GradientStop Offset="1.0" Color="#80000000" />
-                            </LinearGradientBrush>
-                        </Grid.Background>
-
-                        <Label
-                            HorizontalTextAlignment="Center"
-                            LineBreakMode="TailTruncation"
-                            Style="{StaticResource AppTextHero}"
-                            Text="{Binding ActiveVehicleName}" />
-
-                        <Label
-                            Grid.Row="1"
-                            Margin="0,8,0,0"
-                            HorizontalTextAlignment="Center"
-                            LineBreakMode="TailTruncation"
-                            Style="{StaticResource AppTextCaption}"
-                            Text="{Binding ActiveVehicleSubtitle}" />
-
-                        <!--  Connection status + Devices button  -->
+                        <!--  Vehicle info overlay at bottom  -->
                         <Grid
-                            Grid.Row="2"
-                            Margin="0,12,0,0"
-                            ColumnDefinitions="*,Auto">
+                            x:Name="VehicleInfoOverlay"
+                            Padding="20,10"
+                            RowDefinitions="Auto,Auto,Auto"
+                            VerticalOptions="End">
+
                             <Label
+                                x:Name="VehicleNameLabel"
+                                HorizontalTextAlignment="Center"
+                                LineBreakMode="TailTruncation"
+                                Style="{StaticResource AppTextHero}"
+                                Text="{Binding ActiveVehicleName}" />
+
+                            <Label
+                                x:Name="VehicleSubtitleLabel"
+                                Grid.Row="1"
+                                Margin="0,8,0,0"
+                                HorizontalTextAlignment="Center"
+                                LineBreakMode="TailTruncation"
                                 Style="{StaticResource AppTextCaption}"
-                                Text="{Binding ConnectionStatus}"
-                                VerticalOptions="Center" />
-                            <Button
-                                Grid.Column="1"
-                                Padding="16,8"
-                                Command="{Binding ScanForDevicesCommand}"
-                                FontSize="{StaticResource AppFontSizeCaption}"
-                                Text="Devices" />
+                                Text="{Binding ActiveVehicleSubtitle}" />
+
+                            <!--  Connection status + Devices button  -->
+                            <Grid
+                                x:Name="ConnectionStatusGrid"
+                                Grid.Row="2"
+                                Margin="0,12,0,0"
+                                ColumnDefinitions="*,Auto">
+                                <Label
+                                    Style="{StaticResource AppTextCaption}"
+                                    Text="{Binding ConnectionStatus}"
+                                    VerticalOptions="Center" />
+                                <Button
+                                    Grid.Column="1"
+                                    Padding="16,8"
+                                    Command="{Binding ScanForDevicesCommand}"
+                                    FontSize="{StaticResource AppFontSizeCaption}"
+                                    Text="Devices" />
+                            </Grid>
                         </Grid>
                     </Grid>
-                </Grid>
-            </Border>
-        </Grid>
+                </Border>
+            </Grid>
 
-        <!--  Content: widget cards grid  -->
-        <ScrollView Grid.Row="1">
+            <!--  Content: widget cards grid  -->
             <VerticalStackLayout Padding="{StaticResource AppPagePadding}" Spacing="{StaticResource AppSpacingMd}">
 
                 <!--  Primary widgets grid  -->
@@ -84,9 +79,7 @@
                     RowSpacing="{StaticResource AppSpacingMd}">
 
                     <!--  Range Widget (new)  -->
-                    <controls:RangeWidget
-                        AutoHideWhenUnavailable="False"
-                        DataStore="{Binding VehicleDataStore}" />
+                    <controls:RangeWidget AutoHideWhenUnavailable="False" DataStore="{Binding VehicleDataStore}" />
 
                     <!--  Battery Widget (new)  -->
                     <controls:BatteryWidget
@@ -100,34 +93,9 @@
                         AutoHideWhenUnavailable="False"
                         DataStore="{Binding VehicleDataStore}" />
 
-                    <!--  Secondary metric (legacy placeholder for now)  -->
-                    <Border
-                        Grid.Row="1"
-                        Grid.Column="1"
-                        Background="{StaticResource AppCardGradientBrush}"
-                        StrokeShape="RoundRectangle 16"
-                        Style="{StaticResource AppWidgetCard}">
-                        <Grid
-                            Padding="16"
-                            ColumnDefinitions="*,Auto"
-                            RowDefinitions="Auto,Auto">
-                            <Label Style="{StaticResource AppWidgetLabel}" Text="Voltage" />
-                            <Grid
-                                Grid.Row="1"
-                                ColumnDefinitions="Auto,Auto"
-                                ColumnSpacing="0">
-                                <Label Style="{StaticResource AppWidgetValue}" Text="{Binding SecondaryMetricValueDisplay}" />
-                                <Label
-                                    Grid.Column="1"
-                                    Style="{StaticResource AppWidgetUnit}"
-                                    Text="{Binding SecondaryMetricUnit}" />
-                            </Grid>
-                        </Grid>
-                    </Border>
-
                 </Grid>
             </VerticalStackLayout>
-        </ScrollView>
 
-    </Grid>
+        </VerticalStackLayout>
+    </ScrollView>
 </ContentPage>

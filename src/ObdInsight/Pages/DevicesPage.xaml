@@ -5,34 +5,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:ObdInsight.ViewModels"
     Title="{Binding Title}"
-    x:DataType="vm:DevicesViewModel"
-    BackgroundColor="{StaticResource Background}">
-
-    <ContentPage.Resources>
-
-    </ContentPage.Resources>
+    x:DataType="vm:DevicesViewModel">
 
     <Grid Padding="0" RowDefinitions="Auto,*,Auto">
-        <!--  Base gradient  -->
-        <BoxView>
-            <BoxView.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                    <GradientStop Offset="0.0" Color="#172A3A" />
-                    <GradientStop Offset="0.55" Color="#004346" />
-                    <GradientStop Offset="1.0" Color="#172A3A" />
-                </LinearGradientBrush>
-            </BoxView.Background>
-        </BoxView>
-
-        <!--  Subtle highlight wash  -->
-        <BoxView Opacity="0.35">
-            <BoxView.Background>
-                <LinearGradientBrush StartPoint="0,0.2" EndPoint="1,0.8">
-                    <GradientStop Offset="0.0" Color="#75DDDD" />
-                    <GradientStop Offset="0.6" Color="Transparent" />
-                </LinearGradientBrush>
-            </BoxView.Background>
-        </BoxView>
 
         <!--  Hero Section with OBD Adapter Image  -->
         <Grid Grid.Row="0">
@@ -52,52 +27,43 @@
 
         <!--  Main Content  -->
         <ScrollView Grid.Row="1">
-            <VerticalStackLayout Padding="20" Spacing="20">
+            <VerticalStackLayout Padding="20,0,20,20" Spacing="20">
 
                 <!--  Device Section  -->
                 <Border
-                    BackgroundColor="{AppThemeBinding Light={StaticResource AppCardBackgroundLight},
-                                                      Dark={StaticResource AppCardBackgroundDark}}"
-                    Stroke="{AppThemeBinding Light={StaticResource AppOutlineLight},
-                                             Dark={StaticResource AppOutlineDark}}"
-                    StrokeShape="RoundRectangle 12"
-                    StrokeThickness="1">
-                    <VerticalStackLayout Padding="20" Spacing="5">
+                    BackgroundColor="#E00A212C"
+                    StrokeShape="RoundRectangle 20"
+                    StrokeThickness="0">
+                    <VerticalStackLayout Padding="20">
                         <Label
                             FontAttributes="Bold"
                             FontSize="24"
                             HorizontalTextAlignment="Center"
-                            Text="OBD2 Adapter" />
+                            Text="OBD2 Adapter"
+                            TextColor="#FDFEFE" />
 
                         <Label
                             Margin="20,0"
                             FontSize="14"
-                            IsVisible="{Binding NotShowingDeviceList}"
                             HorizontalTextAlignment="Center"
+                            IsVisible="{Binding NotShowingDeviceList}"
                             Text="Connect a wireless OBD2 adapter to access car diagnostics."
-                            TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
-                                                        Dark={StaticResource AppTextSecondaryDark}}" />
+                            TextColor="#9DC3CC" />
 
-                        <!-- Remember / Auto-connect -->
+                        <!--  Remember / Auto-connect  -->
                         <Border
                             Margin="0,10,0,0"
                             Padding="12"
-                            BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight},
-                                                              Dark={StaticResource AppSurfaceRaisedDark}}"
-                            Stroke="{AppThemeBinding Light={StaticResource AppOutlineLight},
-                                                     Dark={StaticResource AppOutlineDark}}"
-                            StrokeShape="RoundRectangle 10"
-                            StrokeThickness="1">
-                            <VerticalStackLayout Spacing="8">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                                    <VerticalStackLayout Grid.Column="0" Spacing="2">
-                                        <Label FontAttributes="Bold" FontSize="14" Text="Auto-connect" />
-                                        <Label
-                                            FontSize="12"
-                                            Text="Connect to the last adapter automatically on app start"
-                                            TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
-                                                                Dark={StaticResource AppTextSecondaryDark}}" />
-                                    </VerticalStackLayout>
+                            StrokeShape="RoundRectangle 20"
+                            StrokeThickness="0">
+                            <VerticalStackLayout Padding="5,0" Spacing="8">
+                                <Grid ColumnDefinitions="*,50" ColumnSpacing="10">
+                                    <Label
+                                        Grid.Column="0"
+                                        Padding="0,10,0,0"
+                                        FontAttributes="Bold"
+                                        FontSize="14"
+                                        Text="Auto-connect" />
                                     <Switch
                                         Grid.Column="1"
                                         IsToggled="{Binding AutoConnectToLastAdapter}"
@@ -105,20 +71,24 @@
                                                                   Dark={StaticResource AppAccentDark}}" />
                                 </Grid>
 
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" IsVisible="{Binding HasLastAdapter}">
+                                <Grid
+                                    ColumnDefinitions="*,Auto"
+                                    ColumnSpacing="10"
+                                    IsVisible="{Binding HasLastAdapter}">
                                     <Label
                                         Grid.Column="0"
+                                        Padding="0,15,0,0"
                                         FontSize="12"
                                         LineBreakMode="TailTruncation"
                                         Text="{Binding LastAdapterDisplay}"
                                         TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
-                                                            Dark={StaticResource AppTextSecondaryDark}}" />
+                                                                    Dark={StaticResource AppTextSecondaryDark}}" />
                                     <Button
                                         Grid.Column="1"
                                         Padding="10,6"
-                                        FontSize="12"
                                         BackgroundColor="{StaticResource Gray500}"
                                         Command="{Binding ClearLastAdapterCommand}"
+                                        FontSize="12"
                                         Text="Forget" />
                                 </Grid>
                             </VerticalStackLayout>
@@ -127,35 +97,32 @@
                         <!--  Connect Button  -->
                         <Button
                             Margin="40,10"
-                            BackgroundColor="{AppThemeBinding Light={StaticResource AppAccentLight},
-                                                              Dark={StaticResource AppAccentDark}}"
+                            BackgroundColor="#75DDDD"
                             Command="{Binding StartScanCommand}"
-                            CornerRadius="8"
+                            CornerRadius="12"
                             HeightRequest="50"
                             IsVisible="{Binding NotShowingDeviceList}"
-                            Text="Connect" />
+                            Text="Connect"
+                            TextColor="White" />
                     </VerticalStackLayout>
                 </Border>
 
                 <!--  Scanning State - Collapsible Device List  -->
                 <Border
-    Padding="15"
-    BackgroundColor="{AppThemeBinding Light={StaticResource AppCardBackgroundLight},
-                                      Dark={StaticResource AppCardBackgroundDark}}"
-    IsVisible="{Binding ShowDeviceList}"
-    Stroke="{AppThemeBinding Light={StaticResource AppOutlineLight},
-                             Dark={StaticResource AppOutlineDark}}"
-    StrokeShape="RoundRectangle 12"
-    StrokeThickness="1">
+                    Padding="15"
+                    BackgroundColor="#E00A212C"
+                    IsVisible="{Binding ShowDeviceList}"
+                    StrokeShape="RoundRectangle 20"
+                    StrokeThickness="0">
                     <VerticalStackLayout Spacing="10">
                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
                             <ActivityIndicator
                                 HeightRequest="20"
-                                WidthRequest="20"
                                 IsRunning="{Binding IsScanning}"
                                 IsVisible="{Binding IsScanning}"
-                                Color="#F2F3EF"
-                                VerticalOptions="Center" />
+                                VerticalOptions="Center"
+                                WidthRequest="20"
+                                Color="#F2F3EF" />
 
                             <Label
                                 Grid.Column="1"
@@ -164,28 +131,32 @@
                                 Text="{Binding ScanHeaderText}"
                                 VerticalOptions="Center" />
 
-                            <HorizontalStackLayout Grid.Column="2" Spacing="8" VerticalOptions="Center">
+                            <HorizontalStackLayout
+                                Grid.Column="2"
+                                Spacing="8"
+                                VerticalOptions="Center">
                                 <Button
                                     Padding="10,6"
-                                    FontSize="12"
                                     BackgroundColor="{StaticResource Gray500}"
                                     Command="{Binding StopScanCommand}"
+                                    FontSize="12"
                                     IsVisible="{Binding IsScanning}"
                                     Text="Stop" />
 
                                 <Button
                                     Padding="10,6"
-                                    FontSize="12"
                                     Command="{Binding ConnectToDeviceCommand}"
+                                    FontSize="12"
                                     IsEnabled="{Binding CanConnectToSelected}"
                                     IsVisible="{Binding IsDeviceConnected, Converter={StaticResource InvertedBoolConverter}}"
                                     Text="Connect" />
 
                                 <Button
                                     Padding="10,6"
-                                    FontSize="12"
-                                    BackgroundColor="{AppThemeBinding Light={StaticResource AppDangerLight}, Dark={StaticResource AppDangerDark}}"
+                                    BackgroundColor="{AppThemeBinding Light={StaticResource AppDangerLight},
+                                                                      Dark={StaticResource AppDangerDark}}"
                                     Command="{Binding DisconnectCommand}"
+                                    FontSize="12"
                                     IsVisible="{Binding IsDeviceConnected}"
                                     Text="Disconnect" />
                             </HorizontalStackLayout>
@@ -194,36 +165,45 @@
                         <!--  Device List  -->
                         <CollectionView
                             HeightRequest="200"
+                            ItemSizingStrategy="MeasureFirstItem"
                             ItemsSource="{Binding DiscoveredDevices}"
                             SelectedItem="{Binding SelectedDevice}"
-                            ItemSizingStrategy="MeasureFirstItem"
                             SelectionMode="Single">
                             <CollectionView.ItemTemplate>
                                 <DataTemplate x:DataType="vm:DeviceListItem">
-                                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" Margin="0,5" Padding="10">
+                                    <Grid
+                                        Margin="0,5"
+                                        Padding="10"
+                                        ColumnDefinitions="*,Auto"
+                                        RowDefinitions="Auto,Auto">
                                         <HorizontalStackLayout Spacing="8">
                                             <Label FontAttributes="Bold" Text="{Binding Device.Name}" />
                                             <Border
-                                                    Padding="6,2"
-                                                    BackgroundColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}"
-                                                    IsVisible="{Binding ShowBadge}"
-                                                    StrokeShape="RoundRectangle 10">
-                                                <Label FontSize="10" Text="{Binding BadgeText}" TextColor="White" />
+                                                Padding="6,2"
+                                                BackgroundColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                                                  Dark={StaticResource AppAccentDark}}"
+                                                IsVisible="{Binding ShowBadge}"
+                                                StrokeShape="RoundRectangle 10"
+                                                StrokeThickness="0">
+                                                <Label
+                                                    FontSize="10"
+                                                    Text="{Binding BadgeText}"
+                                                    TextColor="White" />
                                             </Border>
                                         </HorizontalStackLayout>
 
                                         <Label
-                                                Grid.Column="1"
-                                                FontSize="12"
-                                                Text="{Binding Device.Rssi, StringFormat='{0} dBm'}"
-                                                TextColor="{StaticResource White}" />
+                                            Grid.Column="1"
+                                            FontSize="12"
+                                            Text="{Binding Device.Rssi, StringFormat='{0} dBm'}"
+                                            TextColor="{StaticResource White}" />
 
                                         <Label
-                                                Grid.Row="1"
-                                                FontSize="12"
-                                                IsVisible="False"
-                                                Text="{Binding Device.Address}"
-                                                TextColor="{StaticResource White}" />
+                                            Grid.Row="1"
+                                            FontSize="12"
+                                            IsVisible="False"
+                                            Text="{Binding Device.Address}"
+                                            TextColor="{StaticResource White}" />
                                         <VisualStateManager.VisualStateGroups>
                                             <VisualStateGroup Name="CommonStates">
                                                 <VisualState Name="Normal" />
@@ -242,85 +222,95 @@
                 </Border>
 
                 <!--  Compatibility Section  -->
-                <Border
-                    Padding="20"
-                    BackgroundColor="{AppThemeBinding Light={StaticResource AppCardBackgroundLight},
-                                                      Dark={StaticResource AppCardBackgroundDark}}"
-                    Stroke="{AppThemeBinding Light={StaticResource AppOutlineLight},
-                                             Dark={StaticResource AppOutlineDark}}"
-                    StrokeShape="RoundRectangle 12"
-                    StrokeThickness="1">
-                    <VerticalStackLayout Spacing="15">
+                <Border StrokeShape="RoundRectangle 20" StrokeThickness="0">
+                    <VerticalStackLayout Margin="5" Spacing="10">
                         <Label
                             FontAttributes="Bold"
                             FontSize="16"
-                            Text="Compatibility" />
+                            Text="Compatibility"
+                            TextColor="#78E6D8" />
                         <Label
                             FontSize="12"
                             Text="This app supports all standard OBD2 adapters."
-                            TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
-                                                        Dark={StaticResource AppTextSecondaryDark}}" />
+                            TextColor="#A2CCDA" />
 
                         <!--  Bluetooth Toggle  -->
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
-                            <Label
-                                FontFamily="FontAwesomeBrands"
-                                FontSize="24"
-                                Text="&#xf293;"
-                                TextColor="{AppThemeBinding Light={StaticResource AppAccentLight},
-                                                            Dark={StaticResource AppAccentDark}}"
-                                VerticalOptions="Center" />
-                            <Label
-                                Grid.Column="1"
-                                FontAttributes="Bold"
-                                FontSize="14"
-                                Text="Bluetooth (BLE)"
-                                VerticalOptions="Center" />
-                            <Switch
-                                Grid.Column="2"
-                                IsToggled="{Binding BluetoothEnabled}"
-                                OnColor="{AppThemeBinding Light={StaticResource AppAccentLight},
-                                                          Dark={StaticResource AppAccentDark}}" />
-                        </Grid>
+                        <Border
+                            Padding="20"
+                            BackgroundColor="#E00A212C"
+                            StrokeShape="RoundRectangle 20"
+                            StrokeThickness="0">
+                            <VerticalStackLayout Spacing="15">
+                                <Grid ColumnDefinitions="Auto,*,50" ColumnSpacing="15">
+                                    <Label
+                                        Padding="10,0,0,0"
+                                        FontFamily="FontAwesomeBrands"
+                                        FontSize="24"
+                                        Text="&#xf293;"
+                                        TextColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                                    Dark={StaticResource AppAccentDark}}"
+                                        VerticalOptions="Center" />
+                                    <Label
+                                        Grid.Column="1"
+                                        FontAttributes="Bold"
+                                        FontSize="14"
+                                        Text="Bluetooth (BLE)"
+                                        VerticalOptions="Center" />
+                                    <Switch
+                                        Grid.Column="2"
+                                        IsToggled="{Binding BluetoothEnabled}"
+                                        OnColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                                  Dark={StaticResource AppAccentDark}}" />
+                                </Grid>
 
-                        <BoxView HeightRequest="1" Color="{AppThemeBinding Light={StaticResource AppOutlineLight}, Dark={StaticResource AppOutlineDark}}" />
+                                <BoxView HeightRequest="1" Color="{AppThemeBinding Light={StaticResource AppOutlineLight}, Dark={StaticResource AppOutlineDark}}" />
 
-                        <!--  Wi-Fi Toggle  -->
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
-                            <Label
-                                FontFamily="FontAwesome"
-                                FontSize="24"
-                                Text="&#xf1eb;"
-                                TextColor="{AppThemeBinding Light={StaticResource AppAccentLight},
-                                                            Dark={StaticResource AppAccentDark}}"
-                                VerticalOptions="Center" />
-                            <Label
-                                Grid.Column="1"
-                                FontAttributes="Bold"
-                                FontSize="14"
-                                Text="Wi-Fi"
-                                VerticalOptions="Center" />
-                            <Switch
-                                Grid.Column="2"
-                                IsToggled="{Binding WiFiEnabled}"
-                                OnColor="{AppThemeBinding Light={StaticResource AppAccentLight},
-                                                          Dark={StaticResource AppAccentDark}}" />
-                        </Grid>
+                                <!--  Wi-Fi Toggle  -->
+                                <Grid ColumnDefinitions="Auto,*,50" ColumnSpacing="15">
+                                    <Label
+                                        FontFamily="FontAwesome"
+                                        FontSize="24"
+                                        Text="&#xf1eb;"
+                                        TextColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                                    Dark={StaticResource AppAccentDark}}"
+                                        VerticalOptions="Center" />
+                                    <Label
+                                        Grid.Column="1"
+                                        FontAttributes="Bold"
+                                        FontSize="14"
+                                        Text="Wi-Fi"
+                                        VerticalOptions="Center" />
+                                    <Switch
+                                        Grid.Column="2"
+                                        IsToggled="{Binding WiFiEnabled}"
+                                        OnColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                                  Dark={StaticResource AppAccentDark}}" />
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
                     </VerticalStackLayout>
                 </Border>
 
                 <!--  Learn More Link  -->
-                <Label
-                    Margin="0,10"
-                    FontSize="12"
-                    HorizontalTextAlignment="Center"
-                    Text="Looking for a compatible adapter? Learn more"
-                    TextColor="{AppThemeBinding Light={StaticResource AppAccentLight},
-                                                Dark={StaticResource AppAccentDark}}">
-                    <Label.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding LearnMoreCommand}" />
-                    </Label.GestureRecognizers>
-                </Label>
+                <HorizontalStackLayout HorizontalOptions="Center" Spacing="4">
+                    <Label
+                        FontSize="12"
+                        Text="Looking for a compatible adapter?"
+                        TextColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                    Dark={StaticResource AppAccentDark}}"
+                        VerticalOptions="Center" />
+                    <Label
+                        FontAttributes="Bold"
+                        FontSize="12"
+                        Text="Learn more"
+                        TextColor="#78E6D8"
+                        TextDecorations="Underline"
+                        VerticalOptions="Center">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding LearnMoreCommand}" />
+                        </Label.GestureRecognizers>
+                    </Label>
+                </HorizontalStackLayout>
             </VerticalStackLayout>
         </ScrollView>
 

@@ -6,38 +6,40 @@
     x:Name="ThisWidget">
 
     <Border
-        Background="{StaticResource AppCardGradientBrush}"
-        StrokeShape="RoundRectangle 16"
+        StrokeShape="RoundRectangle 20"
+        StrokeThickness="0"
         Style="{StaticResource AppWidgetCard}">
-        <Grid Padding="16" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
-            
-            <!--  Title  -->
-            <Label 
-                Style="{StaticResource AppWidgetLabel}" 
-                Text="{Binding WidgetTitle, Source={x:Reference ThisWidget}}" />
+        <Grid
+            Padding="16"
+            RowDefinitions="Auto,Auto,Auto"
+            RowSpacing="8">
+
+            <Label
+                Padding="10,0,0,0"
+                FontFamily="FontAwesome"
+                FontSize="24"
+                Text="&#xf4d7;"
+                TextColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                            Dark={StaticResource AppAccentDark}}"
+                VerticalOptions="Center" />
 
             <!--  Main range value  -->
             <Grid
                 Grid.Row="1"
                 ColumnDefinitions="Auto,Auto"
                 ColumnSpacing="4">
-                <Label
-                    Style="{StaticResource AppWidgetValue}"
-                    Text="{Binding RangeDisplayValue, Source={x:Reference ThisWidget}}" />
+                <Label Style="{StaticResource AppWidgetValue}" Text="{Binding RangeDisplayValue, Source={x:Reference ThisWidget}}" />
                 <Label
                     Grid.Column="1"
                     Style="{StaticResource AppWidgetUnit}"
                     Text="{Binding UnitDisplay, Source={x:Reference ThisWidget}}" />
             </Grid>
 
-            <!--  Efficiency or secondary info  -->
+            <!--  Title  -->
             <Label
                 Grid.Row="2"
-                IsVisible="{Binding ShowEfficiency, Source={x:Reference ThisWidget}}"
-                Style="{StaticResource AppTextCaption}"
-                Text="{Binding EfficiencyText, Source={x:Reference ThisWidget}}"
-                TextColor="{AppThemeBinding Light={StaticResource AppTextMutedLight}, Dark={StaticResource AppTextMutedDark}}" />
-            
+                Text="{Binding WidgetTitle, Source={x:Reference ThisWidget}}"
+                TextColor="White" />
         </Grid>
     </Border>
 

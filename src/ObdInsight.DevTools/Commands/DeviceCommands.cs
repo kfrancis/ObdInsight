@@ -252,15 +252,6 @@ public static class DeviceCommands
                             Guid.Parse("00002A26-0000-1000-8000-00805F9B34FB"));
                         await TryReadDisCharacteristic(grid, disService, "Software Rev", 
                             Guid.Parse("00002A28-0000-1000-8000-00805F9B34FB"));
-
-                        await TryReadDisCharacteristic(grid, disService, "Something1",
-                            Guid.Parse("00002a23-0000-1000-8000-00805f9b34fb"));
-
-                        await TryReadDisCharacteristic(grid, disService, "Something2",
-                            Guid.Parse("00002a2a-0000-1000-8000-00805f9b34fb"));
-
-                        await TryReadDisCharacteristic(grid, disService, "Something3",
-                            Guid.Parse("00002a50-0000-1000-8000-00805f9b34fb"));
                     }
                     
                     // List all available GATT services
@@ -463,7 +454,7 @@ public static class DeviceCommands
                                     var bytes = new byte[readResult.Value.Length];
                                     readResult.Value.CopyTo(bytes);
                                     
-                                    AnsiConsole.Markup($"  [green]?[/] {characteristic.Uuid} [[{bytes.Length} bytes]]: ");
+                                    AnsiConsole.Markup($"  [green]O[/] {characteristic.Uuid} [[{bytes.Length} bytes]]: ");
                                     
                                     // Try UTF-8 string first
                                     var stringValue = System.Text.Encoding.UTF8.GetString(bytes).Trim('\0');
@@ -486,13 +477,13 @@ public static class DeviceCommands
                                 else
                                 {
                                     failedReads++;
-                                    AnsiConsole.MarkupLine($"  [red]?[/] {characteristic.Uuid}: [red]{readResult.Status}[/]");
+                                    AnsiConsole.MarkupLine($"  [red]X[/] {characteristic.Uuid}: [red]{readResult.Status}[/]");
                                 }
                             }
                             catch (Exception ex)
                             {
                                 failedReads++;
-                                AnsiConsole.MarkupLine($"  [red]?[/] {characteristic.Uuid}: [red]{ex.Message.EscapeMarkup()}[/]");
+                                AnsiConsole.MarkupLine($"  [red]X[/] {characteristic.Uuid}: [red]{ex.Message.EscapeMarkup()}[/]");
                             }
                         }
                         
