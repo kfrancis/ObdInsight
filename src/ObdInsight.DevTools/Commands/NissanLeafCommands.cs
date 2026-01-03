@@ -1,4 +1,4 @@
-using ObdInsight.Core.Transports.Ble;
+﻿using ObdInsight.Core.Transports.Ble;
 using ObdInsight.Core.Transports.Tracing;
 using Spectre.Console;
 
@@ -62,16 +62,16 @@ public static class NissanLeafCommands
             Based on OVMS (Open Vehicle Monitoring System) implementation.
             
             [cyan]Key Points:[/]
-            � ECUs sleep when car is off - wakeup sequence required
-            � BMS (Battery Management System): TX 0x79B ? RX 0x7BB
-            � Charger: TX 0x797 ? RX 0x79A
-            � Uses Mode 21 (manufacturer-specific diagnostic)
-            � Multi-frame responses use ISO-TP flow control
+            • ECUs sleep when car is off - wakeup sequence required
+            • BMS (Battery Management System): TX 0x79B ? RX 0x7BB
+            • Charger: TX 0x797 ? RX 0x79A
+            • Uses Mode 21 (manufacturer-specific diagnostic)
+            • Multi-frame responses use ISO-TP flow control
             
             [green]Wakeup Messages:[/]
-            � 0x679 - VCM startup spoof
-            � 0x5C0 - Battery heater request spoof
-            � 0x68C - TCU wakeup (pre-2013)
+            • 0x679 - VCM startup spoof
+            • 0x5C0 - Battery heater request spoof
+            • 0x68C - TCU wakeup (pre-2013)
             
             [yellow]Vehicle State:[/]
             The car should be in READY mode (foot on brake + start)
@@ -275,10 +275,10 @@ public static class NissanLeafCommands
             else
             {
                 AnsiConsole.MarkupLine("[yellow]No BMS data received. Possible causes:[/]");
-                AnsiConsole.MarkupLine("  � Vehicle not in READY mode");
-                AnsiConsole.MarkupLine("  � Vehicle not charging");
-                AnsiConsole.MarkupLine("  � ECUs still asleep (try again after wakeup)");
-                AnsiConsole.MarkupLine("  � BLE connection unstable");
+                AnsiConsole.MarkupLine("  • Vehicle not in READY mode");
+                AnsiConsole.MarkupLine("  • Vehicle not charging");
+                AnsiConsole.MarkupLine("  • ECUs still asleep (try again after wakeup)");
+                AnsiConsole.MarkupLine("  • BLE connection unstable");
             }
         }
         catch (Exception ex)
@@ -348,7 +348,7 @@ public static class NissanLeafCommands
             }
 
             AnsiConsole.MarkupLine($"[cyan]   Parsed BMS Group 01 ({bytes.Count} bytes):[/]");
-            
+
             // Show raw data for debugging
             if (bytes.Count <= 60)
             {
@@ -360,21 +360,37 @@ public static class NissanLeafCommands
             // Response: 61-01-FF-FF-F7-70-02-8A-FF-FF-F9-3D-FF-FF-FF-FF-06-0E-17-E8-8F-1F-38-E1-03-92-00-5C-0D-D8-00-06-AC-74-...
             // Offsets from start of response (including 61 01 header):
             //   Bytes 2-5:   Current (signed, big-endian) - FFFFF770 = -2192 ? -4.38A (charging)
+            //   Bytes 22:    SOC (direct percentage 0-100)
             //   Bytes 26-28: Unknown (5C 0D D8)
             //   Bytes 29-32: Capacity in Ah * 10000 (00 06 AC 74 = 437,364 ? 43.74 Ah)
-            
+
             if (bytes.Count >= 33)
             {
                 // Battery current (bytes 2-5, signed 32-bit big-endian, divide by 2 for amps)
                 uint currentUnsigned = ((uint)bytes[2] << 24) | ((uint)bytes[3] << 16) | ((uint)bytes[4] << 8) | bytes[5];
                 int currentRaw = unchecked((int)currentUnsigned);
-                
+
                 var currentAmps = currentRaw / 2.0;
-                
+
                 if (Math.Abs(currentAmps) < 500 && currentRaw != -1) // -1 = 0xFFFFFFFF = invalid
                 {
                     var currentDir = currentAmps > 0 ? "discharging" : (currentAmps < 0 ? "charging" : "idle");
                     AnsiConsole.MarkupLine($"   [green]Battery Current: {Math.Abs(currentAmps):F1}A ({currentDir})[/]");
+                }
+
+                // State of Charge (SOC) - byte 22 for AZE0
+                if (bytes.Count >= 23)
+                {
+                    var socRaw = bytes[22];
+                    // For 2017 AZE0, this appears to be direct percentage (0-100)
+                    if (socRaw is > 0 and <= 100)
+                    {
+                        AnsiConsole.MarkupLine($"   [green]State of Charge (SOC): {socRaw}%[/]");
+                    }
+                    else if (socRaw != 0xFF) // 0xFF = invalid/not available
+                    {
+                        AnsiConsole.MarkupLine($"   [yellow]SOC value out of range: {socRaw}[/]");
+                    }
                 }
 
                 // Capacity at bytes 29-32 (verified from AZE0 data: 00 06 AC 74)
@@ -382,15 +398,15 @@ public static class NissanLeafCommands
                 {
                     var capacityRaw = (bytes[29] << 24) | (bytes[30] << 16) | (bytes[31] << 8) | bytes[32];
                     var capacityAh = capacityRaw / 10000.0;
-                    
+
                     if (capacityAh is > 10 and < 100)
                     {
                         AnsiConsole.MarkupLine($"   [green]Battery Capacity: {capacityAh:F2} Ah[/]");
-                        
+
                         // Calculate estimated kWh (360V nominal for 30kWh pack)
                         var kwhEst = capacityAh * 360 / 1000;
                         AnsiConsole.MarkupLine($"   [grey]   (~{kwhEst:F1} kWh at nominal voltage)[/]");
-                        
+
                         // Calculate SOH based on original capacity
                         // 30 kWh pack = ~79 Ah nominal, 24 kWh = ~66 Ah nominal
                         var sohFrom30 = (capacityAh / 79.0) * 100;
@@ -398,7 +414,7 @@ public static class NissanLeafCommands
                         AnsiConsole.MarkupLine($"   [grey]   SOH: ~{sohFrom30:F0}% (if 30kWh) / ~{sohFrom24:F0}% (if 24kWh)[/]");
                     }
                 }
-                
+
                 // HX value - check bytes 24-25 area (5C 0D in sample = 23565)
                 // This doesn't match expected HX range, so it may be at different offset
                 // Let's scan for reasonable HX values
@@ -422,6 +438,9 @@ public static class NissanLeafCommands
     /// <summary>
     /// Parse BMS Group 61 response for State of Health (SOH) data.
     /// Response format from 2017 Leaf: 61-61-0D-D8-19-D7-FF-19-E4-19-D7-03-FF
+    /// Bytes 2-3: Current battery capacity
+    /// Bytes 4-5: Original/new battery capacity
+    /// SOH% = (Current / Original) × 100
     /// </summary>
     private static void TryParseBmsGroup61(string response)
     {
@@ -429,7 +448,7 @@ public static class NissanLeafCommands
         {
             var bytes = ParseIsoTpResponse(response);
 
-            if (bytes.Count < 4)
+            if (bytes.Count < 6)
             {
                 AnsiConsole.MarkupLine("[yellow]   Parse: Not enough bytes for Group 61[/]");
                 return;
@@ -440,40 +459,59 @@ public static class NissanLeafCommands
             {
                 AnsiConsole.MarkupLine($"[cyan]   Parsed BMS Group 61 ({bytes.Count} bytes):[/]");
                 
-                // From 2017 Leaf data: 61-61-0D-D8-19-D7-FF-19-E4-19-D7-03-FF
-                // Bytes 2-3: 0DD8 = 3544 
-                // This appears to be related to capacity/health
-                
-                if (bytes.Count >= 4)
+                // Show hex dump for debugging
+                if (bytes.Count <= 20)
                 {
-                    var val1 = (bytes[2] << 8) | bytes[3];
-                    AnsiConsole.MarkupLine($"   [grey]Value at bytes 2-3: {val1} (0x{val1:X4})[/]");
-                    
-                    // Try various interpretations
-                    var asGids = val1; // GIDs remaining
-                    var asAh = val1 / 100.0; // Ah (if scaled by 100)
-                    
-                    if (asGids is > 0 and < 300)
-                    {
-                        AnsiConsole.MarkupLine($"   [green]GIDs: {asGids}[/]");
-                        // Approximate kWh: GIDs * 0.075 for 24kWh, * 0.08 for 30kWh
-                        var kwhEst = asGids * 0.08;
-                        AnsiConsole.MarkupLine($"   [grey]   (~{kwhEst:F1} kWh estimated)[/]");
-                    }
+                    var hexDump = string.Join("-", bytes.Select(b => b.ToString("X2")));
+                    AnsiConsole.MarkupLine($"[grey]   Hex: {hexDump}[/]");
                 }
                 
-                // Look for additional values
-                if (bytes.Count >= 6)
+                // Bytes 2-3: Current battery capacity
+                var currentCapacity = (bytes[2] << 8) | bytes[3];
+                AnsiConsole.MarkupLine($"[grey]   Current Capacity: {currentCapacity} (0x{currentCapacity:X4})[/]");
+                
+                // Bytes 4-5: Original/new battery capacity
+                var originalCapacity = (bytes[4] << 8) | bytes[5];
+                AnsiConsole.MarkupLine($"[grey]   Original Capacity: {originalCapacity} (0x{originalCapacity:X4})[/]");
+                
+                // Calculate SOH percentage
+                if (originalCapacity > 0)
                 {
-                    var val2 = (bytes[4] << 8) | bytes[5];
-                    AnsiConsole.MarkupLine($"   [grey]Value at bytes 4-5: {val2} (0x{val2:X4})[/]");
+                    var sohPercent = (currentCapacity / (float)originalCapacity) * 100.0f;
+                    AnsiConsole.MarkupLine($"   [green]State of Health (SOH): {sohPercent:F1}%[/]");
+                    
+                    // Provide context based on SOH value
+                    if (sohPercent >= 90)
+                        AnsiConsole.MarkupLine("   [green]Battery condition: Excellent[/]");
+                    else if (sohPercent >= 80)
+                        AnsiConsole.MarkupLine("   [green]Battery condition: Very Good[/]");
+                    else if (sohPercent >= 70)
+                        AnsiConsole.MarkupLine("   [yellow]Battery condition: Good[/]");
+                    else if (sohPercent >= 60)
+                        AnsiConsole.MarkupLine("   [yellow]Battery condition: Fair[/]");
+                    else if (sohPercent >= 50)
+                        AnsiConsole.MarkupLine("   [yellow]Battery condition: Moderate degradation[/]");
+                    else
+                        AnsiConsole.MarkupLine("   [red]Battery condition: Significant degradation[/]");
+                    
+                    // Estimate remaining capacity for 30kWh and 24kWh packs
+                    // Using capacity ratio to calculate kWh
+                    var remaining30kWh = 30.0f * (sohPercent / 100.0f);
+                    var remaining24kWh = 24.0f * (sohPercent / 100.0f);
+                    AnsiConsole.MarkupLine($"   [grey]   Est. capacity: ~{remaining30kWh:F1} kWh (if 30kWh) / ~{remaining24kWh:F1} kWh (if 24kWh)[/]");
                 }
                 
-                if (bytes.Count >= 10)
+                // Additional fields if present
+                if (bytes.Count >= 9)
                 {
                     var val3 = (bytes[7] << 8) | bytes[8];
+                    AnsiConsole.MarkupLine($"   [grey]   Bytes 7-8: {val3} (0x{val3:X4})[/]");
+                }
+                
+                if (bytes.Count >= 11)
+                {
                     var val4 = (bytes[9] << 8) | bytes[10];
-                    AnsiConsole.MarkupLine($"   [grey]Values at 7-8, 9-10: {val3}, {val4}");
+                    AnsiConsole.MarkupLine($"   [grey]   Bytes 9-10: {val4} (0x{val4:X4})[/]");
                 }
             }
             else
@@ -604,88 +642,108 @@ public static class NissanLeafCommands
 
     /// <summary>
     /// Parse temperatures from Group 04 response.
-    /// From 2017 Leaf: 61-04-2B-40-20-2B-60-2F-FF-FF-FF-02-D7-00-00-00-FF-FF-FF-FF
+    /// Format varies by model year - this tries multiple interpretations.
+    /// From 2017 Leaf AZE0: Temperatures are direct Celsius values at specific byte positions.
     /// </summary>
     private static void TryParseTemperatures(string response)
     {
         try
         {
             var bytes = ParseIsoTpResponse(response);
-
             if (bytes.Count < 6)
             {
-                AnsiConsole.MarkupLine($"[yellow]   Parse: Only {bytes.Count} bytes for temperatures[/]");
+                AnsiConsole.MarkupLine("[yellow]   Parse: Only {bytes.Count} bytes for temperatures[/]");
                 return;
             }
 
             // Response header should be 61 04
-            int dataStart = 0;
-            if (bytes[0] == 0x61 && bytes[1] == 0x04)
+            if (bytes[0] != 0x61 || bytes[1] != 0x04)
             {
-                dataStart = 2;
-                AnsiConsole.MarkupLine($"[cyan]   Parsed BMS Group 04 ({bytes.Count} bytes):[/]");
+                AnsiConsole.MarkupLine($"[yellow]   Parse: Unexpected header {bytes[0]:X2} {bytes[1]:X2}[/]");
+                return;
             }
-            
-            var data = bytes.Skip(dataStart).ToList();
-            
-            // From AZE0 data: 2B-40-20-2B-60-2F-FF-FF-FF-02-D7
-            // Temperature bytes appear to be at specific offsets
-            // Values like 2B (43), 40 (64), 20 (32), 2B (43), 60 (96) need interpretation
-            // Likely: raw - 40 = Celsius, or direct Celsius
-            
-            var temps = new List<(int Index, int Raw, int Celsius)>();
-            
-            // Check bytes that might be temperatures (0x00-0x50 range suggests 0-80�C)
-            int[] possibleTempOffsets = { 0, 1, 2, 3, 4, 5 };
-            
-            foreach (var offset in possibleTempOffsets)
+
+            AnsiConsole.MarkupLine($"[cyan]   Parsed BMS Group 04 ({bytes.Count} bytes):[/]");
+
+            var data = bytes.Skip(2).ToArray();
+
+            // Show full raw data for debugging
+            var hexDump = string.Join("-", data.Select(b => b.ToString("X2")));
+            AnsiConsole.MarkupLine($"[grey]   Raw: {hexDump}[/]");
+
+            // For AZE0, temperatures appear to be single-byte Celsius values at positions 0, 2, 10, 12
+            // This gives us 4 temperature sensors (typical for 30kWh pack)
+            var tempPositions = new[] { 0, 2, 10, 12 };
+            var temps = new List<(int Sensor, int TempC)>();
+
+            for (int i = 0; i < tempPositions.Length; i++)
             {
-                if (offset < data.Count)
+                var pos = tempPositions[i];
+                if (pos < data.Length)
                 {
-                    var raw = data[offset];
-                    
-                    // Try different interpretations
-                    if (raw >= 0x10 && raw <= 0x50) // 16-80 range - likely direct Celsius
+                    var rawByte = data[pos];
+
+                    // Skip invalid markers (0xFF)
+                    if (rawByte == 0xFF) continue;
+
+                    // Interpret as signed byte for negative temps
+                    var tempC = (sbyte)rawByte;
+
+                    // Only accept reasonable battery temps (-30°C to 60°C)
+                    if (tempC is >= -30 and <= 60)
                     {
-                        temps.Add((offset, raw, raw));
-                    }
-                    else if (raw >= 0x40 && raw <= 0x80) // 64-128 range - might need -40 offset
-                    {
-                        temps.Add((offset, raw, raw - 40));
+                        temps.Add((i + 1, tempC));
                     }
                 }
             }
 
-            // Filter to reasonable temperature range (0-60�C typical for battery)
-            var validTemps = temps.Where(t => t.Celsius is > 0 and < 60).ToList();
-            
-            if (validTemps.Count > 0)
+            if (temps.Count >= 2)
             {
-                AnsiConsole.MarkupLine($"[cyan]   Pack Temperatures:[/]");
-                foreach (var t in validTemps.Take(4))
+                AnsiConsole.MarkupLine($"[green]   Battery Module Temperatures:[/]");
+                foreach (var (sensor, tempC) in temps)
                 {
-                    AnsiConsole.MarkupLine($"   [grey]   Sensor {t.Index}: {t.Celsius}�C (raw: 0x{t.Raw:X2})[/]");
+                    var (color, status) = tempC switch
+                    {
+                        < 0 => ("cyan", "COLD"),
+                        < 10 => ("blue", "Cool"),
+                        < 25 => ("green", "Good"),
+                        < 40 => ("yellow", "Warm"),
+                        _ => ("red", "HOT!")
+                    };
+                    AnsiConsole.MarkupLine($"   Module {sensor}: [{color}]{tempC,3}°C  {status}[/]");
                 }
-                
-                var avgTemp = validTemps.Average(t => t.Celsius);
-                var minTemp = validTemps.Min(t => t.Celsius);
-                var maxTemp = validTemps.Max(t => t.Celsius);
-                
-                AnsiConsole.MarkupLine($"   [green]Min: {minTemp}�C  Max: {maxTemp}�C  Avg: {avgTemp:F0}�C[/]");
-                
-                // Temperature spread assessment
+
+                var minTemp = temps.Min(t => t.TempC);
+                var maxTemp = temps.Max(t => t.TempC);
+                var avgTemp = temps.Average(t => t.TempC);
                 var spread = maxTemp - minTemp;
-                if (spread <= 3)
-                    AnsiConsole.MarkupLine($"   [green]Temperature balance: Excellent ({spread}�C spread)[/]");
-                else if (spread <= 6)
-                    AnsiConsole.MarkupLine($"   [yellow]Temperature balance: Good ({spread}�C spread)[/]");
+
+                AnsiConsole.MarkupLine($"   [cyan]Range: {minTemp}°C to {maxTemp}°C  |  Avg: {avgTemp:F1}°C  |  Spread: {spread}°C[/]");
+
+                // Temperature assessment
+                if (avgTemp < 0)
+                    AnsiConsole.MarkupLine($"   [cyan]Status: Below freezing - reduced regen/power until warmed[/]");
+                else if (avgTemp < 10)
+                    AnsiConsole.MarkupLine($"   [cyan]Status: Cold - excellent for longevity[/]");
+                else if (avgTemp < 25)
+                    AnsiConsole.MarkupLine($"   [green]Status: Optimal temperature range[/]");
+                else if (avgTemp < 40)
+                    AnsiConsole.MarkupLine($"   [yellow]Status: Warm - normal after driving/charging[/]");
                 else
-                    AnsiConsole.MarkupLine($"   [red]Temperature balance: Check cooling ({spread}�C spread)[/]");
+                    AnsiConsole.MarkupLine($"   [red]Status: Hot - allow cooling before fast charging[/]");
+
+                // Balance assessment  
+                if (spread <= 2)
+                    AnsiConsole.MarkupLine($"   [green]Balance: Excellent (uniform cooling)[/]");
+                else if (spread <= 5)
+                    AnsiConsole.MarkupLine($"   [green]Balance: Good[/]");
+                else
+                    AnsiConsole.MarkupLine($"   [yellow]Balance: Fair - monitor cooling system[/]");
             }
             else
             {
-                // Show raw bytes for debugging
-                AnsiConsole.MarkupLine($"[grey]   Raw data: {BitConverter.ToString(data.Take(12).ToArray())}[/]");
+                AnsiConsole.MarkupLine($"[red]   Unable to parse temperature data - format unknown[/]");
+                AnsiConsole.MarkupLine($"[grey]   Expected temps at byte positions: 0, 2, 10, 12[/]");
             }
         }
         catch (Exception ex)
@@ -1220,14 +1278,14 @@ public static class NissanLeafCommands
                 "Query Charger: QC Count",
                 "Query Charger: L1/L2 Count", 
                 "Query Charger: VIN",
-                "?? Passive CAN Monitor ??",
+                "-- Passive CAN Monitor --",
                 "Monitor live battery data (0x1DB/0x5BC)",
-                "?? Tools ??",
+                "-- Tools --",
                 "Send wakeup sequence",
                 "Send custom Mode 21 query",
                 "Send custom Mode 22 query",
                 "Send raw AT command",
-                "?? Session ??",
+                "-- Session --",
                 _isRecording ? "Stop recording" : "Start recording",
                 "Export session log",
                 "Back to main menu"
@@ -1533,27 +1591,22 @@ public static class NissanLeafCommands
         AnsiConsole.WriteLine();
         AnsiConsole.Write(new Panel(
             """
-            [yellow]Passive CAN Monitor[/]
-            
-            This monitors broadcast CAN frames from the battery controller.
-            These frames are sent automatically when the car is ON (READY mode).
-            
-            [cyan]Key Frames (from DBC glossary):[/]
-            � 0x1DB: Current, Voltage, Dash SOC (10ms cycle)
-            � 0x5BC: GIDs, SOH, Charge Time (100ms cycle)
-            � 0x55B: High-resolution SOC (100ms cycle)
-            � 0x1DC: Power Limits (10ms cycle)
-            
-            [red]IMPORTANT: Car MUST be in one of these states:[/]
-            � READY mode (foot on brake + press start button)
-            � Actively charging (plugged in and charging)
-            � Accessory mode may work for some data
-            
-            [yellow]If car is completely OFF, you will get NO DATA.[/]
-            The Nissan Leaf's ECUs sleep when the car is off to save battery.
-            
-            [grey]Press any key to stop monitoring...[/]
-            """)
+        [yellow]Passive CAN Monitor[/]
+        
+        This monitors broadcast CAN frames from the battery controller.
+        These frames are sent automatically when the car is ON (READY mode).
+        
+        [cyan]Key Frames (from DBC glossary):[/]
+        • 0x1DB: Current, Voltage, Dash SOC (10ms cycle)
+        • 0x5BC: GIDs, SOH, Charge Time (100ms cycle)
+        • 0x55B: High-resolution SOC (100ms cycle)
+        • 0x1DC: Power Limits (10ms cycle)
+        
+        [red]IMPORTANT: Car MUST be in READY mode[/]
+        (Foot on brake + press Start button until READY light)
+        
+        [grey]Press any key to stop monitoring...[/]
+        """)
             .Header("[cyan]Passive Monitor Mode[/]")
             .Border(BoxBorder.Rounded));
 
@@ -1563,52 +1616,38 @@ public static class NissanLeafCommands
         await sendAsync("ATZ", TimeSpan.FromSeconds(3));
         await Task.Delay(500);
         await sendAsync("ATE0", TimeSpan.FromSeconds(2));
-        await sendAsync("ATH1", TimeSpan.FromSeconds(2));
-        await sendAsync("ATS0", TimeSpan.FromSeconds(2));
-        await sendAsync("ATSP6", TimeSpan.FromSeconds(2));
-        
-        // Disable auto-formatting to get raw frames
-        await sendAsync("ATCAF0", TimeSpan.FromSeconds(2));
-        
-        // Try to wake up ECUs first by sending a broadcast query
-        AnsiConsole.MarkupLine("[grey]Attempting to wake ECUs...[/]");
-        await sendAsync("ATSH7DF", TimeSpan.FromSeconds(2));
-        var wakeResponse = await sendAsync("0100", TimeSpan.FromSeconds(3));
-        
-        if (wakeResponse.Contains("NO DATA") || wakeResponse.Contains("UNABLE"))
-        {
-            AnsiConsole.MarkupLine("[yellow]? No response to wakeup - ECUs may be sleeping[/]");
-            AnsiConsole.MarkupLine("[yellow]  Make sure car is in READY mode or charging[/]");
-        }
-        else
-        {
-            AnsiConsole.MarkupLine("[green]? ECU responded - car appears to be awake[/]");
-        }
-        
+        await sendAsync("ATH1", TimeSpan.FromSeconds(2));  // Show headers
+        await sendAsync("ATS0", TimeSpan.FromSeconds(2));  // No spaces
+        await sendAsync("ATSP6", TimeSpan.FromSeconds(2)); // CAN 500kbps 11-bit
+        await sendAsync("ATCAF0", TimeSpan.FromSeconds(2)); // Disable auto-formatting
+
+        // REMOVE THE FILTER - accept ALL frames
+        AnsiConsole.MarkupLine("[grey]Removing CAN filters to see all traffic...[/]");
+        await sendAsync("ATCF000", TimeSpan.FromSeconds(2)); // Filter = 0x000  
+        await sendAsync("ATCM000", TimeSpan.FromSeconds(2)); // Mask = 0x000 (accept all)
+
         AnsiConsole.WriteLine();
-        
-        // Set up filter for battery frames
-        // Using no filter (ATAR) to see all traffic, then we'll parse what we want
-        await sendAsync("ATAR", TimeSpan.FromSeconds(2)); // Auto Receive address (accept all)
-        
-        AnsiConsole.MarkupLine("[cyan]Monitoring CAN bus for battery frames...[/]");
-        AnsiConsole.MarkupLine("[grey]Looking for: 0x1DB, 0x1DC, 0x55B, 0x5BC, 0x5C0[/]");
+        AnsiConsole.MarkupLine("[cyan]Starting CAN monitor (looking for battery frames)...[/]");
+        AnsiConsole.MarkupLine("[grey]Waiting for CAN traffic...[/]");
         AnsiConsole.WriteLine();
 
         var frameCount = 0;
         var startTime = DateTime.Now;
-        var lastUpdate = DateTime.MinValue;
         var lastFrameTime = DateTime.Now;
-        var noDataWarningShown = false;
+        var displayedWarning = false;
+
+        // Track last values to avoid redundant updates
+        var lastValues = new Dictionary<int, string>();
 
         // Start monitor mode
         transport.DrainBuffer();
         await transport.WriteAsync("ATMA\r"); // Monitor All
+        await Task.Delay(200); // Give it time to start
 
         try
         {
             var cts = new CancellationTokenSource();
-            
+
             // Start key listener
             _ = Task.Run(() =>
             {
@@ -1616,69 +1655,146 @@ public static class NissanLeafCommands
                 cts.Cancel();
             });
 
-            var buffer = new System.Text.StringBuilder();
-            
+            var lineBuffer = new System.Text.StringBuilder();
+            // After the frame parsing section, add this:
+            var seenFrameIds = new HashSet<int>();
+
+
             while (!cts.Token.IsCancellationRequested)
             {
                 try
                 {
-                    // Read available data with short timeout
+                    // Read with short timeout to stay responsive
                     var chunk = await transport.ReadUntilAsync("\r", TimeSpan.FromMilliseconds(100));
-                    buffer.Append(chunk);
-                    
-                    // Process complete lines
-                    var lines = buffer.ToString().Split('\r', StringSplitOptions.RemoveEmptyEntries);
-                    buffer.Clear();
-                    
-                    // Keep incomplete line in buffer
-                    if (!chunk.EndsWith("\r") && lines.Length > 0)
+
+                    if (string.IsNullOrEmpty(chunk))
+                        continue;
+
+                    var trimmed = chunk.Trim();
+
+                    // Handle control messages
+                    if (trimmed == ">" || trimmed == "STOPPED")
+                        continue;
+
+                    if (trimmed == "BUFFER FULL")
                     {
-                        buffer.Append(lines[^1]);
-                        lines = lines[..^1];
+                        AnsiConsole.MarkupLine("[yellow]⚠ Buffer overflow detected[/]");
+                        continue;
                     }
-                    
-                    foreach (var line in lines)
+
+                    if (trimmed == "NO DATA")
+                        continue;
+
+                    // Look for hex data (CAN frames look like: 1DB8010003FF0...)
+                    if (trimmed.Length >= 5 && trimmed.All(c => char.IsDigit(c) || (c >= 'A' && c <= 'F')))
                     {
-                        var trimmed = line.Trim();
-                        if (string.IsNullOrEmpty(trimmed) || trimmed == ">" || trimmed == "STOPPED" || trimmed == "NO DATA")
-                            continue;
-                            
-                        // Parse CAN frame
-                        var frame = ParseCanFrame(trimmed);
-                        if (frame != null)
+                        // Parse CAN ID (first 3 hex chars)
+                        if (int.TryParse(trimmed.Substring(0, 3), System.Globalization.NumberStyles.HexNumber, null, out var canId))
                         {
-                            frameCount++;
-                            lastFrameTime = DateTime.Now;
-                            logToSession($"CAN: {trimmed}");
-                            
-                            // Only update display every 500ms to avoid flicker
-                            if ((DateTime.Now - lastUpdate).TotalMilliseconds > 500)
+                            // Get data bytes (rest of the string)
+                            var dataHex = trimmed.Substring(3);
+
+                            if (dataHex.Length >= 10) // At least 5 bytes
                             {
-                                DisplayFrameData(frame);
-                                lastUpdate = DateTime.Now;
+                                var data = ParseHexString(dataHex);
+
+                                if (data.Length >= 5)
+                                {
+                                    frameCount++;
+                                    lastFrameTime = DateTime.Now;
+
+                                    logToSession($"CAN: 0x{canId:X3} {BitConverter.ToString(data)}");
+
+                                    // Parse known frames
+                                    switch (canId)
+                                    {
+                                        case 0x1DB when data.Length >= 7:
+                                            {
+                                                var (current, voltage, soc) = Parse1DB(data);
+                                                var key1DB = $"{current:F1}|{voltage:F1}|{soc}";
+                                                if (!lastValues.TryGetValue(0x1DB, out var last1DB) || last1DB != key1DB)
+                                                {
+                                                    Display1DB(current, voltage, soc);
+                                                    lastValues[0x1DB] = key1DB;
+                                                }
+                                                break;
+                                            }
+
+                                        case 0x1DC when data.Length >= 4:
+                                            {
+                                                var (dischargeRaw, regenRaw, chargeRaw) = Parse1DC(data);
+                                                var key1DC = $"{dischargeRaw:X2}|{regenRaw:X2}|{chargeRaw:X2}";
+                                                if (!lastValues.TryGetValue(0x1DC, out var last1DC) || last1DC != key1DC)
+                                                {
+                                                    Display1DC(dischargeRaw, regenRaw, chargeRaw);
+                                                    lastValues[0x1DC] = key1DC;
+                                                }
+                                                break;
+                                            }
+
+                                        case 0x5BC when data.Length >= 6:
+                                            {
+                                                var (gids, kwh, sohPct, hxPct) = Parse5BC(data);
+                                                var key5BC = $"{gids}|{kwh:F2}|{sohPct:F2}|{hxPct:F2}";
+                                                if (!lastValues.TryGetValue(0x5BC, out var last5BC) || last5BC != key5BC)
+                                                {
+                                                    Display5BC(gids, kwh, sohPct, hxPct);
+                                                    lastValues[0x5BC] = key5BC;
+                                                }
+                                                break;
+                                            }
+
+                                        case 0x55B when data.Length >= 3:
+                                            {
+                                                var (socPct, socRaw10Bits, b0b1, b2b3, b6b7) = Parse55B(data);
+                                                var key55B = $"{socPct:F1}|{socRaw10Bits}|{b0b1:X4}|{b2b3:X4}|{b6b7:X4}";
+                                                if (!lastValues.TryGetValue(0x55B, out var last55B) || last55B != key55B)
+                                                {
+                                                    Display55B(socPct, socRaw10Bits, b0b1, b2b3, b6b7);
+                                                    lastValues[0x55B] = key55B;
+                                                }
+                                                break;
+                                            }
+
+                                        default:
+                                            // Show other frames for debugging
+                                            AnsiConsole.MarkupLine($"[grey]0x{canId:X3}: {BitConverter.ToString(data).Replace("-", " ")}[/]");
+                                            break;
+                                    }
+                                }
                             }
                         }
+
+                        // Inside the while loop, after parsing a frame:
+                        seenFrameIds.Add(canId);
                     }
+
+
                 }
                 catch (TimeoutException)
                 {
-                    // Check if we've been waiting too long with no data
                     var timeSinceLastFrame = (DateTime.Now - lastFrameTime).TotalSeconds;
-                    
-                    if (frameCount == 0 && timeSinceLastFrame > 5 && !noDataWarningShown)
+
+                    if (frameCount > 5 && timeSinceLastFrame > 3 && !displayedWarning)
                     {
-                        AnsiConsole.WriteLine();
-                        AnsiConsole.MarkupLine("[red]??????????????????????????????????????????????????[/]");
-                        AnsiConsole.MarkupLine("[red]  NO CAN FRAMES RECEIVED[/]");
-                        AnsiConsole.MarkupLine("[yellow]  The car's ECUs appear to be sleeping.[/]");
-                        AnsiConsole.MarkupLine("");
-                        AnsiConsole.MarkupLine("[white]  To wake the car, do ONE of these:[/]");
-                        AnsiConsole.MarkupLine("[cyan]  1. Press brake pedal + Start button (READY mode)[/]");
-                        AnsiConsole.MarkupLine("[cyan]  2. Plug in charge cable and start charging[/]");
-                        AnsiConsole.MarkupLine("[cyan]  3. Press Start button twice without brake (ACC mode)[/]");
-                        AnsiConsole.MarkupLine("[red]??????????????????????????????????????????????????[/]");
-                        AnsiConsole.WriteLine();
-                        noDataWarningShown = true;
+                        var wantedFrames = new[] { 0x1DB, 0x1DC, 0x55B, 0x5BC };
+                        var missingFrames = wantedFrames.Where(id => !seenFrameIds.Contains(id)).ToList();
+
+                        if (missingFrames.Count > 0)
+                        {
+                            AnsiConsole.WriteLine();
+                            AnsiConsole.MarkupLine("[yellow]══════════════════════════════════[/]");
+                            AnsiConsole.MarkupLine($"[yellow]⚠ Getting CAN traffic but missing battery frames:[/]");
+                            AnsiConsole.MarkupLine($"[red]  Missing: {string.Join(", ", missingFrames.Select(id => $"0x{id:X3}"))}[/]");
+                            AnsiConsole.MarkupLine("");
+                            AnsiConsole.MarkupLine("[white]Try these:[/]");
+                            AnsiConsole.MarkupLine("[cyan]• Press accelerator pedal (put load on battery)[/]");
+                            AnsiConsole.MarkupLine("[cyan]• Ensure car is in READY mode (not just ACC)[/]");
+                            AnsiConsole.MarkupLine("[cyan]• Turn on headlights or climate control[/]");
+                            AnsiConsole.MarkupLine("[yellow]══════════════════════════════════[/]");
+                            AnsiConsole.WriteLine();
+                            displayedWarning = true;
+                        }
                     }
                 }
             }
@@ -1689,170 +1805,175 @@ public static class NissanLeafCommands
         }
         finally
         {
-            // Stop monitor mode by sending any character
-            await transport.WriteAsync("\r");
-            await Task.Delay(200);
+            // --- 1) Stop ATMA as cleanly as possible ---
+            AnsiConsole.MarkupLine("[grey]Stopping monitor...[/]");
+
+            // Any char stops ATMA; send space + CR to be extra explicit.
+            await transport.WriteAsync(" \r");
+            await Task.Delay(150);
+
+            // Try to read until prompt; ignore timeouts (some clones are flaky here).
+            try { await transport.ReadUntilAsync(">", TimeSpan.FromSeconds(3)); } catch { }
+
+            // Drain anything still in the BLE pipe (ATMA can leave trailing frames).
+            transport.DrainBuffer();
+            await Task.Delay(50);
+            transport.DrainBuffer();
+
+            // --- 2) Return ELM to a known diagnostic baseline ---
+            // ATD resets many formatting knobs (spaces/headers/linefeeds/etc).
+            // ATWS warm-start is often more reliable than ATZ over BLE (keeps link stable).
+            // Then we explicitly set the format your diagnostic parser expects.
+
+            // Reset to defaults, warm start, then enforce your preferred diagnostic format.
+            await Cmd("ATD", msDelay: 150, timeoutMs: 2000);
+            await Cmd("ATWS", msDelay: 800, timeoutMs: 3000);
+
+            // Your diagnostic “known good” config (matches the earlier successful 2101 parse).
+            await Cmd("ATE0");     // echo off
+            await Cmd("ATL0");     // linefeeds off (prevents extra formatting surprises)
+            await Cmd("ATS0");     // spaces off
+            await Cmd("ATH1");     // headers on (you parse 7BB...)
+            await Cmd("ATCAF1");   // IMPORTANT: auto-format ON (undo ATCAF0)
+            await Cmd("ATSP6");    // ISO15765-4 CAN 11-bit 500k
+            await Cmd("ATAT2");    // adaptive timing (optional but helps after mode switches)
+
+            // One more drain for safety.
+            transport.DrainBuffer();
+
+            AnsiConsole.MarkupLine("[green]✓ ELM327 restored for diagnostics[/]");
+        }
+
+        async Task Cmd(string cmd, int msDelay = 120, int timeoutMs = 1500)
+        {
+            await transport.WriteAsync(cmd + "\r");
+            if (msDelay > 0) await Task.Delay(msDelay);
+            try { await transport.ReadUntilAsync(">", TimeSpan.FromMilliseconds(timeoutMs)); } catch { }
             transport.DrainBuffer();
         }
-
-        AnsiConsole.WriteLine();
-        if (frameCount > 0)
-        {
-            AnsiConsole.MarkupLine($"[green]? Monitor stopped. Captured {frameCount} frames.[/]");
-        }
-        else
-        {
-            AnsiConsole.MarkupLine($"[yellow]Monitor stopped. No frames captured - car was likely OFF.[/]");
-        }
     }
 
     /// <summary>
-    /// Parse a raw CAN frame from ELM327.
-    /// Format: "1DB8010003FF0..." (ID + Data)
+    /// Parse 0x1DB frame and return values.
     /// </summary>
-    private static CanFrame? ParseCanFrame(string raw)
+    private static (double Current, double Voltage, int Soc) Parse1DB(byte[] data)
     {
-        if (string.IsNullOrEmpty(raw) || raw.Length < 5)
-            return null;
-            
-        // Skip non-hex content
-        if (!raw.All(c => Uri.IsHexDigit(c)))
-            return null;
-            
-        // First 3 chars = CAN ID (11-bit)
-        if (!int.TryParse(raw[..3], System.Globalization.NumberStyles.HexNumber, null, out var canId))
-            return null;
-            
-        // Rest is data (up to 8 bytes = 16 hex chars)
-        var dataHex = raw[3..];
-        var data = ParseHexString(dataHex);
-        
-        if (data.Length == 0)
-            return null;
-            
-        return new CanFrame(canId, data);
-    }
-
-    /// <summary>
-    /// Display parsed CAN frame data.
-    /// </summary>
-    private static void DisplayFrameData(CanFrame frame)
-    {
-        switch (frame.Id)
-        {
-            case CAN_LB_STATUS: // 0x1DB
-                ParseAndDisplay1DB(frame.Data);
-                break;
-                
-            case CAN_LB_GIDS: // 0x5BC
-                ParseAndDisplay5BC(frame.Data);
-                break;
-                
-            case CAN_LB_SOC: // 0x55B
-                ParseAndDisplay55B(frame.Data);
-                break;
-                
-            case CAN_LB_LIMITS: // 0x1DC
-                ParseAndDisplay1DC(frame.Data);
-                break;
-                
-            default:
-                AnsiConsole.MarkupLine($"[grey]Frame 0x{frame.Id:X3}: {BitConverter.ToString(frame.Data)}[/]");
-                break;
-        }
-    }
-
-    /// <summary>
-    /// Parse 0x1DB - Battery Status (10ms cycle)
-    /// Contains: Current, Voltage, Dash SOC
-    /// </summary>
-    private static void ParseAndDisplay1DB(byte[] data)
-    {
-        if (data.Length < 7) return;
-        
-        // LB_Current: bits 7-17 (11 bits), big-endian, signed, factor 0.5
-        // Start bit 7 = byte 0 bit 7, 11 bits
+        // LB_Current: bits 7-17 (11 bits), signed, factor 0.5
         int currentRaw = ((data[0] & 0x7F) << 4) | ((data[1] & 0xF0) >> 4);
-        // Sign extend 11-bit value
-        if ((currentRaw & 0x400) != 0)
+        if ((currentRaw & 0x400) != 0) // Sign extend
             currentRaw |= unchecked((int)0xFFFFF800);
         var currentAmps = currentRaw * 0.5;
-        
-        // LB_Total_Voltage: bits 23-32 (10 bits), big-endian, unsigned, factor 0.5
+
+        // LB_Total_Voltage: bits 23-32 (10 bits), factor 0.5
         int voltageRaw = ((data[2] & 0x03) << 8) | data[3];
         var voltage = voltageRaw * 0.5;
-        
-        // LB_Usable_SOC: bits 32-38 (7 bits), byte 4 bits 0-6
-        var socDash = data[4] & 0x7F;
-        
-        var currentDir = currentAmps > 0.5 ? "[red]?[/]" : (currentAmps < -0.5 ? "[green]?[/]" : "[grey]?[/]");
-        
+
+        // LB_Usable_SOC: bits 32-38 (7 bits)
+        var soc = data[4] & 0x7F;
+
+        return (currentAmps, voltage, soc);
+    }
+
+    /// <summary>
+    /// Display 0x1DB data.
+    /// </summary>
+    private static void Display1DB(double current, double voltage, int soc)
+    {
+        var (dirColor, dirSymbol) = current switch
+        {
+            > 0.5 => ("red", "Discharge"),
+            < -0.5 => ("green", "Charge   "),
+            _ => ("grey", "Idle     ")
+        };
+
+        var power = Math.Abs(current * voltage / 1000.0); // kW
+
         AnsiConsole.MarkupLine(
             $"[cyan]0x1DB[/] | " +
-            $"Current: {currentDir} {Math.Abs(currentAmps):F1}A | " +
-            $"Voltage: [yellow]{voltage:F1}V[/] | " +
-            $"SOC: [green]{socDash}%[/]");
+            $"[{dirColor}]{dirSymbol}[/] | " +
+            $"{Math.Abs(current),5:F1}A | " +
+            $"[yellow]{voltage,5:F1}V[/] | " +
+            $"[yellow]{power,5:F2}kW[/] | " +
+            $"SOC: [green]{soc,3}%[/]");
     }
 
     /// <summary>
-    /// Parse 0x5BC - GIDs and SOH (100ms cycle)
-    /// Contains: Remaining GIDs, SOH, Charge Time
+    /// Parse 0x1DC - Power Limits (exact scaling varies by model/year).
+    /// We expose raw bytes so you can correlate with LeafSpy/power bubbles.
     /// </summary>
-    private static void ParseAndDisplay5BC(byte[] data)
+    private static (byte dischargeLimitRaw, byte regenLimitRaw, byte chargeLimitRaw) Parse1DC(byte[] data)
     {
-        if (data.Length < 6) return;
-        
-        // LB_Remain_Capacity_GIDS: bits 7-16 (10 bits), big-endian
-        int gids = ((data[0] & 0x01) << 9) | (data[1] << 1) | ((data[2] & 0x80) >> 7);
-        
-        // LB_Capacity_Deterioration_Rate (SOH): bits 33-39 (7 bits)
-        var soh = data[4] & 0x7F;
-        
-        // Estimate kWh from GIDs (80 Wh per GID for 30kWh pack)
-        var kwhRemaining = gids * 0.08;
-        
+        var discharge = data[0];
+        var regen = data.Length > 1 ? data[1] : (byte)0;
+        var charge = data.Length > 2 ? data[2] : (byte)0;
+        return (discharge, regen, charge);
+    }
+
+    private static void Display1DC(byte dischargeLimitRaw, byte regenLimitRaw, byte chargeLimitRaw)
+    {
         AnsiConsole.MarkupLine(
-            $"[cyan]0x5BC[/] | " +
-            $"GIDs: [yellow]{gids}[/] | " +
-            $"~{kwhRemaining:F1} kWh | " +
-            $"SOH: [green]{soh}%[/]");
+            $"[silver]1DC[/] PowerLimits  Dischg:[yellow]{dischargeLimitRaw:X2}[/]  Regen:[aqua]{regenLimitRaw:X2}[/]  Charge:[green]{chargeLimitRaw:X2}[/]");
     }
 
     /// <summary>
-    /// Parse 0x55B - High-resolution SOC (100ms cycle)
+    /// Parse 0x5BC - GIDs / SOH / Hx (best-effort).
+    /// GIDs is commonly packed as 10 bits in b0..b1 (same pattern as 55B).
+    /// SOH/Hx placements vary; decode as 0.01% scaled uint16s by default.
     /// </summary>
-    private static void ParseAndDisplay55B(byte[] data)
+    private static (int gids, double kwh, double sohPct, double hxPct) Parse5BC(byte[] data)
     {
-        if (data.Length < 2) return;
-        
-        // LB_SOC: bits 7-16 (10 bits), big-endian, 0.1% resolution
-        int socRaw = ((data[0] & 0x01) << 9) | (data[1] << 1) | ((data[2] & 0x80) >> 7);
-        var socPercent = socRaw * 0.1;
-        
+        // 10-bit packed
+        var gidsCandidate = (data[0] << 2) | ((data[1] & 0xC0) >> 6);
+        var gids = gidsCandidate == 1023 ? -1 : gidsCandidate;
+
+        // Common approximation: 1 GID ≈ 0.08 kWh (80 Wh)
+        var kwh = gids >= 0 ? gids * 0.08 : double.NaN;
+
+        // Best-effort SOH/Hx (adjust offsets if your numbers look wrong)
+        var sohRaw = (ushort)((data[2] << 8) | data[3]);
+        var hxRaw = (ushort)((data[4] << 8) | data[5]);
+
+        var sohPct = sohRaw / 100.0;
+        var hxPct = hxRaw / 100.0;
+
+        return (gids, kwh, sohPct, hxPct);
+    }
+
+    private static void Display5BC(int gids, double kwh, double sohPct, double hxPct)
+    {
+        var gidsText = gids >= 0 ? gids.ToString() : "n/a";
+        var kwhText = double.IsNaN(kwh) ? "n/a" : $"{kwh:F2} kWh";
         AnsiConsole.MarkupLine(
-            $"[cyan]0x55B[/] | " +
-            $"SOC (fine): [green]{socPercent:F1}%[/]");
+            $"[silver]5BC[/] GIDs:[yellow]{gidsText}[/]  Energy:[aqua]{kwhText}[/]  SOH:[green]{sohPct:F2}%[/]  Hx:[green]{hxPct:F2}%[/]");
     }
 
     /// <summary>
-    /// Parse 0x1DC - Power Limits (10ms cycle)
+    /// Parse 0x55B - High-res SOC (verification-friendly).
+    ///
+    /// Primary decode:
+    ///   raw10 = (b0<<2) | (b1>>6)
+    ///   socPct = raw10 * 0.1
+    ///
+    /// Also returns some 16-bit raw groupings so you can quickly sanity-check against LeafSpy.
+    /// Example from your log: 55B 7D C0 AA 00 E5 00 11 7A :contentReference[oaicite:3]{index=3}
+    /// b0b1 = 0x7DC0, b2b3 = 0xAA00, b6b7 = 0x117A
     /// </summary>
-    private static void ParseAndDisplay1DC(byte[] data)
+    private static (double socPct, int socRaw10Bits, ushort b0b1, ushort b2b3, ushort b6b7) Parse55B(byte[] data)
     {
-        if (data.Length < 4) return;
-        
-        // LB_Discharge_Power_Limit: bits 7-16 (10 bits), factor 0.25 kW
-        int dischargeLimitRaw = ((data[0] & 0x01) << 9) | (data[1] << 1) | ((data[2] & 0x80) >> 7);
-        var dischargeLimit = dischargeLimitRaw * 0.25;
-        
-        // LB_Charge_Power_Limit: bits 13-22 (10 bits), factor 0.25 kW
-        int chargeLimitRaw = ((data[1] & 0x07) << 7) | ((data[2] & 0xFE) >> 1);
-        var chargeLimit = chargeLimitRaw * 0.25;
-        
+        var raw10 = (data[0] << 2) | ((data[1] & 0xC0) >> 6);
+        var socPct = raw10 * 0.1;
+
+        var b0b1 = (ushort)((data[0] << 8) | data[1]);
+        var b2b3 = data.Length >= 4 ? (ushort)((data[2] << 8) | data[3]) : (ushort)0;
+        var b6b7 = data.Length >= 8 ? (ushort)((data[6] << 8) | data[7]) : (ushort)0;
+
+        return (socPct, raw10, b0b1, b2b3, b6b7);
+    }
+
+    private static void Display55B(double socPct, int socRaw10Bits, ushort b0b1, ushort b2b3, ushort b6b7)
+    {
         AnsiConsole.MarkupLine(
-            $"[cyan]0x1DC[/] | " +
-            $"Discharge Limit: [yellow]{dischargeLimit:F1} kW[/] | " +
-            $"Charge Limit: [green]{chargeLimit:F1} kW[/]");
+            $"[silver]55B[/] SoC:[yellow]{socPct:F1}%[/] (raw10={socRaw10Bits})  raw16(b0b1)=[aqua]{b0b1:X4}[/]  raw16(b2b3)=[aqua]{b2b3:X4}[/]  raw16(b6b7)=[aqua]{b6b7:X4}[/]");
     }
 
     /// <summary>

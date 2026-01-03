@@ -3,6 +3,21 @@ using System.Text;
 namespace ObdInsight.Core.Transports.Tracing;
 
 /// <summary>
+/// How to match transmitted commands to recorded entries.
+/// </summary>
+public enum ReplayMatchingMode
+{
+    /// <summary>Commands must match exactly (after normalization)</summary>
+    Exact,
+
+    /// <summary>Commands must start with recorded prefix</summary>
+    Prefix,
+
+    /// <summary>Accept any command and return next recorded response</summary>
+    Any
+}
+
+/// <summary>
 /// A transport that replays recorded sessions for deterministic testing.
 /// </summary>
 /// <remarks>
@@ -17,14 +32,14 @@ namespace ObdInsight.Core.Transports.Tracing;
 /// </remarks>
 public sealed class ReplayTransport : IObdTransport
 {
-    private readonly TransportSession _session;
-    private readonly ReplayOptions _options;
-    private readonly Queue<TraceEntry> _txQueue;
-    private readonly Queue<TraceEntry> _rxQueue;
-    private readonly StringBuilder _rxBuffer = new();
     private readonly Lock _lock = new();
-    private int _currentIndex;
+    private readonly ReplayOptions _options;
+    private readonly StringBuilder _rxBuffer = new();
+    private readonly Queue<TraceEntry> _rxQueue;
+    private readonly TransportSession _session;
+    private readonly Queue<TraceEntry> _txQueue;
     private bool _connected;
+    private int _currentIndex;
     private bool _disposed;
 
     /// <summary>
@@ -43,21 +58,10 @@ public sealed class ReplayTransport : IObdTransport
     }
 
     /// <inheritdoc />
-    public string Name => $"Replay:{_session.Metadata.DeviceName ?? "Unknown"}";
-
-    /// <inheritdoc />
-    public bool IsConnected => _connected;
-
-    /// <inheritdoc />
     public event EventHandler<string>? DataReceived;
 
     /// <inheritdoc />
     public event EventHandler<string>? DataSent;
-
-    /// <summary>
-    /// The session being replayed
-    /// </summary>
-    public TransportSession Session => _session;
 
     /// <summary>
     /// Current position in the replay
@@ -68,6 +72,17 @@ public sealed class ReplayTransport : IObdTransport
     /// Whether replay has completed all entries
     /// </summary>
     public bool IsComplete => _currentIndex >= _session.Entries.Count;
+
+    /// <inheritdoc />
+    public bool IsConnected => _connected;
+
+    /// <inheritdoc />
+    public string Name => $"Replay:{_session.Metadata.DeviceName ?? "Unknown"}";
+
+    /// <summary>
+    /// The session being replayed
+    /// </summary>
+    public TransportSession Session => _session;
 
     /// <summary>
     /// List of Tx commands that didn't match expected sequence
@@ -90,17 +105,10 @@ public sealed class ReplayTransport : IObdTransport
     }
 
     /// <inheritdoc />
-    public async Task WriteAsync(string data, CancellationToken cancellationToken = default)
+    public void Dispose()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (!_connected)
-            throw new InvalidOperationException("Transport not connected.");
-
-        DataSent?.Invoke(this, data);
-
-        // Find matching Rx response(s) and queue them
-        await QueueResponsesForCommandAsync(data, cancellationToken);
+        _disposed = true;
+        _connected = false;
     }
 
     /// <inheritdoc />
@@ -177,13 +185,6 @@ public sealed class ReplayTransport : IObdTransport
         throw new TimeoutException($"Timeout waiting for terminator: '{EscapeForDisplay(terminator)}'");
     }
 
-    /// <inheritdoc />
-    public void Dispose()
-    {
-        _disposed = true;
-        _connected = false;
-    }
-
     /// <summary>
     /// Reset the replay to the beginning
     /// </summary>
@@ -202,6 +203,28 @@ public sealed class ReplayTransport : IObdTransport
             foreach (var entry in _session.Entries.Where(e => e.Direction == TraceDirection.Rx))
                 _rxQueue.Enqueue(entry);
         }
+    }
+
+    /// <inheritdoc />
+    public async Task WriteAsync(string data, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (!_connected)
+            throw new InvalidOperationException("Transport not connected.");
+
+        DataSent?.Invoke(this, data);
+
+        // Find matching Rx response(s) and queue them
+        await QueueResponsesForCommandAsync(data, cancellationToken);
+    }
+
+    private static string EscapeForDisplay(string s) =>
+        s.Replace("\r", "\\r").Replace("\n", "\\n").Replace(">", ">");
+
+    private static string NormalizeCommand(string command)
+    {
+        return command.Trim().TrimEnd('\r', '\n');
     }
 
     private Task QueueResponsesForCommandAsync(string command, CancellationToken cancellationToken)
@@ -254,14 +277,6 @@ public sealed class ReplayTransport : IObdTransport
             return true;
         }
     }
-
-    private static string NormalizeCommand(string command)
-    {
-        return command.Trim().TrimEnd('\r', '\n');
-    }
-
-    private static string EscapeForDisplay(string s) =>
-        s.Replace("\r", "\\r").Replace("\n", "\\n").Replace(">", ">");
 }
 
 /// <summary>
@@ -291,21 +306,6 @@ public sealed record ReplayOptions
 }
 
 /// <summary>
-/// How to match transmitted commands to recorded entries.
-/// </summary>
-public enum ReplayMatchingMode
-{
-    /// <summary>Commands must match exactly (after normalization)</summary>
-    Exact,
-
-    /// <summary>Commands must start with recorded prefix</summary>
-    Prefix,
-
-    /// <summary>Accept any command and return next recorded response</summary>
-    Any
-}
-
-/// <summary>
 /// Factory for creating replay transports from files.
 /// </summary>
 public static class ReplayTransportFactory
@@ -329,22 +329,6 @@ public static class ReplayTransportFactory
     }
 
     /// <summary>
-    /// Create a replay transport from a stream.
-    /// </summary>
-    /// <param name="stream">Stream containing JSONL trace data</param>
-    /// <param name="options">Replay options</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>A configured replay transport</returns>
-    public static async Task<ReplayTransport> FromStreamAsync(
-        Stream stream,
-        ReplayOptions? options = null,
-        CancellationToken cancellationToken = default)
-    {
-        var session = await s_serializer.LoadAsync(stream, cancellationToken);
-        return new ReplayTransport(session, options);
-    }
-
-    /// <summary>
     /// Create a replay transport from embedded resource.
     /// </summary>
     /// <param name="assembly">Assembly containing the resource</param>
@@ -362,5 +346,21 @@ public static class ReplayTransportFactory
             ?? throw new FileNotFoundException($"Embedded resource '{resourceName}' not found in assembly.");
 
         return await FromStreamAsync(stream, options, cancellationToken);
+    }
+
+    /// <summary>
+    /// Create a replay transport from a stream.
+    /// </summary>
+    /// <param name="stream">Stream containing JSONL trace data</param>
+    /// <param name="options">Replay options</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>A configured replay transport</returns>
+    public static async Task<ReplayTransport> FromStreamAsync(
+        Stream stream,
+        ReplayOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        var session = await s_serializer.LoadAsync(stream, cancellationToken);
+        return new ReplayTransport(session, options);
     }
 }

@@ -24,22 +24,6 @@ public sealed class RecordingTransportDecorator : IObdTransport
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
     }
 
-    /// <summary>
-    /// The underlying transport being decorated
-    /// </summary>
-    public IObdTransport InnerTransport => _inner;
-
-    /// <summary>
-    /// The tracer recording operations
-    /// </summary>
-    public ITransportTracer Tracer => _tracer;
-
-    /// <inheritdoc />
-    public string Name => _inner.Name;
-
-    /// <inheritdoc />
-    public bool IsConnected => _inner.IsConnected;
-
     /// <inheritdoc />
     public event EventHandler<string>? DataReceived
     {
@@ -52,6 +36,62 @@ public sealed class RecordingTransportDecorator : IObdTransport
     {
         add => _inner.DataSent += value;
         remove => _inner.DataSent -= value;
+    }
+
+    /// <summary>
+    /// The underlying transport being decorated
+    /// </summary>
+    public IObdTransport InnerTransport => _inner;
+
+    /// <inheritdoc />
+    public bool IsConnected => _inner.IsConnected;
+
+    /// <inheritdoc />
+    public string Name => _inner.Name;
+
+    /// <summary>
+    /// The tracer recording operations
+    /// </summary>
+    public ITransportTracer Tracer => _tracer;
+
+    /// <inheritdoc />
+    public async Task<bool> ConnectAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await _inner.ConnectAsync(cancellationToken);
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task DisconnectAsync()
+    {
+        await _inner.DisconnectAsync();
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        _tracer.Dispose();
+        _inner.Dispose();
+    }
+
+    /// <inheritdoc />
+    public async Task<string> ReadLineAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        var result = await _inner.ReadLineAsync(timeout, cancellationToken);
+        _tracer.RecordRx(result);
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<string> ReadUntilAsync(string terminator, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        var result = await _inner.ReadUntilAsync(terminator, timeout, cancellationToken);
+        _tracer.RecordRx(result);
+        return result;
     }
 
     /// <summary>
@@ -80,50 +120,10 @@ public sealed class RecordingTransportDecorator : IObdTransport
     }
 
     /// <inheritdoc />
-    public async Task<bool> ConnectAsync(CancellationToken cancellationToken = default)
-    {
-        var result = await _inner.ConnectAsync(cancellationToken);
-        return result;
-    }
-
-    /// <inheritdoc />
-    public async Task DisconnectAsync()
-    {
-        await _inner.DisconnectAsync();
-    }
-
-    /// <inheritdoc />
     public async Task WriteAsync(string data, CancellationToken cancellationToken = default)
     {
         _tracer.RecordTx(data);
         await _inner.WriteAsync(data, cancellationToken);
-    }
-
-    /// <inheritdoc />
-    public async Task<string> ReadLineAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
-    {
-        var result = await _inner.ReadLineAsync(timeout, cancellationToken);
-        _tracer.RecordRx(result);
-        return result;
-    }
-
-    /// <inheritdoc />
-    public async Task<string> ReadUntilAsync(string terminator, TimeSpan timeout, CancellationToken cancellationToken = default)
-    {
-        var result = await _inner.ReadUntilAsync(terminator, timeout, cancellationToken);
-        _tracer.RecordRx(result);
-        return result;
-    }
-
-    /// <inheritdoc />
-    public void Dispose()
-    {
-        if (_disposed)
-            return;
-
-        _disposed = true;
-        _tracer.Dispose();
-        _inner.Dispose();
     }
 }
 
