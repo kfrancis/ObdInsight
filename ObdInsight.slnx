@@ -6,6 +6,9 @@
     <File Path="EV-CAN_signal_glossary.json" />
     <File Path="EV-CAN_signal_glossary.md" />
     <File Path="global.json" />
+    <File Path="Leaf2018-CAN.md" />
+    <File Path="Leaf2018-CAN.pdf" />
+    <File Path="Leaf2018_CAN.md" />
     <File Path="Leaf_Battery_SoC_SoH_notes.md" />
     <File Path="mockup.png" />
     <File Path="notes.md" />

@@ -353,6 +353,7 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
                     SelectedDevice.Device.Address,
                     SelectedDevice.Device.Name,
                     profile.Name);
+
                 RefreshLastAdapterDisplay();
 
                 // Attempt to identify the vehicle via VIN and map to a known profile.

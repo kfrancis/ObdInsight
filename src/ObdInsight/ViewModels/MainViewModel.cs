@@ -130,6 +130,17 @@ public partial class MainViewModel : BaseViewModel
         _logger?.LogDebug("MainPage appearing, IsConnected={IsConnected}, HasVehicleService={HasService}",
             IsConnected, _vehicleObdService != null);
 
+        // Reload custom vehicle name in case it was changed on the car profile page
+        if (IsConnected)
+        {
+            var customName = Preferences.Default.Get(AppPreferences.CustomVehicleName, string.Empty);
+            if (!string.IsNullOrWhiteSpace(customName))
+            {
+                VehicleName = customName;
+                ActiveVehicleName = customName;
+            }
+        }
+
         if (!IsConnected)
         {
             _logger?.LogDebug("Not connected, skipping data refresh");
@@ -359,8 +370,11 @@ public partial class MainViewModel : BaseViewModel
         {
             AdapterName = _connectedDeviceService.DeviceName;
 
-            // Use detected vehicle name from session, or fall back to profile name
-            VehicleName = _vehicleSession.Profile?.Name ?? "Unknown Vehicle";
+            // Use custom vehicle name if set, otherwise use detected profile name
+            var customName = Preferences.Default.Get(AppPreferences.CustomVehicleName, string.Empty);
+            VehicleName = !string.IsNullOrWhiteSpace(customName) 
+                ? customName 
+                : _vehicleSession.Profile?.Name ?? "Unknown Vehicle";
             ConnectionStatus = $"Connected to {_connectedDeviceService.DeviceName}";
 
             ActiveVehicleName = VehicleName;

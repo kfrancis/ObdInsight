@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using ObdInsight.Services;
 
 namespace ObdInsight.ViewModels;
 
@@ -10,7 +11,7 @@ namespace ObdInsight.ViewModels;
 public partial class CarProfileViewModel : BaseViewModel
 {
     [ObservableProperty]
-    private string _vehicleName = "2024 Nissan Leaf";
+    private string _vehicleName = "My Car";
 
     [ObservableProperty]
     private string _vehicleImageSource = "vehicle_nissan_leaf.svg";
@@ -48,6 +49,21 @@ public partial class CarProfileViewModel : BaseViewModel
     public CarProfileViewModel()
     {
         Title = "Car Profile";
+        LoadSettings();
+    }
+
+    /// <summary>
+    /// Loads settings from preferences
+    /// </summary>
+    private void LoadSettings()
+    {
+        VehicleName = Preferences.Default.Get(AppPreferences.CustomVehicleName, "My Car");
+        ShowRange = Preferences.Default.Get(AppPreferences.ShowRangeWidget, true);
+        ShowBattery = Preferences.Default.Get(AppPreferences.ShowBatteryWidget, true);
+        ShowEfficiency = Preferences.Default.Get(AppPreferences.ShowEfficiencyWidget, true);
+        ShowCharging = Preferences.Default.Get(AppPreferences.ShowChargingWidget, true);
+        ShowTirePressure = Preferences.Default.Get(AppPreferences.ShowTirePressureWidget, false);
+        ShowMotorPower = Preferences.Default.Get(AppPreferences.ShowMotorPowerWidget, false);
     }
 
     /// <summary>
@@ -65,8 +81,22 @@ public partial class CarProfileViewModel : BaseViewModel
     [RelayCommand]
     private async Task SaveProfileAsync()
     {
-        // In a real implementation, this would persist the toggle states to settings
-        await Shell.Current.DisplayAlert("Saved", "Your car profile has been updated.", "OK");
+        // Save all settings to preferences
+        if (string.IsNullOrWhiteSpace(VehicleName))
+        {
+            await Shell.Current.DisplayAlert("Error", "Please enter a vehicle name.", "OK");
+            return;
+        }
+
+        Preferences.Default.Set(AppPreferences.CustomVehicleName, VehicleName);
+        Preferences.Default.Set(AppPreferences.ShowRangeWidget, ShowRange);
+        Preferences.Default.Set(AppPreferences.ShowBatteryWidget, ShowBattery);
+        Preferences.Default.Set(AppPreferences.ShowEfficiencyWidget, ShowEfficiency);
+        Preferences.Default.Set(AppPreferences.ShowChargingWidget, ShowCharging);
+        Preferences.Default.Set(AppPreferences.ShowTirePressureWidget, ShowTirePressure);
+        Preferences.Default.Set(AppPreferences.ShowMotorPowerWidget, ShowMotorPower);
+
+        await Shell.Current.DisplayAlert("Saved", $"Your car profile '{VehicleName}' has been saved.", "OK");
         await Shell.Current.GoToAsync("..");
     }
 }

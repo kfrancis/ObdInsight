@@ -14,7 +14,7 @@ public partial class SettingsViewModel : BaseViewModel
     private string _activeVehicleName = "No Vehicle";
 
     [ObservableProperty]
-    private string _selectedUnit = "Imperial";
+    private string _selectedUnit = "Metric";
 
     [ObservableProperty]
     private string _appVersion = "1.0.0";

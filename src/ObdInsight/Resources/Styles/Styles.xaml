@@ -21,7 +21,7 @@
     <x:Double x:Key="AppFontSizeCaption">12</x:Double>
     <x:Double x:Key="AppFontSizeBody">14</x:Double>
     <x:Double x:Key="AppFontSizeTitle">20</x:Double>
-    <x:Double x:Key="AppFontSizeHero">38</x:Double>
+    <x:Double x:Key="AppFontSizeHero">28</x:Double>
 
     <!--  Gradient Brushes for Hero Section  -->
     <LinearGradientBrush x:Key="AppHeroGradientBrush" StartPoint="0,0" EndPoint="0,1">
@@ -493,9 +493,8 @@
 
     <!--  Reusable surface/card styles for mockup-like widgets  -->
     <Style x:Key="AppCard" TargetType="Border">
-        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource AppCardStrokeLight}, Dark={StaticResource AppCardStrokeDark}}" />
-        <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource AppCardBackgroundLight}, Dark={StaticResource AppCardBackgroundDark}}" />
+        <Setter Property="StrokeThickness" Value="0" />
+        <Setter Property="BackgroundColor" Value="#E00A212C" />
         <Setter Property="Padding" Value="{StaticResource AppSpacingMd}" />
         <Setter Property="StrokeShape" Value="RoundRectangle" />
     </Style>

@@ -1,191 +1,390 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:vm="clr-namespace:ObdInsight.ViewModels"
-             x:Class="ObdInsight.Pages.CarProfilePage"
-             x:DataType="vm:CarProfileViewModel"
-             Title="{Binding Title}">
+<ContentPage
+    x:Class="ObdInsight.Pages.CarProfilePage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:ObdInsight.ViewModels"
+    Title="{Binding Title}"
+    x:DataType="vm:CarProfileViewModel">
 
-    <Grid RowDefinitions="Auto,*,Auto" Padding="0">
+    <Grid Padding="0" RowDefinitions="Auto,*,Auto">
 
-        <!-- Header with Edit Button -->
-        <Grid Grid.Row="0" Padding="20,20,20,10" ColumnDefinitions="*,Auto"
-              BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceLight}, Dark={StaticResource AppSurfaceDark}}">
-            <Label Text="Car Profile" FontSize="28" FontAttributes="Bold" VerticalOptions="Center" />
-            <Button Grid.Column="1" Text="Edit" Command="{Binding EditVehicleCommand}"
-                    Padding="15,8" FontSize="14" VerticalOptions="Center" />
+        <!--  Header with Edit Button  -->
+        <Grid
+            Grid.Row="0"
+            Padding="20,20,20,10"
+            ColumnDefinitions="*,Auto">
+            <Label
+                FontAttributes="Bold"
+                FontSize="28"
+                Text="Car Profile"
+                VerticalOptions="Center" />
+            <Button
+                Grid.Column="1"
+                Padding="15,8"
+                Command="{Binding EditVehicleCommand}"
+                FontSize="14"
+                Text="Edit"
+                VerticalOptions="Center" />
         </Grid>
 
-        <!-- Main Content -->
+        <!--  Main Content  -->
         <ScrollView Grid.Row="1">
             <VerticalStackLayout Padding="20" Spacing="25">
-                <Label Text="Car Profile" FontSize="18" FontAttributes="Bold" Margin="0,0,0,10" />
-                <Label Text="Select which widgets to display on the main screen." FontSize="14"
-                       TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}"
-                       Margin="0,0,0,10" />
+                <!--  Vehicle Name Input  -->
+                <VerticalStackLayout Spacing="8">
+                    <Label
+                        FontSize="14"
+                        Text="Vehicle Name"
+                        TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
+                                                    Dark={StaticResource AppTextSecondaryDark}}" />
+                    <Border
+                        Padding="12"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight},
+                                                          Dark={StaticResource AppSurfaceRaisedDark}}"
+                        Stroke="{StaticResource Gray300}"
+                        StrokeShape="RoundRectangle 8"
+                        StrokeThickness="1">
+                        <Entry
+                            FontSize="16"
+                            Placeholder="Enter a name for your vehicle"
+                            PlaceholderColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
+                                                                Dark={StaticResource AppTextSecondaryDark}}"
+                            Text="{Binding VehicleName}"
+                            TextColor="{AppThemeBinding Light={StaticResource AppTextPrimaryLight},
+                                                        Dark={StaticResource AppTextPrimaryDark}}" />
+                    </Border>
+                </VerticalStackLayout>
 
-                <!-- Main Screen Preview -->
-                <Border Stroke="{AppThemeBinding Light={StaticResource AppOutlineLight}, Dark={StaticResource AppOutlineDark}}"
-                        StrokeThickness="1" StrokeShape="RoundRectangle 16" Padding="20"
-                        BackgroundColor="{AppThemeBinding Light={StaticResource AppCardBackgroundLight}, Dark={StaticResource AppCardBackgroundDark}}">
+                <Label
+                    Margin="0,10,0,10"
+                    FontSize="14"
+                    Text="Select which widgets to display on the main screen."
+                    TextColor="#78E6D8" />
+
+                <!--  Main Screen Preview  -->
+                <Border
+                    Padding="20"
+                    BackgroundColor="#E00A212C"
+                    StrokeShape="RoundRectangle 20"
+                    StrokeThickness="0">
                     <VerticalStackLayout Spacing="15">
-                        <Label Text="Main Screen Preview" FontSize="14" FontAttributes="Bold" HorizontalTextAlignment="Center" />
-                        <Image Source="{Binding VehicleImageSource}" Aspect="AspectFit" HeightRequest="120" Margin="0,10" />
+                        <Label
+                            FontAttributes="Bold"
+                            FontSize="14"
+                            HorizontalTextAlignment="Center"
+                            Text="Main Screen Preview" />
+                        <Image
+                            Margin="0,10"
+                            Aspect="AspectFit"
+                            HeightRequest="120"
+                            Source="car.png" />
 
-                        <!-- 2x2 Grid of Stats -->
-                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
-                            <!-- Range Card -->
-                            <Border IsVisible="{Binding ShowRange}" Stroke="{StaticResource Gray300}"
-                                    StrokeThickness="1" StrokeShape="RoundRectangle 12" Padding="15"
-                                    BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight}, Dark={StaticResource AppSurfaceRaisedDark}}">
+                        <!--  2x2 Grid of Stats  -->
+                        <Grid
+                            ColumnDefinitions="*,*"
+                            ColumnSpacing="10"
+                            RowDefinitions="Auto,Auto"
+                            RowSpacing="10">
+                            <!--  Range Card  -->
+                            <Border
+                                Padding="15"
+                                BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight},
+                                                                  Dark={StaticResource AppSurfaceRaisedDark}}"
+                                IsVisible="{Binding ShowRange}"
+                                Stroke="{StaticResource Gray300}"
+                                StrokeShape="RoundRectangle 12"
+                                StrokeThickness="1">
                                 <VerticalStackLayout Spacing="5">
-                                    <Label Text="&#xf0e7;" FontFamily="FontAwesome" FontSize="20" HorizontalOptions="Start" />
-                                    <Label Text="{Binding RangeValue}" FontSize="18" FontAttributes="Bold" />
-                                    <Label Text="Range" FontSize="11"
-                                           TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}" />
+                                    <Label
+                                        FontFamily="FontAwesome"
+                                        FontSize="20"
+                                        HorizontalOptions="Start"
+                                        Text="&#xf0e7;" />
+                                    <Label
+                                        FontAttributes="Bold"
+                                        FontSize="18"
+                                        Text="{Binding RangeValue}" />
+                                    <Label
+                                        FontSize="11"
+                                        Text="Range"
+                                        TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
+                                                                    Dark={StaticResource AppTextSecondaryDark}}" />
                                 </VerticalStackLayout>
                             </Border>
 
-                            <!-- Battery Card -->
-                            <Border Grid.Column="1" IsVisible="{Binding ShowBattery}" Stroke="{StaticResource Gray300}"
-                                    StrokeThickness="1" StrokeShape="RoundRectangle 12" Padding="15"
-                                    BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight}, Dark={StaticResource AppSurfaceRaisedDark}}">
+                            <!--  Battery Card  -->
+                            <Border
+                                Grid.Column="1"
+                                Padding="15"
+                                BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight},
+                                                                  Dark={StaticResource AppSurfaceRaisedDark}}"
+                                IsVisible="{Binding ShowBattery}"
+                                Stroke="{StaticResource Gray300}"
+                                StrokeShape="RoundRectangle 12"
+                                StrokeThickness="1">
                                 <VerticalStackLayout Spacing="5">
-                                    <Label Text="&#xf240;" FontFamily="FontAwesome" FontSize="20" HorizontalOptions="Start" />
-                                    <Label Text="{Binding BatteryValue}" FontSize="18" FontAttributes="Bold" />
-                                    <Label Text="Battery" FontSize="11"
-                                           TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}" />
+                                    <Label
+                                        FontFamily="FontAwesome"
+                                        FontSize="20"
+                                        HorizontalOptions="Start"
+                                        Text="&#xf240;" />
+                                    <Label
+                                        FontAttributes="Bold"
+                                        FontSize="18"
+                                        Text="{Binding BatteryValue}" />
+                                    <Label
+                                        FontSize="11"
+                                        Text="Battery"
+                                        TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
+                                                                    Dark={StaticResource AppTextSecondaryDark}}" />
                                 </VerticalStackLayout>
                             </Border>
 
-                            <!-- Efficiency Card -->
-                            <Border Grid.Row="1" IsVisible="{Binding ShowEfficiency}" Stroke="{StaticResource Gray300}"
-                                    StrokeThickness="1" StrokeShape="RoundRectangle 12" Padding="15"
-                                    BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight}, Dark={StaticResource AppSurfaceRaisedDark}}">
+                            <!--  Efficiency Card  -->
+                            <Border
+                                Grid.Row="1"
+                                Padding="15"
+                                BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight},
+                                                                  Dark={StaticResource AppSurfaceRaisedDark}}"
+                                IsVisible="{Binding ShowEfficiency}"
+                                Stroke="{StaticResource Gray300}"
+                                StrokeShape="RoundRectangle 12"
+                                StrokeThickness="1">
                                 <VerticalStackLayout Spacing="5">
-                                    <Label Text="&#xf201;" FontFamily="FontAwesome" FontSize="20" HorizontalOptions="Start" />
-                                    <Label Text="{Binding EfficiencyValue}" FontSize="18" FontAttributes="Bold" />
-                                    <Label Text="Efficiency" FontSize="11"
-                                           TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}" />
+                                    <Label
+                                        FontFamily="FontAwesome"
+                                        FontSize="20"
+                                        HorizontalOptions="Start"
+                                        Text="&#xf201;" />
+                                    <Label
+                                        FontAttributes="Bold"
+                                        FontSize="18"
+                                        Text="{Binding EfficiencyValue}" />
+                                    <Label
+                                        FontSize="11"
+                                        Text="Efficiency"
+                                        TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
+                                                                    Dark={StaticResource AppTextSecondaryDark}}" />
                                 </VerticalStackLayout>
                             </Border>
 
-                            <!-- Charging Card -->
-                            <Border Grid.Row="1" Grid.Column="1" IsVisible="{Binding ShowCharging}" Stroke="{StaticResource Gray300}"
-                                    StrokeThickness="1" StrokeShape="RoundRectangle 12" Padding="15"
-                                    BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight}, Dark={StaticResource AppSurfaceRaisedDark}}">
+                            <!--  Charging Card  -->
+                            <Border
+                                Grid.Row="1"
+                                Grid.Column="1"
+                                Padding="15"
+                                BackgroundColor="{AppThemeBinding Light={StaticResource AppSurfaceRaisedLight},
+                                                                  Dark={StaticResource AppSurfaceRaisedDark}}"
+                                IsVisible="{Binding ShowCharging}"
+                                Stroke="{StaticResource Gray300}"
+                                StrokeShape="RoundRectangle 12"
+                                StrokeThickness="1">
                                 <VerticalStackLayout Spacing="5">
-                                    <Label Text="&#xf1e6;" FontFamily="FontAwesome" FontSize="20" HorizontalOptions="Start" />
-                                    <Label Text="{Binding ChargingValue}" FontSize="18" FontAttributes="Bold" />
-                                    <Label Text="Charging" FontSize="11"
-                                           TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}" />
+                                    <Label
+                                        FontFamily="FontAwesome"
+                                        FontSize="20"
+                                        HorizontalOptions="Start"
+                                        Text="&#xf1e6;" />
+                                    <Label
+                                        FontAttributes="Bold"
+                                        FontSize="18"
+                                        Text="{Binding ChargingValue}" />
+                                    <Label
+                                        FontSize="11"
+                                        Text="Charging"
+                                        TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
+                                                                    Dark={StaticResource AppTextSecondaryDark}}" />
                                 </VerticalStackLayout>
                             </Border>
                         </Grid>
                     </VerticalStackLayout>
                 </Border>
 
-                <!-- Widget Toggles List -->
+                <!--  Widget Toggles List  -->
                 <VerticalStackLayout Spacing="15">
-                    <!-- Range Toggle -->
+                    <!--  Range Toggle  -->
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
-                        <Label Text="&#xf0e7;" FontFamily="FontAwesome" FontSize="28"
-                               TextColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}"
-                               VerticalOptions="Center" />
+                        <Label
+                            FontFamily="FontAwesome"
+                            FontSize="28"
+                            Text="&#xf0e7;"
+                            TextColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                        Dark={StaticResource AppAccentDark}}"
+                            VerticalOptions="Center" />
                         <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                            <Label Text="Range" FontSize="16" FontAttributes="Bold" />
-                            <Label Text="Battery remaining" FontSize="12"
-                                   TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}" />
+                            <Label
+                                FontAttributes="Bold"
+                                FontSize="16"
+                                Text="Range" />
+                            <Label
+                                FontSize="12"
+                                Text="Battery remaining"
+                                TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
+                                                            Dark={StaticResource AppTextSecondaryDark}}" />
                         </VerticalStackLayout>
-                        <Switch Grid.Column="2" IsToggled="{Binding ShowRange}"
-                                OnColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}" />
+                        <Switch
+                            Grid.Column="2"
+                            IsToggled="{Binding ShowRange}"
+                            OnColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                      Dark={StaticResource AppAccentDark}}" />
                     </Grid>
 
                     <BoxView HeightRequest="1" Color="{AppThemeBinding Light={StaticResource AppOutlineLight}, Dark={StaticResource AppOutlineDark}}" />
 
-                    <!-- Battery Toggle -->
+                    <!--  Battery Toggle  -->
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
-                        <Label Text="&#xf240;" FontFamily="FontAwesome" FontSize="28"
-                               TextColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}"
-                               VerticalOptions="Center" />
+                        <Label
+                            FontFamily="FontAwesome"
+                            FontSize="28"
+                            Text="&#xf240;"
+                            TextColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                        Dark={StaticResource AppAccentDark}}"
+                            VerticalOptions="Center" />
                         <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                            <Label Text="Battery" FontSize="16" FontAttributes="Bold" />
-                            <Label Text="Current battery level" FontSize="12"
-                                   TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}" />
+                            <Label
+                                FontAttributes="Bold"
+                                FontSize="16"
+                                Text="Battery" />
+                            <Label
+                                FontSize="12"
+                                Text="Current battery level"
+                                TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
+                                                            Dark={StaticResource AppTextSecondaryDark}}" />
                         </VerticalStackLayout>
-                        <Switch Grid.Column="2" IsToggled="{Binding ShowBattery}"
-                                OnColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}" />
+                        <Switch
+                            Grid.Column="2"
+                            IsToggled="{Binding ShowBattery}"
+                            OnColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                      Dark={StaticResource AppAccentDark}}" />
                     </Grid>
 
                     <BoxView HeightRequest="1" Color="{AppThemeBinding Light={StaticResource AppOutlineLight}, Dark={StaticResource AppOutlineDark}}" />
 
-                    <!-- Efficiency Toggle -->
+                    <!--  Efficiency Toggle  -->
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
-                        <Label Text="&#xf201;" FontFamily="FontAwesome" FontSize="28"
-                               TextColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}"
-                               VerticalOptions="Center" />
+                        <Label
+                            FontFamily="FontAwesome"
+                            FontSize="28"
+                            Text="&#xf201;"
+                            TextColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                        Dark={StaticResource AppAccentDark}}"
+                            VerticalOptions="Center" />
                         <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                            <Label Text="Efficiency" FontSize="16" FontAttributes="Bold" />
-                            <Label Text="Miles per kWh/100 km" FontSize="12"
-                                   TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}" />
+                            <Label
+                                FontAttributes="Bold"
+                                FontSize="16"
+                                Text="Efficiency" />
+                            <Label
+                                FontSize="12"
+                                Text="Miles per kWh/100 km"
+                                TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
+                                                            Dark={StaticResource AppTextSecondaryDark}}" />
                         </VerticalStackLayout>
-                        <Switch Grid.Column="2" IsToggled="{Binding ShowEfficiency}"
-                                OnColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}" />
+                        <Switch
+                            Grid.Column="2"
+                            IsToggled="{Binding ShowEfficiency}"
+                            OnColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                      Dark={StaticResource AppAccentDark}}" />
                     </Grid>
 
                     <BoxView HeightRequest="1" Color="{AppThemeBinding Light={StaticResource AppOutlineLight}, Dark={StaticResource AppOutlineDark}}" />
 
-                    <!-- Charging Toggle -->
+                    <!--  Charging Toggle  -->
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
-                        <Label Text="&#xf1e6;" FontFamily="FontAwesome" FontSize="28"
-                               TextColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}"
-                               VerticalOptions="Center" />
+                        <Label
+                            FontFamily="FontAwesome"
+                            FontSize="28"
+                            Text="&#xf1e6;"
+                            TextColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                        Dark={StaticResource AppAccentDark}}"
+                            VerticalOptions="Center" />
                         <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                            <Label Text="Charging" FontSize="16" FontAttributes="Bold" />
-                            <Label Text="Charging power &amp; time left" FontSize="12"
-                                   TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}" />
+                            <Label
+                                FontAttributes="Bold"
+                                FontSize="16"
+                                Text="Charging" />
+                            <Label
+                                FontSize="12"
+                                Text="Charging power &amp; time left"
+                                TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
+                                                            Dark={StaticResource AppTextSecondaryDark}}" />
                         </VerticalStackLayout>
-                        <Switch Grid.Column="2" IsToggled="{Binding ShowCharging}"
-                                OnColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}" />
+                        <Switch
+                            Grid.Column="2"
+                            IsToggled="{Binding ShowCharging}"
+                            OnColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                      Dark={StaticResource AppAccentDark}}" />
                     </Grid>
 
                     <BoxView HeightRequest="1" Color="{AppThemeBinding Light={StaticResource AppOutlineLight}, Dark={StaticResource AppOutlineDark}}" />
 
-                    <!-- Tire Pressure Toggle -->
+                    <!--  Tire Pressure Toggle  -->
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
-                        <Label Text="&#xf1de;" FontFamily="FontAwesome" FontSize="28"
-                               TextColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}"
-                               VerticalOptions="Center" />
+                        <Label
+                            FontFamily="FontAwesome"
+                            FontSize="28"
+                            Text="&#xf1de;"
+                            TextColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                        Dark={StaticResource AppAccentDark}}"
+                            VerticalOptions="Center" />
                         <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                            <Label Text="Tire Pressure" FontSize="16" FontAttributes="Bold" />
-                            <Label Text="Pressure level of all tires" FontSize="12"
-                                   TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}" />
+                            <Label
+                                FontAttributes="Bold"
+                                FontSize="16"
+                                Text="Tire Pressure" />
+                            <Label
+                                FontSize="12"
+                                Text="Pressure level of all tires"
+                                TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
+                                                            Dark={StaticResource AppTextSecondaryDark}}" />
                         </VerticalStackLayout>
-                        <Switch Grid.Column="2" IsToggled="{Binding ShowTirePressure}"
-                                OnColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}" />
+                        <Switch
+                            Grid.Column="2"
+                            IsToggled="{Binding ShowTirePressure}"
+                            OnColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                      Dark={StaticResource AppAccentDark}}" />
                     </Grid>
 
                     <BoxView HeightRequest="1" Color="{AppThemeBinding Light={StaticResource AppOutlineLight}, Dark={StaticResource AppOutlineDark}}" />
 
-                    <!-- Motor Power Toggle -->
+                    <!--  Motor Power Toggle  -->
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
-                        <Label Text="&#xf0c8;" FontFamily="FontAwesome" FontSize="28"
-                               TextColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}"
-                               VerticalOptions="Center" />
+                        <Label
+                            FontFamily="FontAwesome"
+                            FontSize="28"
+                            Text="&#xf013;"
+                            TextColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                        Dark={StaticResource AppAccentDark}}"
+                            VerticalOptions="Center" />
                         <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                            <Label Text="Motor Power" FontSize="16" FontAttributes="Bold" />
-                            <Label Text="Motor power in real-time" FontSize="12"
-                                   TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight}, Dark={StaticResource AppTextSecondaryDark}}" />
+                            <Label
+                                FontAttributes="Bold"
+                                FontSize="16"
+                                Text="Motor Power" />
+                            <Label
+                                FontSize="12"
+                                Text="Motor power in real-time"
+                                TextColor="{AppThemeBinding Light={StaticResource AppTextSecondaryLight},
+                                                            Dark={StaticResource AppTextSecondaryDark}}" />
                         </VerticalStackLayout>
-                        <Switch Grid.Column="2" IsToggled="{Binding ShowMotorPower}"
-                                OnColor="{AppThemeBinding Light={StaticResource AppAccentLight}, Dark={StaticResource AppAccentDark}}" />
+                        <Switch
+                            Grid.Column="2"
+                            IsToggled="{Binding ShowMotorPower}"
+                            OnColor="{AppThemeBinding Light={StaticResource AppAccentLight},
+                                                      Dark={StaticResource AppAccentDark}}" />
                     </Grid>
                 </VerticalStackLayout>
             </VerticalStackLayout>
         </ScrollView>
 
-        <!-- Footer: Save Button -->
-        <Button Grid.Row="2" Text="Save Profile" Command="{Binding SaveProfileCommand}"
-                Margin="20" HeightRequest="50" FontAttributes="Bold" />
+        <!--  Footer: Save Button  -->
+        <Button
+            Grid.Row="2"
+            Margin="20"
+            Command="{Binding SaveProfileCommand}"
+            FontAttributes="Bold"
+            HeightRequest="50"
+            Text="Save Profile" />
     </Grid>
 </ContentPage>
