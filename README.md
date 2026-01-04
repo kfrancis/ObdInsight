@@ -7,7 +7,26 @@ A modern, open-source OBD-II diagnostic application for Android and iOS built wi
 
 ObdInsight addresses the poor user experience of existing OBD apps by providing a clean, responsive interface backed by a robust, testable architecture. The pluggable driver system makes it easy to add support for new Bluetooth and WiFi OBD dongles without modifying the core application.
 
+## UI Mockups
+
+The following are design mockups showcasing the planned user interface:
+
+<div align="center">
 <img width="429" height="600" alt="image" src="https://github.com/user-attachments/assets/6430509e-c86c-4eb9-b693-1eacadb1fc73" />
+<p><em>Main Page - View widgets</em></p>
+</div>
+
+<div align="center">
+  <img src="carProfile_mockup.png" alt="Car Profile Page Mockup" width="400"/>
+  <p><em>Car Profile Page - View and manage vehicle information</em></p>
+</div>
+
+<div align="center">
+  <img src="devicePage_mockup.png" alt="Devices Page Mockup" width="400"/>
+  <p><em>Devices Page - Connect to OBD-II adapters</em></p>
+</div>
+
+> **Note**: These are mockup images representing the planned UI design and may not reflect the current implementation.
 
 ## Table of Contents
 

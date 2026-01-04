@@ -2,6 +2,8 @@
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
     <File Path=".gitignore" />
+    <File Path="carProfile_mockup.png" />
+    <File Path="devicePage_mockup.png" />
     <File Path="EV-CAN_signal_glossary.csv" />
     <File Path="EV-CAN_signal_glossary.json" />
     <File Path="EV-CAN_signal_glossary.md" />
