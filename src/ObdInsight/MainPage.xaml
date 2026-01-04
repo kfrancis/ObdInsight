@@ -78,8 +78,13 @@
                     RowDefinitions="Auto,Auto"
                     RowSpacing="{StaticResource AppSpacingMd}">
 
-                    <!--  Range Widget (new)  -->
-                    <controls:RangeWidget AutoHideWhenUnavailable="False" DataStore="{Binding VehicleDataStore}" />
+                    <controls:NumberWidget
+                        Title="Range"
+                        Format="F0"
+                        Icon="&#xf4d7;"
+                        ShowIcon="True"
+                        Unit="km"
+                        Value="{Binding VehicleDataStore.RangeRemaining}" />
 
                     <!--  Battery Widget (new)  -->
                     <controls:BatteryWidget
@@ -92,6 +97,9 @@
                         Grid.Row="1"
                         AutoHideWhenUnavailable="False"
                         DataStore="{Binding VehicleDataStore}" />
+
+                    <!--  Example: NumberWidget showing Range using direct binding  -->
+
 
                 </Grid>
             </VerticalStackLayout>

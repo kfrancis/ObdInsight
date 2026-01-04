@@ -848,7 +848,7 @@ public static class NissanLeafCommands
     /// <summary>
     /// Parse VIN from charger response.
     /// From 2017 Leaf: 79A10156181314E3442\r79A215A304350334843\r79A2233313034303800
-    /// Decoded: 61 81 31 4E 34 42 5A 30 43 50 33 48 43 33 31 30 34 30 38 00
+    /// Decoded: 61 81 31 4E 344 2 5A 30 43 50 33 48 43 33 31 30 34 30 38 00
     ///        = "1N4BZ0CP3HC310408" (example)
     /// </summary>
     private static void TryParseVin(string response)
@@ -1912,7 +1912,7 @@ public static class NissanLeafCommands
     private static void Display1DC(byte dischargeLimitRaw, byte regenLimitRaw, byte chargeLimitRaw)
     {
         AnsiConsole.MarkupLine(
-            $"[silver]1DC[/] PowerLimits  Dischg:[yellow]{dischargeLimitRaw:X2}[/]  Regen:[aqua]{regenLimitRaw:X2}[/]  Charge:[green]{chargeLimitRaw:X2}[/]");
+            $"[grey]1DC[/] PowerLimits  Dischg:[yellow]{dischargeLimitRaw:X2}[/]  Regen:[cyan]{regenLimitRaw:X2}[/]  Charge:[green]{chargeLimitRaw:X2}[/]");
     }
 
     /// <summary>
@@ -1944,7 +1944,7 @@ public static class NissanLeafCommands
         var gidsText = gids >= 0 ? gids.ToString() : "n/a";
         var kwhText = double.IsNaN(kwh) ? "n/a" : $"{kwh:F2} kWh";
         AnsiConsole.MarkupLine(
-            $"[silver]5BC[/] GIDs:[yellow]{gidsText}[/]  Energy:[aqua]{kwhText}[/]  SOH:[green]{sohPct:F2}%[/]  Hx:[green]{hxPct:F2}%[/]");
+            $"[grey]5BC[/] GIDs:[yellow]{gidsText}[/]  Energy:[cyan]{kwhText}[/]  SOH:[green]{sohPct:F2}%[/]  Hx:[green]{hxPct:F2}%[/]");
     }
 
     /// <summary>
@@ -1973,11 +1973,6 @@ public static class NissanLeafCommands
     private static void Display55B(double socPct, int socRaw10Bits, ushort b0b1, ushort b2b3, ushort b6b7)
     {
         AnsiConsole.MarkupLine(
-            $"[silver]55B[/] SoC:[yellow]{socPct:F1}%[/] (raw10={socRaw10Bits})  raw16(b0b1)=[aqua]{b0b1:X4}[/]  raw16(b2b3)=[aqua]{b2b3:X4}[/]  raw16(b6b7)=[aqua]{b6b7:X4}[/]");
+            $"[grey]55B[/] SoC:[yellow]{socPct:F1}%[/] (raw10={socRaw10Bits})  raw16(b0b1)=[cyan]{b0b1:X4}[/]  raw16(b2b3)=[cyan]{b2b3:X4}[/]  raw16(b6b7)=[cyan]{b6b7:X4}[/]");
     }
-
-    /// <summary>
-    /// Simple CAN frame structure.
-    /// </summary>
-    private record CanFrame(int Id, byte[] Data);
 }

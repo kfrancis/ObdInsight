@@ -86,6 +86,7 @@ internal class Program
                 choices.Add("Vehicle detection mode");
                 choices.Add("Nissan Leaf diagnostics (OVMS-style)");
                 choices.Add("Nissan Leaf interactive");
+                choices.Add("Nissan Leaf battery health assessment");
                 choices.Add("Test binary protocol (Service 6287)");
             }
 
@@ -191,6 +192,10 @@ internal class Program
 
                     case "Nissan Leaf interactive":
                         await NissanLeafCommands.RunInteractiveAsync(session);
+                        break;
+
+                    case "Nissan Leaf battery health assessment":
+                        await LeafBatteryHealthCommand.RunAsync(session);
                         break;
 
                     case "Test binary protocol (Service 6287)":
