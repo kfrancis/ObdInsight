@@ -89,7 +89,7 @@ public sealed class AdapterAutoConnectService
 
             return true;
         }
-        catch
+        catch (Exception ex) when (ex is OperationCanceledException || ex is TimeoutException)
         {
             await CleanupTransportAsync(transport);
             throw;

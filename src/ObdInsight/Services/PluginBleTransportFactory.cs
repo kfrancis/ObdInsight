@@ -6,7 +6,8 @@ using Plugin.BLE.Abstractions.EventArgs;
 namespace ObdInsight.Services;
 
 /// <summary>
-///
+/// BLE transport factory that creates platform-appropriate transports.
+/// Uses native WinRT on Windows (more reliable), Plugin.BLE on other platforms.
 /// </summary>
 public sealed class PluginBleTransportFactory : IBleTransportFactory
 {
@@ -32,7 +33,12 @@ public sealed class PluginBleTransportFactory : IBleTransportFactory
     /// <inheritdoc/>
     public IBleTransport CreateTransport(BleDeviceProfile profile)
     {
+#if WINDOWS
+        // Use native WinRT transport on Windows - much more reliable than Plugin.BLE
+        return new WindowsNativeBleTransport(profile);
+#else
         return new PluginBleTransport(_adapter, profile);
+#endif
     }
 
     /// <inheritdoc/>

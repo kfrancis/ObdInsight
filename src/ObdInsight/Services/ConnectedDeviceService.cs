@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Messaging;
 using ObdInsight.Core.Transports.Ble;
 
 namespace ObdInsight.Services;
@@ -7,7 +8,7 @@ namespace ObdInsight.Services;
 /// </summary>
 public sealed class ConnectedDeviceService : IConnectedDeviceService, IDisposable
 {
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private IBleTransport? _transport;
     private bool _disposed;
 

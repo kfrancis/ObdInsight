@@ -2,6 +2,7 @@ using ObdInsight.Core.Transports.Ble;
 using Plugin.BLE.Abstractions;
 using Plugin.BLE.Abstractions.Contracts;
 using Plugin.BLE.Abstractions.EventArgs;
+using System.Diagnostics;
 using System.Text;
 
 namespace ObdInsight.Services;
@@ -21,6 +22,22 @@ public partial class PluginBleTransport : IBleTransport, IAsyncDisposable
     private ICharacteristic? _notifyCharacteristic;
     private IService? _service;
     private ICharacteristic? _writeCharacteristic;
+
+    /// <summary>
+    /// Number of retry attempts for service/characteristic discovery.
+    /// </summary>
+    private const int MaxDiscoveryRetries = 5;
+
+    /// <summary>
+    /// Delay between discovery retry attempts.
+    /// </summary>
+    private static readonly TimeSpan DiscoveryRetryDelay = TimeSpan.FromMilliseconds(800);
+
+    /// <summary>
+    /// Delay after initial connection before service discovery.
+    /// Windows BLE needs time to stabilize after connect.
+    /// </summary>
+    private static readonly TimeSpan PostConnectDelay = TimeSpan.FromMilliseconds(1000);
 
     public PluginBleTransport(IAdapter adapter, BleDeviceProfile profile)
     {
@@ -68,70 +85,263 @@ public partial class PluginBleTransport : IBleTransport, IAsyncDisposable
     /// <inheritdoc/>
     public async Task<bool> ConnectAsync(string deviceAddress, CancellationToken cancellationToken = default)
     {
+        var sw = Stopwatch.StartNew();
+        Log($"ConnectAsync started for {deviceAddress}");
+
         try
         {
             ConnectionStateChanged?.Invoke(this, BleConnectionState.Connecting);
 
-            // Parse device ID
+            // Parse device ID and connect
             if (!Guid.TryParse(deviceAddress, out var deviceId))
             {
-                // Try to find device by scanning briefly
+                Log($"Address is not a GUID, will scan for device");
                 _device = await FindDeviceByAddressAsync(deviceAddress, cancellationToken);
             }
             else
             {
-                // Connect using known device ID
-                _device = await _adapter.ConnectToKnownDeviceAsync(deviceId,
-                    cancellationToken: cancellationToken);
+                Log($"Connecting to known device ID: {deviceId}");
+                try
+                {
+                    _device = await _adapter.ConnectToKnownDeviceAsync(deviceId,
+                        cancellationToken: cancellationToken);
+                    Log($"ConnectToKnownDeviceAsync completed, device={_device?.Name ?? "null"}");
+                }
+                catch (Exception ex)
+                {
+                    Log($"ConnectToKnownDeviceAsync failed: {ex.GetType().Name}: {ex.Message}");
+                    throw;
+                }
             }
 
             if (_device is null)
             {
+                Log("Device is null after connection attempt");
                 ConnectionStateChanged?.Invoke(this, BleConnectionState.Disconnected);
                 return false;
             }
 
-            // Subscribe to connection state changes
+            Log($"Connected to device: {_device.Name}, State: {_device.State}");
+
+            // Set high connection interval for better throughput
             _device.UpdateConnectionInterval(ConnectionInterval.High);
 
-            // Get the OBD service
-            _service = await _device.GetServiceAsync(_profile.ServiceUuid, cancellationToken);
+            // Wait for Windows BLE to stabilize after connection
+            Log($"Waiting {PostConnectDelay.TotalMilliseconds}ms for connection to stabilize...");
+            await Task.Delay(PostConnectDelay, cancellationToken);
+
+            // Get the OBD service with retry logic
+            Log($"Looking for service: {_profile.ServiceUuid}");
+            _service = await GetServiceWithRetryAsync(_profile.ServiceUuid, cancellationToken);
             if (_service is null)
             {
+                Log("Service not found after retries");
                 await DisconnectAsync();
                 return false;
             }
 
-            // Get characteristics
-            _writeCharacteristic = await _service.GetCharacteristicAsync(_profile.WriteCharacteristicUuid, cancellationToken);
-            _notifyCharacteristic = await _service.GetCharacteristicAsync(_profile.NotifyCharacteristicUuid, cancellationToken);
+            Log($"Service found: {_service.Id}");
 
-            if (_writeCharacteristic is null || _notifyCharacteristic is null)
+            // Get characteristics with retry logic
+            Log($"Looking for write characteristic: {_profile.WriteCharacteristicUuid}");
+            _writeCharacteristic = await GetCharacteristicWithRetryAsync(_service, _profile.WriteCharacteristicUuid, cancellationToken);
+
+            Log($"Looking for notify characteristic: {_profile.NotifyCharacteristicUuid}");
+            _notifyCharacteristic = await GetCharacteristicWithRetryAsync(_service, _profile.NotifyCharacteristicUuid, cancellationToken);
+
+            if (_writeCharacteristic is null)
             {
+                Log("Write characteristic not found");
                 await DisconnectAsync();
                 return false;
             }
 
-            // Subscribe to notifications
+            if (_notifyCharacteristic is null)
+            {
+                Log("Notify characteristic not found");
+                await DisconnectAsync();
+                return false;
+            }
+
+            Log($"Write characteristic: {_writeCharacteristic.Id}, Props: {_writeCharacteristic.Properties}");
+            Log($"Notify characteristic: {_notifyCharacteristic.Id}, Props: {_notifyCharacteristic.Properties}");
+
+            // Subscribe to notifications with retry
             if (_notifyCharacteristic.CanUpdate)
             {
                 _notifyCharacteristic.ValueUpdated += OnCharacteristicValueUpdated;
-                await _notifyCharacteristic.StartUpdatesAsync(cancellationToken);
+
+                for (int attempt = 0; attempt < MaxDiscoveryRetries; attempt++)
+                {
+                    try
+                    {
+                        Log($"Starting notifications (attempt {attempt + 1})...");
+                        await _notifyCharacteristic.StartUpdatesAsync(cancellationToken);
+                        Log("Notifications started successfully");
+                        break;
+                    }
+                    catch (Exception ex) when (attempt < MaxDiscoveryRetries - 1)
+                    {
+                        Log($"StartUpdatesAsync attempt {attempt + 1} failed: {ex.Message}");
+                        await Task.Delay(DiscoveryRetryDelay, cancellationToken);
+                    }
+                }
             }
+            else
+            {
+                Log("Warning: Notify characteristic does not support updates");
+            }
+
+            sw.Stop();
+            Log($"Connection completed successfully in {sw.ElapsedMilliseconds}ms");
 
             ConnectionStateChanged?.Invoke(this, BleConnectionState.Connected);
             return true;
         }
-        catch (Exception)
+        catch (OperationCanceledException)
         {
+            sw.Stop();
+            Log($"Connection cancelled after {sw.ElapsedMilliseconds}ms");
+            ConnectionStateChanged?.Invoke(this, BleConnectionState.Disconnected);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            Log($"Connection failed after {sw.ElapsedMilliseconds}ms: {ex.GetType().Name}: {ex.Message}");
             ConnectionStateChanged?.Invoke(this, BleConnectionState.Disconnected);
             throw;
         }
     }
 
+    /// <summary>
+    /// Gets a service with retry logic to handle Windows BLE transient failures.
+    /// </summary>
+    private async Task<IService?> GetServiceWithRetryAsync(Guid serviceUuid, CancellationToken ct)
+    {
+        if (_device is null) return null;
+
+        for (int attempt = 0; attempt < MaxDiscoveryRetries; attempt++)
+        {
+            try
+            {
+                Log($"GetServiceAsync attempt {attempt + 1}...");
+                var service = await _device.GetServiceAsync(serviceUuid, ct);
+                if (service is not null)
+                {
+                    Log($"Service found on attempt {attempt + 1}");
+                    return service;
+                }
+                Log($"GetServiceAsync returned null on attempt {attempt + 1}");
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                Log($"GetServiceAsync attempt {attempt + 1}: Plugin.BLE internal timeout");
+            }
+            catch (Exception ex) when (attempt < MaxDiscoveryRetries - 1)
+            {
+                Log($"GetServiceAsync attempt {attempt + 1} failed: {ex.GetType().Name}: {ex.Message}");
+            }
+
+            if (attempt < MaxDiscoveryRetries - 1)
+            {
+                Log($"Waiting {DiscoveryRetryDelay.TotalMilliseconds}ms before retry...");
+                await Task.Delay(DiscoveryRetryDelay, ct);
+            }
+        }
+
+        // Try listing all services to help debug
+        try
+        {
+            Log("Listing all services for debugging...");
+            var allServices = await _device.GetServicesAsync(ct);
+            if (allServices?.Count > 0)
+            {
+                foreach (var s in allServices)
+                {
+                    Log($"  Available service: {s.Id}");
+                }
+            }
+            else
+            {
+                Log("  No services found");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"Failed to list services: {ex.Message}");
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets a characteristic with retry logic to handle Windows BLE transient failures.
+    /// </summary>
+    private async Task<ICharacteristic?> GetCharacteristicWithRetryAsync(IService service, Guid charUuid, CancellationToken ct)
+    {
+        for (int attempt = 0; attempt < MaxDiscoveryRetries; attempt++)
+        {
+            try
+            {
+                Log($"GetCharacteristicAsync attempt {attempt + 1} for {charUuid}...");
+                var characteristic = await service.GetCharacteristicAsync(charUuid, ct);
+                if (characteristic is not null)
+                {
+                    Log($"Characteristic found on attempt {attempt + 1}");
+                    return characteristic;
+                }
+                Log($"GetCharacteristicAsync returned null on attempt {attempt + 1}");
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                Log($"GetCharacteristicAsync attempt {attempt + 1}: Plugin.BLE internal timeout");
+            }
+            catch (Exception ex) when (attempt < MaxDiscoveryRetries - 1)
+            {
+                Log($"GetCharacteristicAsync attempt {attempt + 1} failed: {ex.GetType().Name}: {ex.Message}");
+            }
+
+            if (attempt < MaxDiscoveryRetries - 1)
+            {
+                await Task.Delay(DiscoveryRetryDelay, ct);
+            }
+        }
+
+        // Try listing all characteristics to help debug
+        try
+        {
+            Log("Listing all characteristics for debugging...");
+            var allChars = await service.GetCharacteristicsAsync(ct);
+            if (allChars?.Count > 0)
+            {
+                foreach (var c in allChars)
+                {
+                    Log($"  Available characteristic: {c.Id}, Props: {c.Properties}");
+                }
+            }
+            else
+            {
+                Log("  No characteristics found");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"Failed to list characteristics: {ex.Message}");
+        }
+
+        return null;
+    }
+
+    private static void Log(string message)
+    {
+        Debug.WriteLine($"[PluginBLE] {message}");
+    }
+
     /// <inheritdoc/>
     public async Task DisconnectAsync()
     {
+        Log("DisconnectAsync called");
         ConnectionStateChanged?.Invoke(this, BleConnectionState.Disconnecting);
 
         if (_notifyCharacteristic is not null)
@@ -164,6 +374,7 @@ public partial class PluginBleTransport : IBleTransport, IAsyncDisposable
         _notifyCharacteristic = null;
         _device = null;
 
+        Log("DisconnectAsync completed");
         ConnectionStateChanged?.Invoke(this, BleConnectionState.Disconnected);
     }
 
@@ -172,8 +383,6 @@ public partial class PluginBleTransport : IBleTransport, IAsyncDisposable
         if (_disposed) return;
         _disposed = true;
 
-        // For sync Dispose, we do best-effort cleanup without blocking.
-        // Callers should prefer DisposeAsync() for proper cleanup.
         try
         {
             if (_notifyCharacteristic is not null)
@@ -181,7 +390,6 @@ public partial class PluginBleTransport : IBleTransport, IAsyncDisposable
                 _notifyCharacteristic.ValueUpdated -= OnCharacteristicValueUpdated;
             }
 
-            // Don't attempt async operations in sync Dispose
             _service = null;
             _writeCharacteristic = null;
             _notifyCharacteristic = null;
@@ -189,7 +397,7 @@ public partial class PluginBleTransport : IBleTransport, IAsyncDisposable
         }
         catch
         {
-            // Best effort cleanup; Dispose must not throw.
+            // Best effort cleanup
         }
 
         _writeLock.Dispose();
@@ -257,20 +465,12 @@ public partial class PluginBleTransport : IBleTransport, IAsyncDisposable
         {
             var bytes = Encoding.ASCII.GetBytes(data);
 
-            // Split into chunks if needed
             var maxSize = _profile.MaxWriteSize;
             for (int i = 0; i < bytes.Length; i += maxSize)
             {
                 var chunk = bytes.Skip(i).Take(maxSize).ToArray();
 
-                if (_profile.WriteWithResponse)
-                {
-                    await _writeCharacteristic.WriteAsync(chunk, cancellationToken);
-                }
-                else
-                {
-                    await _writeCharacteristic.WriteAsync(chunk, cancellationToken);
-                }
+                await _writeCharacteristic.WriteAsync(chunk, cancellationToken);
             }
 
             DataSent?.Invoke(this, data);
@@ -283,14 +483,18 @@ public partial class PluginBleTransport : IBleTransport, IAsyncDisposable
 
     private async Task<IDevice?> FindDeviceByAddressAsync(string address, CancellationToken cancellationToken)
     {
+        Log($"FindDeviceByAddressAsync: scanning for {address}");
         IDevice? foundDevice = null;
         var tcs = new TaskCompletionSource<IDevice?>();
 
         void OnDeviceDiscovered(object? sender, DeviceEventArgs e)
         {
-            if (e.Device.Id.ToString().Equals(address, StringComparison.OrdinalIgnoreCase) ||
-                e.Device.Name?.Equals(address, StringComparison.OrdinalIgnoreCase) == true)
+            var deviceIdMatch = e.Device.Id.ToString().Equals(address, StringComparison.OrdinalIgnoreCase);
+            var nameMatch = e.Device.Name?.Equals(address, StringComparison.OrdinalIgnoreCase) == true;
+
+            if (deviceIdMatch || nameMatch)
             {
+                Log($"Found device: {e.Device.Name} ({e.Device.Id})");
                 foundDevice = e.Device;
                 tcs.TrySetResult(e.Device);
             }
@@ -300,7 +504,6 @@ public partial class PluginBleTransport : IBleTransport, IAsyncDisposable
 
         try
         {
-            // Start a brief scan
             var scanTask = _adapter.StartScanningForDevicesAsync(cancellationToken: cancellationToken);
             var timeoutTask = Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
             var completedTask = await Task.WhenAny(tcs.Task, timeoutTask);
@@ -309,7 +512,12 @@ public partial class PluginBleTransport : IBleTransport, IAsyncDisposable
 
             if (foundDevice is not null)
             {
+                Log($"Connecting to found device: {foundDevice.Name}");
                 await _adapter.ConnectToDeviceAsync(foundDevice, cancellationToken: cancellationToken);
+            }
+            else
+            {
+                Log("Device not found during scan");
             }
 
             return foundDevice;

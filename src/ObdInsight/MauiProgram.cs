@@ -1,10 +1,11 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using CommunityToolkit.Mvvm.Messaging;
+using Microsoft.Extensions.Logging;
 using ObdInsight.Core.Transports.Ble;
+using ObdInsight.Core.Vehicles;
+using ObdInsight.Drivers;
 using ObdInsight.Pages;
 using ObdInsight.Services;
 using ObdInsight.ViewModels;
-using ObdInsight.Core.Vehicles;
-using ObdInsight.Drivers;
 
 namespace ObdInsight
 {
@@ -27,6 +28,8 @@ namespace ObdInsight
             builder.Services.AddSingleton<INavigationService, ShellNavigationService>();
             builder.Services.AddSingleton<IBleTransportFactory, PluginBleTransportFactory>();
             builder.Services.AddSingleton<IConnectedDeviceService, ConnectedDeviceService>();
+            builder.Services.AddSingleton<ObdDataService>(); // Will auto-start on creation
+            builder.Services.AddSingleton<IMessenger>(WeakReferenceMessenger.Default);
             builder.Services.AddSingleton<AdapterAutoConnectService>();
             builder.Services.AddSingleton<VehicleImageResolver>();
             builder.Services.AddSingleton<VehicleSessionService>();
