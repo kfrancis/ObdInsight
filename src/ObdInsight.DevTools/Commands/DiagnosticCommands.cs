@@ -112,7 +112,7 @@ public static class DiagnosticCommands
     /// </summary>
     public static async Task RunWithVehicleDetectionAsync(DevToolsSession session)
     {
-        if (!session.IsConnected)
+        if (!session.IsConnected || session.Adapter == null)
         {
             if (!await session.ConnectAndInitializeAdapterAsync())
                 return;
@@ -121,7 +121,7 @@ public static class DiagnosticCommands
         var detector = new VehicleDetectorService();
         VehicleProfileRegistry.RegisterAllProfiles(detector);
 
-        var vehicleService = new VehicleObdService(detector: detector);
+        var vehicleService = new VehicleObdService(session.Adapter!, detector: detector);
 
         var options = new VehicleServiceOptions
         {

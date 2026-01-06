@@ -6,6 +6,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Transports;
+using ObdInsight.Drivers.Adapters.Elm327;
 
 namespace ObdInsight.ViewModels;
 
@@ -361,7 +362,6 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
                 {
                     if (transport is IObdTransport obdTransport)
                     {
-
                         // Try to wake up ECUs first
                         await SendAsync(obdTransport, "ATSH7DF", TimeSpan.FromSeconds(2));
                         await SendAsync(obdTransport, "0100", TimeSpan.FromSeconds(2));
@@ -374,8 +374,11 @@ public partial class DevicesViewModel : BaseViewModel, IDisposable
                         await SendAsync(obdTransport, "ATFCSD300000", TimeSpan.FromSeconds(2));
                         await SendAsync(obdTransport, "ATFCSM1", TimeSpan.FromSeconds(2));
 
-                        //using var detectCts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-                        var vin = await VinQuery.TryGetVinAsync(obdTransport, CancellationToken.None); // detectCts.Token);
+                        // Create an adapter to use for VIN query
+                        var adapter = new ObdInsight.Drivers.Adapters.Elm327.Elm327Adapter();
+                        await adapter.InitializeAsync(obdTransport);
+
+                        var vin = await VinQuery.TryGetVinAsync(adapter, obdTransport, CancellationToken.None);
                         var vehicleProfile = !string.IsNullOrWhiteSpace(vin)
                             ? _vehicleDetector.DetectFromVin(vin)
                             : null;

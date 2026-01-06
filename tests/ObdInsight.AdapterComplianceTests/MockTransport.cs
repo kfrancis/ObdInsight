@@ -226,6 +226,58 @@ public sealed class MockTransport : IObdTransport
     }
 
     /// <inheritdoc />
+    public async Task<byte[]> ReadBytesAsync(int count, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (!_connected)
+            throw new InvalidOperationException("Transport not connected.");
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(timeout);
+
+        var result = new List<byte>();
+
+        while (result.Count < count && !cts.Token.IsCancellationRequested)
+        {
+            string currentBuffer;
+            lock (_lock)
+            {
+                currentBuffer = _rxBuffer.ToString();
+            }
+
+            if (currentBuffer.Length > 0)
+            {
+                var bytesToRead = Math.Min(count - result.Count, currentBuffer.Length);
+                var bytes = Encoding.ASCII.GetBytes(currentBuffer[..bytesToRead]);
+                result.AddRange(bytes);
+
+                lock (_lock)
+                {
+                    _rxBuffer.Remove(0, bytesToRead);
+                }
+            }
+            else
+            {
+                await Task.Delay(10, cts.Token);
+            }
+        }
+
+        if (result.Count == 0)
+            throw new TimeoutException($"Timeout reading {count} bytes");
+
+        return [.. result];
+    }
+
+    /// <inheritdoc />
+    public Task WriteBytesAsync(byte[] data, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        var stringData = Encoding.ASCII.GetString(data);
+        return WriteAsync(stringData, cancellationToken);
+    }
+
+    /// <inheritdoc />
     public void Dispose()
     {
         _disposed = true;

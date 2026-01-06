@@ -481,6 +481,72 @@ public partial class PluginBleTransport : IBleTransport, IAsyncDisposable
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<byte[]> ReadBytesAsync(int count, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(timeout);
+
+        var result = new List<byte>();
+
+        while (result.Count < count && !cts.Token.IsCancellationRequested)
+        {
+            string currentBuffer;
+            lock (_receiveBuffer)
+            {
+                currentBuffer = _receiveBuffer.ToString();
+            }
+
+            if (currentBuffer.Length > 0)
+            {
+                var bytesToRead = Math.Min(count - result.Count, currentBuffer.Length);
+                var bytes = Encoding.ASCII.GetBytes(currentBuffer[..bytesToRead]);
+                result.AddRange(bytes);
+
+                lock (_receiveBuffer)
+                {
+                    _receiveBuffer.Remove(0, bytesToRead);
+                }
+            }
+            else
+            {
+                await Task.Delay(10, cts.Token);
+            }
+        }
+
+        if (result.Count == 0)
+            throw new TimeoutException($"Timeout reading {count} bytes");
+
+        return [.. result];
+    }
+
+    /// <inheritdoc/>
+    public async Task WriteBytesAsync(byte[] data, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+
+        if (_writeCharacteristic is null)
+            throw new InvalidOperationException("Not connected.");
+
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            var maxSize = _profile.MaxWriteSize;
+            for (int i = 0; i < data.Length; i += maxSize)
+            {
+                var chunk = data.Skip(i).Take(maxSize).ToArray();
+                await _writeCharacteristic.WriteAsync(chunk, cancellationToken);
+            }
+
+            var stringData = Encoding.ASCII.GetString(data);
+            DataSent?.Invoke(this, stringData);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
     private async Task<IDevice?> FindDeviceByAddressAsync(string address, CancellationToken cancellationToken)
     {
         Log($"FindDeviceByAddressAsync: scanning for {address}");

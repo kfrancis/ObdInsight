@@ -14,6 +14,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\src\ObdInsight.Core\ObdInsight.Core.csproj" />
+		<ProjectReference Include="..\..\src\ObdInsight.Drivers\ObdInsight.Drivers.csproj" />
 	</ItemGroup>
 
 </Project>
