@@ -42,9 +42,13 @@ public static class RecordingCommands
         await session.DisconnectAsync();
 
         var profile = session.Profile ?? BleDeviceProfile.VeepeakBle;
-        
+
         // Create transport with recording
+#if WINDOWS
         using var baseTransport = new WindowsBleTransport(profile);
+#else
+        using var baseTransport = new LinuxBleTransport(profile);
+#endif
         var tracer = new TransportTracer();
         using var transport = new RecordingTransportDecorator(baseTransport, tracer);
 

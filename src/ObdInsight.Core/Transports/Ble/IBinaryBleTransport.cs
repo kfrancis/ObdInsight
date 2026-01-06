@@ -12,7 +12,7 @@ namespace ObdInsight.Core.Transports.Ble;
 ///
 /// Command format varies by adapter - use probing to discover the protocol.
 /// </remarks>
-public interface IBinaryBleTransport : IDisposable
+public interface IBinaryBleTransport : IDisposable, IAsyncDisposable
 {
     /// <summary>
     /// Event raised when connection state changes

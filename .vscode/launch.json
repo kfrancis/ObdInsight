@@ -1,0 +1,38 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "DevTools (WSL)",
+            "type": "coreclr",
+            "request": "launch",
+
+            // Runs the interactive console app inside WSL.
+            // Note: paths here are Linux paths (via /mnt/c/...).
+            "program": "/usr/bin/dotnet",
+            "args": [
+                "/mnt/c/Users/byter/Documents/GitHub/ObdInsight/src/ObdInsight.DevTools/bin/Debug/net9.0/ObdInsight.DevTools.dll"
+            ],
+            "cwd": "/mnt/c/Users/byter/Documents/GitHub/ObdInsight/src/ObdInsight.DevTools",
+
+            // Keep it interactive.
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "neverOpen",
+            "stopAtEntry": false,
+
+            // Launches and debugs through WSL from Windows VS Code.
+            // If you don't already have vsdbg installed in WSL, run:
+            //   wget -qO- https://aka.ms/getvsdbgsh | bash /dev/stdin -v latest -l /vsdbg
+            "pipeTransport": {
+                "pipeProgram": "wsl.exe",
+                "pipeArgs": [
+                    "-e"
+                ],
+                "pipeCwd": "${workspaceFolder}",
+                "debuggerPath": "/home/kfrancis/vsdbg/vsdbg"
+            }
+        }
+    ]
+}

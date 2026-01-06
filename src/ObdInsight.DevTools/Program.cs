@@ -1,4 +1,5 @@
-﻿using ObdInsight.Core.Transports.Ble;
+﻿#if NET9_0_WINDOWS10_0_19041_0
+using ObdInsight.Core.Transports.Ble;
 using ObdInsight.DevTools.Commands;
 using Spectre.Console;
 
@@ -328,3 +329,26 @@ internal class Program
         }
     }
 }
+#else
+using Spectre.Console;
+
+namespace ObdInsight.DevTools;
+
+internal class Program
+{
+    private static Task Main(string[] args)
+    {
+        AnsiConsole.Write(new FigletText("OBD DevTools").Color(Color.Cyan1));
+        AnsiConsole.MarkupLine("[grey]BLE OBD-II Development Tool[/]");
+        AnsiConsole.WriteLine();
+        
+        AnsiConsole.MarkupLine("[yellow]This tool is only available on Windows 10/11.[/]");
+        AnsiConsole.MarkupLine("[grey]The Windows-specific BLE APIs are required for device communication.[/]");
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("Press any key to exit...");
+        Console.ReadKey();
+        
+        return Task.CompletedTask;
+    }
+}
+#endif

@@ -1,3 +1,4 @@
+#if NET9_0_WINDOWS10_0_19041_0
 using ObdInsight.Core.Transports.Ble;
 using ObdInsight.DevTools.Commands;
 using Spectre.Console;
@@ -324,3 +325,4 @@ public static class BinaryProtocolTest
         AnsiConsole.MarkupLine($"[cyan]Listening complete. Received {receivedCount} packet(s).[/]");
     }
 }
+#endif

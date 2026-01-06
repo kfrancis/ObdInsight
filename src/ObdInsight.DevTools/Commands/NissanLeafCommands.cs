@@ -291,7 +291,7 @@ public static class NissanLeafCommands
     /// Send the OVMS-style wakeup sequence to wake ECUs.
     /// </summary>
     private static async Task SendWakeupSequenceAsync(
-        WindowsBleTransport transport,
+        IBleTransport transport,
         Func<string, TimeSpan, Task<string>> sendCommand)
     {
         // The ELM327 can't directly send arbitrary CAN messages without OBD framing,
@@ -1584,7 +1584,7 @@ public static class NissanLeafCommands
     /// Based on DBC glossary - these frames are broadcast when car is ON.
     /// </summary>
     private static async Task RunPassiveCanMonitorAsync(
-        WindowsBleTransport transport,
+        IBleTransport transport,
         Func<string, TimeSpan, Task<string>> sendAsync,
         Action<string> logToSession)
     {

@@ -19,7 +19,7 @@ namespace ObdInsight.Core.Transports.Ble;
 /// - DisconnectAsync
 /// - WriteCharacteristicAsync
 /// </remarks>
-public abstract class BleTransportBase : IBleTransport
+public abstract class BleTransportBase : IBleTransport, IAsyncDisposable
 {
     private readonly Lock _bufferLock = new();
     private readonly StringBuilder _receiveBuffer = new();
@@ -82,6 +82,13 @@ public abstract class BleTransportBase : IBleTransport
     /// <inheritdoc />
     public virtual void Dispose()
     {
+        _writeLock.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    public virtual async ValueTask DisposeAsync()
+    {
+        await DisconnectAsync();
         _writeLock.Dispose();
         GC.SuppressFinalize(this);
     }
@@ -283,4 +290,9 @@ public abstract class BleTransportBase : IBleTransport
 
     private static string EscapeForDisplay(string s) =>
         s.Replace("\r", "\\r").Replace("\n", "\\n").Replace(">", ">");
+
+    public virtual void DrainBuffer()
+    {
+        ClearBuffer();
+    }
 }

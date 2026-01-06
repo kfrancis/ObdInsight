@@ -83,6 +83,7 @@ public interface IBleTransport : IObdTransport
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>True if connection succeeded</returns>
     Task<bool> ConnectAsync(string deviceAddress, CancellationToken cancellationToken = default);
+    void DrainBuffer();
 }
 
 /// <summary>

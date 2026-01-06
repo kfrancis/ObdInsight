@@ -1,3 +1,4 @@
+#if NET9_0_WINDOWS10_0_19041_0
 using ObdInsight.Core.Transports.Ble;
 using Spectre.Console;
 using System.Runtime.InteropServices.WindowsRuntime;
@@ -82,7 +83,6 @@ public static class DeviceCommands
         AnsiConsole.WriteLine();
         AnsiConsole.Write(table);
         AnsiConsole.MarkupLine($"[grey]Found {devices.Count} devices ([yellow]?[/]=favorite, [green]?[/]=saved)[/]");
-        AnsiConsole.WriteLine();
 
         // Ask user to select a device
         if (!AnsiConsole.Confirm("Select a device to use?"))
@@ -648,3 +648,4 @@ public static class DeviceCommands
             yield return "Indicate";
     }
 }
+#endif
