@@ -1,4 +1,4 @@
-using ObdInsight.Core.Adapters.Elm327;
+using ObdInsight.Drivers.Adapters.Elm327;
 using ObdInsight.Core.Transports.Tracing;
 
 namespace OdbInsights.Tests.Adapters;

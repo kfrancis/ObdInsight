@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ObdInsight.Core.Adapters;
-using ObdInsight.Core.Adapters.Elm327;
+using ObdInsight.Drivers.Adapters.Elm327;
 using ObdInsight.Core.Diagnostics;
 using ObdInsight.Core.Transports.Ble;
 using ObdInsight.Services;

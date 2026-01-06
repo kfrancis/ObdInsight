@@ -1,7 +1,9 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using ObdInsight.Core.Adapters;
+using ObdInsight.Core.Transports;
 
-namespace ObdInsight.Core.Adapters.Elm327;
+namespace ObdInsight.Drivers.Adapters.Elm327;
 
 /// <summary>
 /// Log levels for ELM327 adapter events

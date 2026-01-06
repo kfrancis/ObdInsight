@@ -1,24 +1,20 @@
-using ObdInsight.Core.Adapters.Elm327;
 using System.Diagnostics;
+using ObdInsight.Core.Adapters;
 
 namespace ObdInsight.Core.Vehicles;
 
 public static class VinQuery
 {
     public static async Task<string?> TryGetVinAsync(
+        IObdAdapter adapter,
         IObdTransport transport,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(adapter);
         ArgumentNullException.ThrowIfNull(transport);
 
         if (!transport.IsConnected)
             return null;
-
-        var adapter = new Elm327Adapter();
-
-        // Lightweight setup. Full protocol search can take a long time and isn't required
-        // on many vehicles once the dongle is already connected.
-        adapter.SetTransport(transport, markAsInitialized: true);
 
         try
         {

@@ -1,4 +1,4 @@
-using ObdInsight.Core.Adapters.Elm327;
+using ObdInsight.Core.Adapters;
 
 namespace ObdInsight.Core;
 
@@ -58,7 +58,7 @@ public record ObdPid(
     public static ObdPid SupportedPids0120 => new(0x01, 0x00, "Supported PIDs [01-20]", "", null);
     public static ObdPid SupportedPids2140 => new(0x01, 0x20, "Supported PIDs [21-40]", "", null);
     public static ObdPid EngineLoad => new(0x01, 0x04, "Engine Load", "%", data => data.Length > 0 ? data[0] * 100.0 / 255.0 : 0);
-    public static ObdPid CoolantTemp => new(0x01, 0x05, "Coolant Temp", "°C", data => data.Length > 0 ? data[0] - 40 : 0);
+    public static ObdPid CoolantTemp => new(0x01, 0x05, "Coolant Temp", "ï¿½C", data => data.Length > 0 ? data[0] - 40 : 0);
     public static ObdPid Rpm => new(0x01, 0x0C, "Engine RPM", "rpm", data => data.Length >= 2 ? ((data[0] * 256) + data[1]) / 4.0 : 0);
     public static ObdPid VehicleSpeed => new(0x01, 0x0D, "Vehicle Speed", "km/h", data => data.Length > 0 ? data[0] : 0);
     public static ObdPid ThrottlePosition => new(0x01, 0x11, "Throttle Position", "%", data => data.Length > 0 ? data[0] * 100.0 / 255.0 : 0);
@@ -84,9 +84,9 @@ public class ObdService : IObdService
     private readonly IObdAdapter _adapter;
     private IObdTransport? _transport;
 
-    public ObdService(IObdAdapter? adapter = null)
+    public ObdService(IObdAdapter adapter)
     {
-        _adapter = adapter ?? new Elm327Adapter();
+        _adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
     }
 
     public bool IsConnected => _transport?.IsConnected == true && _adapter.IsInitialized;

@@ -219,6 +219,32 @@ public sealed class ReplayTransport : IObdTransport
         await QueueResponsesForCommandAsync(data, cancellationToken);
     }
 
+    /// <inheritdoc />
+    public Task<byte[]> ReadBytesAsync(int count, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_connected)
+            throw new InvalidOperationException("Transport not connected.");
+
+        var buffer = new byte[count];
+        lock (_lock)
+        {
+            var str = _rxBuffer.ToString();
+            var available = Math.Min(count, str.Length);
+            var bytes = Encoding.ASCII.GetBytes(str[..available]);
+            Array.Copy(bytes, buffer, available);
+            _rxBuffer.Remove(0, available);
+        }
+        return Task.FromResult(buffer);
+    }
+
+    /// <inheritdoc />
+    public Task WriteBytesAsync(byte[] data, CancellationToken cancellationToken = default)
+    {
+        var str = Encoding.ASCII.GetString(data);
+        return WriteAsync(str, cancellationToken);
+    }
+
     private static string EscapeForDisplay(string s) =>
         s.Replace("\r", "\\r").Replace("\n", "\\n").Replace(">", ">");
 
