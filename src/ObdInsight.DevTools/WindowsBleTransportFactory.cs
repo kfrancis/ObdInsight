@@ -1,3 +1,4 @@
+#if NET9_0_WINDOWS10_0_19041_0
 using ObdInsight.Core.Transports.Ble;
 
 namespace ObdInsight.DevTools;
@@ -18,3 +19,4 @@ public class WindowsBleTransportFactory : IBleTransportFactory
         return new WindowsBleTransport(profile);
     }
 }
+#endif

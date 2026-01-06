@@ -1,5 +1,5 @@
 using ObdInsight.Core.Adapters;
-using ObdInsight.Core.Adapters.Elm327;
+using ObdInsight.Drivers.Adapters.Elm327;
 
 namespace ObdInsight.AdapterComplianceTests;
 

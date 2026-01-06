@@ -125,6 +125,21 @@ public sealed class RecordingTransportDecorator : IObdTransport
         _tracer.RecordTx(data);
         await _inner.WriteAsync(data, cancellationToken);
     }
+
+    /// <inheritdoc />
+    public async Task<byte[]> ReadBytesAsync(int count, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        var result = await _inner.ReadBytesAsync(count, timeout, cancellationToken);
+        _tracer.RecordRx(System.Text.Encoding.ASCII.GetString(result));
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task WriteBytesAsync(byte[] data, CancellationToken cancellationToken = default)
+    {
+        _tracer.RecordTx(System.Text.Encoding.ASCII.GetString(data));
+        await _inner.WriteBytesAsync(data, cancellationToken);
+    }
 }
 
 /// <summary>

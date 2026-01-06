@@ -1,5 +1,5 @@
-using ObdInsight.Core.Adapters.Elm327;
 using System.Globalization;
+using ObdInsight.Core.Adapters;
 
 namespace ObdInsight.Core.Vehicles;
 
@@ -14,11 +14,11 @@ public class VehicleObdService : IVehicleObdService
     private IVehicleProfile _profile;
     private IObdTransport? _transport;
     public VehicleObdService(
-        IObdAdapter? adapter = null,
+        IObdAdapter adapter,
         IVehicleDetector? detector = null,
         IVehicleProfile? initialProfile = null)
     {
-        _adapter = adapter ?? new Elm327Adapter();
+        _adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
         _detector = detector ?? new VehicleDetectorService();
         _profile = initialProfile ?? new StandardObdVehicleProfile();
     }

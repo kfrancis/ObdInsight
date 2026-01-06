@@ -19,7 +19,7 @@ namespace ObdInsight.Core.Transports.Ble;
 /// - DisconnectAsync
 /// - WriteCharacteristicAsync
 /// </remarks>
-public abstract class BleTransportBase : IBleTransport
+public abstract class BleTransportBase : IBleTransport, IAsyncDisposable
 {
     private readonly Lock _bufferLock = new();
     private readonly StringBuilder _receiveBuffer = new();
@@ -82,6 +82,13 @@ public abstract class BleTransportBase : IBleTransport
     /// <inheritdoc />
     public virtual void Dispose()
     {
+        _writeLock.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    public virtual async ValueTask DisposeAsync()
+    {
+        await DisconnectAsync();
         _writeLock.Dispose();
         GC.SuppressFinalize(this);
     }
@@ -165,6 +172,75 @@ public abstract class BleTransportBase : IBleTransport
         }
     }
 
+    /// <inheritdoc />
+    public async Task<byte[]> ReadBytesAsync(int count, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        using var timeoutCts = new CancellationTokenSource(timeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+        var result = new byte[count];
+        var offset = 0;
+
+        while (offset < count && !linkedCts.Token.IsCancellationRequested)
+        {
+            lock (_bufferLock)
+            {
+                var bufferContent = _receiveBuffer.ToString();
+                var available = Math.Min(count - offset, bufferContent.Length);
+                if (available > 0)
+                {
+                    var bytes = Encoding.ASCII.GetBytes(bufferContent[..available]);
+                    Array.Copy(bytes, 0, result, offset, bytes.Length);
+                    _receiveBuffer.Remove(0, available);
+                    offset += available;
+                }
+            }
+
+            if (offset < count)
+            {
+                try
+                {
+                    await Task.Delay(10, linkedCts.Token);
+                }
+                catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+                {
+                    throw new TimeoutException($"Timeout reading {count} bytes");
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task WriteBytesAsync(byte[] data, CancellationToken cancellationToken = default)
+    {
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            var offset = 0;
+            while (offset < data.Length)
+            {
+                var chunkSize = Math.Min(Profile.MaxWriteSize, data.Length - offset);
+                var chunk = new byte[chunkSize];
+                Array.Copy(data, offset, chunk, 0, chunkSize);
+
+                await WriteCharacteristicAsync(chunk, cancellationToken);
+                offset += chunkSize;
+
+                if (offset < data.Length)
+                {
+                    await Task.Delay(50, cancellationToken);
+                }
+            }
+
+            DataSent?.Invoke(this, Encoding.ASCII.GetString(data));
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
     /// <summary>
     /// Clear the receive buffer
     /// </summary>
@@ -214,4 +290,9 @@ public abstract class BleTransportBase : IBleTransport
 
     private static string EscapeForDisplay(string s) =>
         s.Replace("\r", "\\r").Replace("\n", "\\n").Replace(">", ">");
+
+    public virtual void DrainBuffer()
+    {
+        ClearBuffer();
+    }
 }
