@@ -51,10 +51,12 @@ The following are design mockups showcasing the planned user interface:
 
 ObdInsight uses a layered architecture that clearly separates:
 
-1. **Adapters** (dongle-specific): Handle connection and communication with OBD hardware
-2. **Vehicle Profiles** (car-specific): Interpret PIDs and decode vehicle data
+1. **Core**: Interface contracts and base types (no concrete implementations)
+2. **Drivers**: Concrete adapter and vehicle profile implementations
+3. **Transports**: Communication layer (BLE, WiFi, Serial, USB)
+4. **Sessions**: Command-based (ELM/STN) vs. frame-based (CAN) communication
 
-This separation means you can add support for a new OBD dongle without touching vehicle code, and add support for new vehicles without modifying adapter logic.
+This separation means you can add support for new OBD dongles, vehicles, or transport methods without modifying core contracts.
 
 ```mermaid
 graph TB
@@ -63,85 +65,94 @@ graph TB
     end
     
     subgraph "ObdInsight.Drivers"
-        AdapterReg[Adapters/<br/>- AdapterRegistry]
-        VehicleReg[Vehicles/<br/>- NissanLeafProfile<br/>- ChevroletBoltProfile<br/>- VehicleProfileRegistry]
+        AdapterImpls[Adapters/<br/>- Elm327Adapter<br/>- AdapterRegistry]
+        VehicleImpls[Vehicles/<br/>- NissanLeafProfile<br/>- ChevroletBoltProfile<br/>- VehicleProfileRegistry]
     end
     
     subgraph "ObdInsight.Core"
         subgraph Adapters
             IAdapter[IObdAdapter]
-            ObdCmd[ObdCommand]
-            Elm327[Elm327/<br/>- Elm327Adapter]
+            ObdCmd[ObdCommand/Response]
+        end
+        
+        subgraph Sessions
+            ICmdSession[IObdCommandSession]
+            ICanSession[ICanFrameSession]
         end
         
         subgraph Vehicles
             IVehicle[IVehicleProfile]
             IDetector[IVehicleDetector]
-            StdProfile[StandardObdVehicleProfile]
             VehicleData[VehicleDataPoint]
         end
         
         subgraph Transports
-            ITransport[IObdTransport]
-            IBle[Ble/<br/>- IBleTransport<br/>- BleDeviceProfile<br/>- BleTransportBase]
+            IByteStream[IByteStreamTransport]
+            IObdTrans[IObdTransport]
+            IBle[IBleTransport]
+            BleTypes[BleDeviceProfile<br/>BleTransportBase]
         end
     end
     
     subgraph "ObdInsight.DevTools"
-        DevTools[Windows-only BLE debugging<br/>and report generation]
+        DevTools[Windows-only diagnostics<br/>and report generation]
     end
     
-    UI --> AdapterReg
-    UI --> VehicleReg
-    AdapterReg --> IAdapter
-    VehicleReg --> IVehicle
+    UI --> AdapterImpls
+    UI --> VehicleImpls
+    AdapterImpls --> IAdapter
+    VehicleImpls --> IVehicle
     IAdapter --> ObdCmd
-    IAdapter --> Elm327
-    IVehicle --> VehicleData
-    ObdCmd --> ITransport
-    Elm327 --> ITransport
-    ITransport --> IBle
+    ICmdSession --> IAdapter
+    ICmdSession --> IByteStream
+    ICanSession --> IByteStream
+    IObdTrans --> IByteStream
+    IBle --> IObdTrans
+    BleTypes --> IBle
 ```
 
-**Alternative: ASCII Diagram (for environments without Mermaid support)**
+**Key Architectural Principles:**
+
+- **Core = Contracts Only**: No concrete implementations in Core (only interfaces, base types, and abstractions)
+- **Drivers = Implementations**: All concrete adapters (e.g., Elm327Adapter) and vehicle profiles live in Drivers
+- **Transport Abstraction**: `IByteStreamTransport` enables any communication channel (BLE, WiFi, Serial, USB)
+- **Session Abstraction**: Separates command-oriented (ELM327/STN) from frame-oriented (raw CAN) communication
+- **Dependency Injection**: Services accept interfaces, implementations are injected at runtime
+
+**Alternative: ASCII Diagram**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                 ObdInsight (MAUI App)                       │
 └─────────────────────────────────────────────────────────────┘
+                              ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                 ObdInsight.Drivers                          │
 │  ┌──────────────────────┐    ┌──────────────────────┐      │
 │  │  Adapters/           │    │  Vehicles/           │      │
-│  │  - AdapterRegistry   │    │  - NissanLeafProfile │      │
-│  │                      │    │  - ChevroletBolt     │      │
+│  │  - Elm327Adapter     │    │  - NissanLeafProfile │      │
+│  │  - AdapterRegistry   │    │  - ChevroletBolt     │      │
 │  │                      │    │    Profile           │      │
 │  │                      │    │  - VehicleProfile    │      │
 │  │                      │    │    Registry          │      │
 │  └──────────────────────┘    └──────────────────────┘      │
 └─────────────────────────────────────────────────────────────┘
+                              ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                 ObdInsight.Core                             │
+│                 ObdInsight.Core (Interfaces Only)           │
 │  ┌──────────────────────┐    ┌──────────────────────┐      │
-│  │  Adapters/           │    │  Vehicles/           │      │
-│  │  - IObdAdapter       │    │  - IVehicleProfile   │      │
-│  │  - ObdCommand        │    │  - IVehicleDetector  │      │
-│  │  - Elm327/           │    │  - StandardObdVeh    │      │
-│  │    - Elm327Adapter   │    │    icleProfile       │      │
-│  │                      │    │  - VehicleDataPoint  │      │
+│  │  Adapters/           │    │  Sessions/           │      │
+│  │  - IObdAdapter       │    │  - IObdCommandSession│      │
+│  │  - ObdCommand        │    │  - ICanFrameSession  │      │
+│  │  - ObdResponse       │    │                      │      │
 │  └──────────────────────┘    └──────────────────────┘      │
-│  ┌──────────────────────┐                                   │
-│  │  Transports/         │                                   │
-│  │  - IObdTransport     │                                   │
-│  │  - Ble/              │                                   │
-│  │    - IBleTransport   │                                   │
-│  │    - BleDeviceProfile│                                   │
-│  │    - BleTransportBase│                                   │
-│  └──────────────────────┘                                   │
-└─────────────────────────────────────────────────────────────┘
-┌─────────────────────────────────────────────────────────────┐
-│                 ObdInsight.DevTools                         │
-│  (Windows-only BLE debugging and report generation)         │
+│  ┌──────────────────────┐    ┌──────────────────────┐      │
+│  │  Vehicles/           │    │  Transports/         │      │
+│  │  - IVehicleProfile   │    │  - IByteStreamTrans  │      │
+│  │  - IVehicleDetector  │    │    port              │      │
+│  │  - VehicleDataPoint  │    │  - IObdTransport     │      │
+│  │                      │    │  - IBleTransport     │      │
+│  └──────────────────────┘    └──────────────────────┘      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -149,11 +160,12 @@ graph TB
 
 | Namespace | Purpose |
 |-----------|---------|
-| `ObdInsight.Core.Transports` | Low-level communication (BLE, WiFi, Serial) |
-| `ObdInsight.Core.Adapters` | OBD protocol handling (ELM327, STN) |
-| `ObdInsight.Core.Vehicles` | Vehicle profiles and data decoding |
-| `ObdInsight.Drivers.Adapters` | Adapter registry and factory |
-| `ObdInsight.Drivers.Vehicles` | Built-in vehicle profiles |
+| `ObdInsight.Core.Transports` | Transport interfaces (IByteStreamTransport, IObdTransport, IBleTransport) |
+| `ObdInsight.Core.Adapters` | Adapter contracts (IObdAdapter, ObdCommand, ObdResponse) |
+| `ObdInsight.Core.Sessions` | Session abstractions (IObdCommandSession, ICanFrameSession) |
+| `ObdInsight.Core.Vehicles` | Vehicle profile interfaces and data types |
+| `ObdInsight.Drivers.Adapters` | Concrete adapter implementations (Elm327Adapter, AdapterRegistry) |
+| `ObdInsight.Drivers.Vehicles` | Built-in vehicle profiles (NissanLeafProfile, ChevroletBoltProfile) |
 
 ## Getting Started
 
@@ -225,10 +237,47 @@ public class MyVehicleProfile : IVehicleProfile
 
 To add support for a new OBD adapter:
 
-1. Create a class implementing `IObdAdapter` in `ObdInsight.Core.Adapters/`
-2. Implement initialization sequence
-3. Handle command/response framing
-4. Register in `AdapterRegistry`
+1. Create a class implementing `IObdAdapter` in `src/ObdInsight.Drivers/Adapters/YourAdapter/`
+2. Implement the adapter interface:
+   - `InitializeAsync`: Set up the adapter and negotiate protocol
+   - `SendCommandAsync`: Send OBD commands and parse responses
+   - `ResetAsync`: Reset adapter to default state
+3. Update namespace to `ObdInsight.Drivers.Adapters.YourAdapter`
+4. Register in `AdapterRegistry.GetAllAdapters()` method in `src/ObdInsight.Drivers/Adapters/AdapterRegistry.cs`
+
+Example:
+```csharp
+namespace ObdInsight.Drivers.Adapters.Stn1110;
+
+public class Stn1110Adapter : IObdAdapter
+{
+    public string Name => "STN1110";
+    public bool IsInitialized { get; private set; }
+    public string[] SupportedDeviceNames => ["STN1110", "OBDLink"];
+    
+    public async Task<bool> InitializeAsync(IObdTransport transport, CancellationToken ct)
+    {
+        // Your initialization logic
+    }
+    
+    public async Task<ObdResponse> SendCommandAsync(ObdCommand command, CancellationToken ct)
+    {
+        // Your command/response logic
+    }
+    
+    // ... implement remaining interface members
+}
+```
+
+Then register in `AdapterRegistry`:
+```csharp
+yield return new AdapterInfo(
+    Name: "STN1110",
+    Description: "STN1110 high-performance OBD adapter",
+    SupportedDeviceNames: ["STN1110", "OBDLink"],
+    Factory: () => new Stn1110Adapter()
+);
+```
 
 ## Requesting New Vehicle or Adapter Support
 
