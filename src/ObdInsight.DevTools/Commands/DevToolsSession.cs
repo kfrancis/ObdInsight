@@ -1,4 +1,4 @@
-using ObdInsight.Drivers.Adapters.Elm327;
+using ObdInsight.Core.Adapters.Elm327;
 using ObdInsight.Core.Transports.Ble;
 using Spectre.Console;
 
@@ -10,10 +10,10 @@ namespace ObdInsight.DevTools.Commands;
 /// </summary>
 public sealed class DevToolsSession : IAsyncDisposable
 {
-    private IBleTransport? _transport;
+    private WindowsBleTransport? _transport;
     private Elm327Adapter? _adapter;
-    private IBinaryBleTransport? _binaryTransport;
-
+    private WindowsBinaryBleTransport? _binaryTransport;
+    
     // Track whether we're inside a Status operation to suppress logging
     private volatile bool _suppressLogging;
 
@@ -50,7 +50,7 @@ public sealed class DevToolsSession : IAsyncDisposable
     /// <summary>
     /// The active ASCII transport (for ELM327 communication).
     /// </summary>
-    public IBleTransport? Transport => _transport;
+    public WindowsBleTransport? Transport => _transport;
 
     /// <summary>
     /// The active ELM327 adapter.
@@ -60,7 +60,7 @@ public sealed class DevToolsSession : IAsyncDisposable
     /// <summary>
     /// The active binary transport (for direct CAN communication).
     /// </summary>
-    public IBinaryBleTransport? BinaryTransport => _binaryTransport;
+    public WindowsBinaryBleTransport? BinaryTransport => _binaryTransport;
 
     /// <summary>
     /// Event logging for BLE traffic. When true, logs are shown in real-time.
@@ -93,12 +93,7 @@ public sealed class DevToolsSession : IAsyncDisposable
         await DisconnectAsync();
 
         Profile ??= BleDeviceProfile.VeepeakBle;
-
-#if WINDOWS
         _transport = new WindowsBleTransport(Profile);
-#else
-        _transport = new LinuxBleTransport(Profile);
-#endif
 
         if (EnableTrafficLogging)
         {
@@ -135,16 +130,6 @@ public sealed class DevToolsSession : IAsyncDisposable
         DeviceHistory.AddOrUpdate(DeviceAddress, DeviceName, Profile.Name);
 
         AnsiConsole.MarkupLine($"[green]?[/] Connected to [cyan]{DeviceName}[/]");
-
-        // Auto-connect binary if supported
-        /*
-        if (Profile.SupportsBinary && !IsBinaryConnected)
-        {
-            AnsiConsole.MarkupLine("[grey](Auto-detecting binary transport...)[/]");
-            await ConnectBinaryAsync(ct);
-        }
-        */
-
         return true;
     }
 
@@ -157,7 +142,7 @@ public sealed class DevToolsSession : IAsyncDisposable
             return false;
 
         _adapter = new Elm327Adapter();
-
+        
         if (EnableTrafficLogging)
         {
             _adapter.Log += OnAdapterLog;
@@ -167,13 +152,13 @@ public sealed class DevToolsSession : IAsyncDisposable
         {
             // Minimal init - skip protocol search (useful for EVs)
             AnsiConsole.MarkupLine("[grey]Using minimal initialization (skipping protocol search)...[/]");
-
+            
             if (!await MinimalAdapterInitAsync(ct))
             {
                 AnsiConsole.MarkupLine("[yellow]Minimal initialization had issues[/]");
                 return false;
             }
-
+            
             _adapter.SetTransport(_transport!, markAsInitialized: true);
             AnsiConsole.MarkupLine("[green]?[/] Adapter initialized (minimal mode)");
         }
@@ -229,11 +214,7 @@ public sealed class DevToolsSession : IAsyncDisposable
         }
 
         var binaryProfile = BleDeviceProfile.VeepeakBinary;
-#if WINDOWS
         _binaryTransport = new WindowsBinaryBleTransport(binaryProfile);
-#else
-        _binaryTransport = new LinuxBinaryBleTransport(binaryProfile);
-#endif
 
         // Suppress logging during status operation
         _suppressLogging = true;
@@ -274,7 +255,7 @@ public sealed class DevToolsSession : IAsyncDisposable
             // Unsubscribe from events
             _transport.DataSent -= OnDataSent;
             _transport.DataReceived -= OnDataReceived;
-
+            
             try { await _transport.DisconnectAsync(); } catch { }
             _transport.Dispose();
             _transport = null;
@@ -344,7 +325,7 @@ public sealed class DevToolsSession : IAsyncDisposable
             _transport.DrainBuffer();
             await _transport.WriteAsync("ATI\r");
             var response = await _transport.ReadUntilAsync(">", TimeSpan.FromSeconds(4));
-            return !string.IsNullOrWhiteSpace(response) &&
+            return !string.IsNullOrWhiteSpace(response) && 
                    response.Contains("ELM", StringComparison.OrdinalIgnoreCase);
         }
         catch
@@ -366,7 +347,7 @@ public sealed class DevToolsSession : IAsyncDisposable
                 await _transport.WriteAsync(cmd + "\r", ct);
                 var response = await _transport.ReadUntilAsync(">", timeout, ct);
                 response = response.Replace(cmd, "").Replace(">", "").Replace("\r", "").Trim();
-                var success = !string.IsNullOrWhiteSpace(response) &&
+                var success = !string.IsNullOrWhiteSpace(response) && 
                              !response.Contains("?") &&
                              !response.Contains("ERROR", StringComparison.OrdinalIgnoreCase);
                 return (success, response);

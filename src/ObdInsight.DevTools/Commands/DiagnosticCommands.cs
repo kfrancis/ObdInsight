@@ -1,7 +1,6 @@
-#if NET9_0_WINDOWS10_0_19041_0
 using ObdInsight.Core;
 using ObdInsight.Core.Adapters;
-using ObdInsight.Drivers.Adapters.Elm327;
+using ObdInsight.Core.Adapters.Elm327;
 using ObdInsight.Core.Vehicles;
 using ObdInsight.Drivers;
 using Spectre.Console;
@@ -113,7 +112,7 @@ public static class DiagnosticCommands
     /// </summary>
     public static async Task RunWithVehicleDetectionAsync(DevToolsSession session)
     {
-        if (!session.IsConnected || session.Adapter == null)
+        if (!session.IsConnected)
         {
             if (!await session.ConnectAndInitializeAdapterAsync())
                 return;
@@ -122,7 +121,7 @@ public static class DiagnosticCommands
         var detector = new VehicleDetectorService();
         VehicleProfileRegistry.RegisterAllProfiles(detector);
 
-        var vehicleService = new VehicleObdService(session.Adapter!, detector: detector);
+        var vehicleService = new VehicleObdService(detector: detector);
 
         var options = new VehicleServiceOptions
         {
@@ -176,7 +175,6 @@ public static class DiagnosticCommands
         if (!AnsiConsole.Confirm("[yellow]Is your Leaf in READY mode or charging?[/]"))
         {
             AnsiConsole.MarkupLine("[yellow]Please wake up the vehicle and try again.[/]");
-
             return;
         }
 
@@ -201,7 +199,8 @@ public static class DiagnosticCommands
         {
             AnsiConsole.MarkupLine("[cyan]Initializing adapter for Leaf BMS...[/]");
 
-            var initCommands = new[] {
+            var initCommands = new[]
+            {
                 ("ATZ", TimeSpan.FromSeconds(5)),
                 ("ATE0", TimeSpan.FromSeconds(2)),
                 ("ATL0", TimeSpan.FromSeconds(2)),
@@ -226,7 +225,8 @@ public static class DiagnosticCommands
             AnsiConsole.MarkupLine("[green]?[/] BMS communication configured");
             AnsiConsole.WriteLine();
 
-            var batteryCommands = new[] {
+            var batteryCommands = new[]
+            {
                 ("2101", "BMS Group 01: SOC, Capacity, Current, Voltage"),
                 ("2102", "BMS Group 02: Cell Voltages"),
                 ("2104", "BMS Group 04: Pack Temperatures"),
@@ -332,7 +332,8 @@ public static class DiagnosticCommands
 
             if (profile.IsElectric)
             {
-                choices.InsertRange(1, new[] {
+                choices.InsertRange(1, new[]
+                {
                     "Get Battery SOC",
                     "Get Battery SOH",
                     "Get Battery Voltage",
@@ -343,7 +344,8 @@ public static class DiagnosticCommands
             }
             else
             {
-                choices.InsertRange(1, new[] {
+                choices.InsertRange(1, new[]
+                {
                     "Get RPM",
                     "Get Coolant Temp",
                     "Get Throttle Position",
@@ -497,4 +499,3 @@ public static class DiagnosticCommands
         }
     }
 }
-#endif

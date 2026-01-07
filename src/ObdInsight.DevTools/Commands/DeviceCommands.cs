@@ -1,7 +1,5 @@
-#if NET9_0_WINDOWS10_0_19041_0
 using ObdInsight.Core.Transports.Ble;
 using Spectre.Console;
-using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 
@@ -83,6 +81,7 @@ public static class DeviceCommands
         AnsiConsole.WriteLine();
         AnsiConsole.Write(table);
         AnsiConsole.MarkupLine($"[grey]Found {devices.Count} devices ([yellow]?[/]=favorite, [green]?[/]=saved)[/]");
+        AnsiConsole.WriteLine();
 
         // Ask user to select a device
         if (!AnsiConsole.Confirm("Select a device to use?"))
@@ -152,140 +151,6 @@ public static class DeviceCommands
     }
 
     /// <summary>
-    /// Display detailed information about the currently connected device.
-    /// </summary>
-    public static async Task ShowDeviceInfoAsync(DevToolsSession session)
-    {
-        if (!session.IsConnected || session.Transport is not WindowsBleTransport transport)
-        {
-            AnsiConsole.MarkupLine("[yellow]No device connected via BLE transport.[/]");
-            return;
-        }
-
-        var grid = new Grid();
-        grid.AddColumn(new GridColumn().Width(22));
-        grid.AddColumn(new GridColumn());
-
-        // Basic device info
-        grid.AddRow("[grey]Device Name:[/]", $"[white]{session.DeviceName.EscapeMarkup()}[/]");
-        grid.AddRow("[grey]Address:[/]", $"[cyan]{session.DeviceAddress}[/]");
-        grid.AddRow("[grey]Connection Type:[/]", "[blue]Bluetooth Low Energy (BLE)[/]");
-        grid.AddRow("[grey]Profile:[/]", $"[white]{session.Profile?.Name ?? "Unknown"}[/]");
-        grid.AddRow("[grey]Service UUID:[/]", $"[cyan]{session.Profile?.ServiceUuid}[/]");
-        
-        // Connection statistics from the transport
-        var diagnostics = transport.GetDiagnostics();
-        grid.AddRow("[grey]Connection Stats:[/]", $"[white]{diagnostics.EscapeMarkup()}[/]");
-        
-        // Get Windows BLE device details
-        if (!string.IsNullOrEmpty(session.DeviceAddress))
-        {
-            try
-            {
-                var mac = ParseMacAddress(session.DeviceAddress);
-                using var device = await BluetoothLEDevice.FromBluetoothAddressAsync(mac);
-                
-                if (device != null)
-                {
-                    grid.AddEmptyRow();
-                    grid.AddRow("[grey]Connection Status:[/]", 
-                        device.ConnectionStatus == BluetoothConnectionStatus.Connected 
-                            ? "[green]Connected[/]" 
-                            : "[red]Disconnected[/]");
-                    
-                    // Device appearance
-                    if (device.Appearance != null)
-                    {
-                        grid.AddRow("[grey]Appearance:[/]", 
-                            $"[white]{device.Appearance.Category} (0x{device.Appearance.RawValue:X})[/]");
-                    }
-                    
-                    // Bluetooth device ID
-                    grid.AddRow("[grey]Device ID:[/]", $"[grey]{device.BluetoothDeviceId.Id.EscapeMarkup()}[/]");
-                    
-                    // RSSI (signal strength) if available
-                    try
-                    {
-                        // Note: RSSI may not be available when connected
-                        var deviceInfo = await Windows.Devices.Enumeration.DeviceInformation.CreateFromIdAsync(device.BluetoothDeviceId.Id);
-                        if (deviceInfo?.Properties.TryGetValue("System.Devices.Aep.SignalStrength", out var rssiObj) == true)
-                        {
-                            if (rssiObj is int rssi)
-                            {
-                                var rssiColor = rssi switch
-                                {
-                                    > -50 => "green",
-                                    > -70 => "yellow",
-                                    _ => "red"
-                                };
-                                grid.AddRow("[grey]Signal Strength:[/]", $"[{rssiColor}]{rssi} dBm[/]");
-                            }
-                        }
-                    }
-                    catch
-                    {
-                        // RSSI not available
-                    }
-                    
-                    // Device Information Service (if available)
-                    var disResult = await device.GetGattServicesForUuidAsync(
-                        Guid.Parse("0000180A-0000-1000-8000-00805F9B34FB"), // Device Information Service
-                        BluetoothCacheMode.Cached);
-                        
-                    if (disResult.Status == GattCommunicationStatus.Success && disResult.Services.Count > 0)
-                    {
-                        grid.AddEmptyRow();
-                        grid.AddRow("[cyan]Device Information[/]", "");
-                        
-                        using var disService = disResult.Services[0];
-                        
-                        // Try to read common DIS characteristics
-                        await TryReadDisCharacteristic(grid, disService, "Manufacturer", 
-                            Guid.Parse("00002A29-0000-1000-8000-00805F9B34FB"));
-                        await TryReadDisCharacteristic(grid, disService, "Model Number", 
-                            Guid.Parse("00002A24-0000-1000-8000-00805F9B34FB"));
-                        await TryReadDisCharacteristic(grid, disService, "Serial Number", 
-                            Guid.Parse("00002A25-0000-1000-8000-00805F9B34FB"));
-                        await TryReadDisCharacteristic(grid, disService, "Hardware Rev", 
-                            Guid.Parse("00002A27-0000-1000-8000-00805F9B34FB"));
-                        await TryReadDisCharacteristic(grid, disService, "Firmware Rev", 
-                            Guid.Parse("00002A26-0000-1000-8000-00805F9B34FB"));
-                        await TryReadDisCharacteristic(grid, disService, "Software Rev", 
-                            Guid.Parse("00002A28-0000-1000-8000-00805F9B34FB"));
-                    }
-                    
-                    // List all available GATT services
-                    var allServicesResult = await device.GetGattServicesAsync(BluetoothCacheMode.Cached);
-                    if (allServicesResult.Status == GattCommunicationStatus.Success && allServicesResult.Services.Count > 0)
-                    {
-                        grid.AddEmptyRow();
-                        grid.AddRow("[cyan]Available Services[/]", "");
-                        
-                        foreach (var service in allServicesResult.Services)
-                        {
-                            var serviceName = GetServiceName(service.Uuid);
-                            grid.AddRow($"[grey]{serviceName}:[/]", $"[cyan]{service.Uuid}[/]");
-                            service.Dispose();
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                grid.AddEmptyRow();
-                grid.AddRow("[red]Error:[/]", $"[red]{ex.Message.EscapeMarkup()}[/]");
-            }
-        }
-        
-        var panel = new Panel(grid)
-            .Border(BoxBorder.Rounded)
-            .BorderColor(Color.Cyan1)
-            .Header("[cyan]Device Information[/]");
-        
-        AnsiConsole.Write(panel);
-    }
-
-    /// <summary>
     /// Discover and display all GATT services on a device.
     /// </summary>
     public static async Task DiscoverServicesAsync(DevToolsSession session)
@@ -322,8 +187,7 @@ public static class DeviceCommands
 
             foreach (var service in servicesResult.Services)
             {
-                var serviceName = GetServiceName(service.Uuid);
-                var serviceNode = tree.AddNode($"[yellow]{serviceName}[/] [grey]({service.Uuid})[/]");
+                var serviceNode = tree.AddNode($"[yellow]Service:[/] {service.Uuid}");
 
                 var charsResult = await service.GetCharacteristicsAsync(BluetoothCacheMode.Uncached);
                 if (charsResult.Status == GattCommunicationStatus.Success)
@@ -332,42 +196,7 @@ public static class DeviceCommands
                     {
                         var props = characteristic.CharacteristicProperties;
                         var propsStr = string.Join(", ", GetPropertyStrings(props));
-                        var charNode = serviceNode.AddNode($"[green]Char:[/] {characteristic.Uuid} [grey]({propsStr})[/]");
-                        
-                        // If characteristic is readable, try to read its value
-                        if (props.HasFlag(GattCharacteristicProperties.Read))
-                        {
-                            try
-                            {
-                                var readResult = await characteristic.ReadValueAsync(BluetoothCacheMode.Uncached);
-                                if (readResult.Status == GattCommunicationStatus.Success && readResult.Value.Length > 0)
-                                {
-                                    var bytes = new byte[readResult.Value.Length];
-                                    readResult.Value.CopyTo(bytes);
-                                    
-                                    // Try to display as UTF-8 string first
-                                    var stringValue = System.Text.Encoding.UTF8.GetString(bytes).Trim('\0');
-                                    if (!string.IsNullOrWhiteSpace(stringValue) && stringValue.All(c => !char.IsControl(c) || char.IsWhiteSpace(c)))
-                                    {
-                                        charNode.AddNode($"[blue]Value:[/] [white]{stringValue.EscapeMarkup()}[/]");
-                                    }
-                                    else
-                                    {
-                                        // Display as hex if not valid UTF-8
-                                        var hexValue = BitConverter.ToString(bytes).Replace("-", " ");
-                                        charNode.AddNode($"[blue]Value (hex):[/] [white]{hexValue}[/]");
-                                    }
-                                }
-                                else if (readResult.Status != GattCommunicationStatus.Success)
-                                {
-                                    charNode.AddNode($"[red]Read failed: {readResult.Status}[/]");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                charNode.AddNode($"[red]Error: {ex.Message.EscapeMarkup()}[/]");
-                            }
-                        }
+                        serviceNode.AddNode($"[green]Char:[/] {characteristic.Uuid} [grey]({propsStr})[/]");
                     }
                 }
 
@@ -375,139 +204,6 @@ public static class DeviceCommands
             }
 
             AnsiConsole.Write(tree);
-        }
-        catch (Exception ex)
-        {
-            AnsiConsole.MarkupLine($"[red]Error: {ex.Message.EscapeMarkup()}[/]");
-        }
-    }
-
-    /// <summary>
-    /// Read all readable characteristics from all services on the connected device.
-    /// </summary>
-    public static async Task ReadAllCharacteristicsAsync(DevToolsSession session)
-    {
-        if (!session.IsConnected)
-        {
-            AnsiConsole.MarkupLine("[yellow]No device connected.[/]");
-            return;
-        }
-
-        if (string.IsNullOrEmpty(session.DeviceAddress))
-        {
-            AnsiConsole.MarkupLine("[yellow]No device address available.[/]");
-            return;
-        }
-
-        AnsiConsole.MarkupLine($"[cyan]Reading all characteristics from {session.DeviceName}...[/]");
-        AnsiConsole.WriteLine();
-
-        try
-        {
-            var mac = ParseMacAddress(session.DeviceAddress);
-            using var device = await BluetoothLEDevice.FromBluetoothAddressAsync(mac);
-
-            if (device == null)
-            {
-                AnsiConsole.MarkupLine("[red]Failed to access device[/]");
-                return;
-            }
-
-            var servicesResult = await device.GetGattServicesAsync(BluetoothCacheMode.Cached);
-
-            if (servicesResult.Status != GattCommunicationStatus.Success)
-            {
-                AnsiConsole.MarkupLine($"[red]Failed to get services: {servicesResult.Status}[/]");
-                return;
-            }
-
-            var totalReadable = 0;
-            var successfulReads = 0;
-            var failedReads = 0;
-
-            foreach (var service in servicesResult.Services)
-            {
-                var serviceName = GetServiceName(service.Uuid);
-                
-                var charsResult = await service.GetCharacteristicsAsync(BluetoothCacheMode.Cached);
-                if (charsResult.Status == GattCommunicationStatus.Success)
-                {
-                    var readableChars = charsResult.Characteristics
-                        .Where(c => c.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Read))
-                        .ToList();
-
-                    if (readableChars.Count > 0)
-                    {
-                        AnsiConsole.MarkupLine($"[cyan]Service:[/] [yellow]{serviceName}[/] [grey]({service.Uuid})[/]");
-                        
-                        foreach (var characteristic in readableChars)
-                        {
-                            totalReadable++;
-                            
-                            try
-                            {
-                                var readResult = await characteristic.ReadValueAsync(BluetoothCacheMode.Uncached);
-                                
-                                if (readResult.Status == GattCommunicationStatus.Success)
-                                {
-                                    successfulReads++;
-                                    var bytes = new byte[readResult.Value.Length];
-                                    readResult.Value.CopyTo(bytes);
-                                    
-                                    AnsiConsole.Markup($"  [green]O[/] {characteristic.Uuid} [[{bytes.Length} bytes]]: ");
-                                    
-                                    // Try UTF-8 string first
-                                    var stringValue = System.Text.Encoding.UTF8.GetString(bytes).Trim('\0');
-                                    if (!string.IsNullOrWhiteSpace(stringValue) && stringValue.All(c => !char.IsControl(c) || char.IsWhiteSpace(c)))
-                                    {
-                                        AnsiConsole.MarkupLine($"[white]{stringValue.EscapeMarkup()}[/]");
-                                    }
-                                    else if (bytes.Length == 1)
-                                    {
-                                        // Single byte - show as decimal and hex
-                                        AnsiConsole.MarkupLine($"[white]{bytes[0]} (0x{bytes[0]:X2})[/]");
-                                    }
-                                    else
-                                    {
-                                        // Show as hex dump
-                                        var hexValue = BitConverter.ToString(bytes).Replace("-", " ");
-                                        AnsiConsole.MarkupLine($"[white]{hexValue}[/]");
-                                    }
-                                }
-                                else
-                                {
-                                    failedReads++;
-                                    AnsiConsole.MarkupLine($"  [red]X[/] {characteristic.Uuid}: [red]{readResult.Status}[/]");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                failedReads++;
-                                AnsiConsole.MarkupLine($"  [red]X[/] {characteristic.Uuid}: [red]{ex.Message.EscapeMarkup()}[/]");
-                            }
-                        }
-                        
-                        AnsiConsole.WriteLine();
-                    }
-                }
-
-                service.Dispose();
-            }
-
-            // Summary
-            var summaryTable = new Table()
-                .Border(TableBorder.Rounded)
-                .AddColumn("Metric")
-                .AddColumn("Value");
-
-            summaryTable.AddRow("Total Readable Characteristics", totalReadable.ToString());
-            summaryTable.AddRow("[green]Successful Reads[/]", successfulReads.ToString());
-            summaryTable.AddRow("[red]Failed Reads[/]", failedReads.ToString());
-            summaryTable.AddRow("Success Rate", totalReadable > 0 
-                ? $"{(successfulReads * 100.0 / totalReadable):F1}%" 
-                : "N/A");
-
-            AnsiConsole.Write(summaryTable);
         }
         catch (Exception ex)
         {
@@ -542,92 +238,6 @@ public static class DeviceCommands
         AnsiConsole.Write(table);
     }
 
-    private static async Task TryReadDisCharacteristic(Grid grid, GattDeviceService service, 
-        string name, Guid characteristicUuid)
-    {
-        try
-        {
-            var charResult = await service.GetCharacteristicsForUuidAsync(characteristicUuid, 
-                BluetoothCacheMode.Cached);
-                
-            if (charResult.Status == GattCommunicationStatus.Success && charResult.Characteristics.Count > 0)
-            {
-                var characteristic = charResult.Characteristics[0];
-                var readResult = await characteristic.ReadValueAsync(BluetoothCacheMode.Uncached);
-                
-                if (readResult.Status == GattCommunicationStatus.Success)
-                {
-                    var bytes = new byte[readResult.Value.Length];
-                    readResult.Value.CopyTo(bytes);
-                    var value = System.Text.Encoding.UTF8.GetString(bytes).Trim('\0');
-                    
-                    if (!string.IsNullOrWhiteSpace(value))
-                    {
-                        grid.AddRow($"[grey]{name}:[/]", $"[white]{value.EscapeMarkup()}[/]");
-                    }
-                }
-            }
-        }
-        catch
-        {
-            // Silently skip characteristics that can't be read
-        }
-    }
-
-    private static async Task TryReadBatteryLevel(Grid grid, GattDeviceService service)
-    {
-        try
-        {
-            var batteryLevelUuid = Guid.Parse("00002A19-0000-1000-8000-00805F9B34FB");
-            var charResult = await service.GetCharacteristicsForUuidAsync(batteryLevelUuid, 
-                BluetoothCacheMode.Cached);
-                
-            if (charResult.Status == GattCommunicationStatus.Success && charResult.Characteristics.Count > 0)
-            {
-                var characteristic = charResult.Characteristics[0];
-                var readResult = await characteristic.ReadValueAsync(BluetoothCacheMode.Uncached);
-                
-                if (readResult.Status == GattCommunicationStatus.Success && readResult.Value.Length > 0)
-                {
-                    var bytes = new byte[readResult.Value.Length];
-                    readResult.Value.CopyTo(bytes);
-                    var batteryLevel = bytes[0];
-                    
-                    var batteryColor = batteryLevel switch
-                    {
-                        > 80 => "green",
-                        > 50 => "yellow",
-                        > 20 => "orange1",
-                        _ => "red"
-                    };
-                    
-                    grid.AddRow("[grey]Battery Level:[/]", $"[{batteryColor}]{batteryLevel}%[/]");
-                }
-            }
-        }
-        catch
-        {
-            // Silently skip if battery service can't be read
-        }
-    }
-
-    private static string GetServiceName(Guid uuid)
-    {
-        // Known standard GATT services
-        return uuid.ToString() switch
-        {
-            "00001800-0000-1000-8000-00805f9b34fb" => "Generic Access",
-            "00001801-0000-1000-8000-00805f9b34fb" => "Generic Attribute",
-            "0000180a-0000-1000-8000-00805f9b34fb" => "Device Information",
-            "0000180f-0000-1000-8000-00805f9b34fb" => "Battery Service",
-            "0000fff0-0000-1000-8000-00805f9b34fb" => "OBD Service (FFF0)",
-            "0000ffe0-0000-1000-8000-00805f9b34fb" => "OBD Service (FFE0)",
-            "6e400001-b5a3-f393-e0a9-e50e24dcca9e" => "Nordic UART",
-            "00006287-3c17-d293-8e48-14fe2e4da212" => "Binary Protocol",
-            _ => "Unknown Service"
-        };
-    }
-
     private static ulong ParseMacAddress(string mac)
     {
         var cleanMac = mac.Replace(":", "").Replace("-", "");
@@ -648,4 +258,3 @@ public static class DeviceCommands
             yield return "Indicate";
     }
 }
-#endif

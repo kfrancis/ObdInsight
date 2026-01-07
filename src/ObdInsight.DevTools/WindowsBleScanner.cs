@@ -1,4 +1,3 @@
-#if NET9_0_WINDOWS10_0_19041_0
 using ObdInsight.Core.Transports.Ble;
 using System.Collections.Concurrent;
 using Windows.Devices.Bluetooth;
@@ -156,4 +155,3 @@ public sealed class WindowsBleScanner : IBleScanner
         ScanStateChanged?.Invoke(this, new BleScanStateChangedEventArgs(false));
     }
 }
-#endif

@@ -1,5 +1,3 @@
-
-#if WINDOWS
 using ObdInsight.Core.Transports.Ble;
 using System.Buffers;
 using System.Collections.Concurrent;
@@ -463,4 +461,3 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
         System.Diagnostics.Debug.WriteLine($"[BinaryBLE] {msg}");
     }
 }
-#endif

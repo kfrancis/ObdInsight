@@ -1,5 +1,4 @@
-﻿#if NET9_0_WINDOWS10_0_19041_0
-using ObdInsight.Core.Transports.Ble;
+﻿using ObdInsight.Core.Transports.Ble;
 using ObdInsight.DevTools.Commands;
 using Spectre.Console;
 
@@ -57,8 +56,10 @@ internal class Program
             choices.Add("── Device Selection ──");
             choices.Add("Scan for BLE devices");
             choices.Add("Set device address manually");
-            choices.Add("Discover device services");
-            choices.Add("Read all characteristics");
+            if (!string.IsNullOrEmpty(session.DeviceAddress))
+            {
+                choices.Add("Discover device services");
+            }
             if (recentDevices.Count > 0)
             {
                 choices.Add("Manage saved devices");
@@ -82,12 +83,10 @@ internal class Program
             if (!string.IsNullOrEmpty(session.DeviceAddress))
             {
                 choices.Add("── Diagnostics ──");
-                choices.Add("Device information");
                 choices.Add("OBD command console");
                 choices.Add("Vehicle detection mode");
                 choices.Add("Nissan Leaf diagnostics (OVMS-style)");
                 choices.Add("Nissan Leaf interactive");
-                choices.Add("Nissan Leaf battery health assessment");
                 choices.Add("Test binary protocol (Service 6287)");
             }
 
@@ -157,10 +156,6 @@ internal class Program
                         await DeviceCommands.DiscoverServicesAsync(session);
                         break;
 
-                    case "Read all characteristics":
-                        await DeviceCommands.ReadAllCharacteristicsAsync(session);
-                        break;
-
                     case "Manage saved devices":
                         await ManageSavedDevicesAsync(session);
                         break;
@@ -175,10 +170,6 @@ internal class Program
                         break;
 
                     // Diagnostics
-                    case "Device information":
-                        await DeviceCommands.ShowDeviceInfoAsync(session);
-                        break;
-
                     case "OBD command console":
                         await DiagnosticCommands.RunCommandLoopAsync(session);
                         break;
@@ -193,10 +184,6 @@ internal class Program
 
                     case "Nissan Leaf interactive":
                         await NissanLeafCommands.RunInteractiveAsync(session);
-                        break;
-
-                    case "Nissan Leaf battery health assessment":
-                        await LeafBatteryHealthCommand.RunAsync(session);
                         break;
 
                     case "Test binary protocol (Service 6287)":
@@ -329,26 +316,3 @@ internal class Program
         }
     }
 }
-#else
-using Spectre.Console;
-
-namespace ObdInsight.DevTools;
-
-internal class Program
-{
-    private static Task Main(string[] args)
-    {
-        AnsiConsole.Write(new FigletText("OBD DevTools").Color(Color.Cyan1));
-        AnsiConsole.MarkupLine("[grey]BLE OBD-II Development Tool[/]");
-        AnsiConsole.WriteLine();
-        
-        AnsiConsole.MarkupLine("[yellow]This tool is only available on Windows 10/11.[/]");
-        AnsiConsole.MarkupLine("[grey]The Windows-specific BLE APIs are required for device communication.[/]");
-        AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine("Press any key to exit...");
-        Console.ReadKey();
-        
-        return Task.CompletedTask;
-    }
-}
-#endif

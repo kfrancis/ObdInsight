@@ -1,4 +1,3 @@
-#if WINDOWS
 using ObdInsight.Core.Transports.Ble;
 using System.Buffers;
 using System.Runtime.InteropServices.WindowsRuntime;
@@ -12,8 +11,6 @@ namespace ObdInsight.DevTools;
 /// Windows-specific BLE transport using WinRT APIs.
 /// Works on Windows 10/11 desktop with Bluetooth LE support.
 ///
-// Finally, your response should consist of only the fully rewritten file in a C# code block.
-
 /// This implementation follows Windows BLE best practices:
 /// - Event-driven readiness instead of fixed delays
 /// - Targeted UUID enumeration (Cached then Uncached)
@@ -323,10 +320,11 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
         base.Dispose();
     }
 
-    public override ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        await DisconnectAsync();
         _writeGate.Dispose();
-        return base.DisposeAsync();
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
@@ -450,9 +448,6 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
 
         // Fallback to Uncached
         Log($"Getting characteristic {charUuid} (Uncached fallback)...");
-
-        bool isSuccess = false;  // Flag to track successful retrieval
-
         for (var attempt = 0; attempt < 3; attempt++)
         {
             result = await service.GetCharacteristicsForUuidAsync(charUuid, BluetoothCacheMode.Uncached).AsTask(ct);
@@ -460,29 +455,14 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
             if (result.Status == GattCommunicationStatus.Success && result.Characteristics.Count > 0)
             {
                 Log($"Found characteristic via Uncached mode (attempt {attempt + 1})");
-                isSuccess = true;
-                break;  // Exit on success
+                return result.Characteristics[0];
             }
 
             Log($"Characteristic fetch attempt {attempt + 1}: Status={result.Status}, Count={result.Characteristics.Count}");
             await Task.Delay(300, ct);
         }
 
-        // If unsuccessful, log the failure and available characteristics
-        if (!isSuccess)
-        {
-            Log($"Failed to find characteristic {charUuid} after retries");
-
-            // Log available characteristics for debugging
-            var allChars = await service.GetCharacteristicsAsync(BluetoothCacheMode.Cached).AsTask(ct);
-            if (allChars.Status == GattCommunicationStatus.Success)
-            {
-                var uuids = string.Join(", ", allChars.Characteristics.Select(c => c.Uuid.ToString()));
-                Log($"Available characteristics: {uuids}");
-            }
-        }
-
-        return isSuccess ? result.Characteristics[0] : null;
+        return null;
     }
 
     private async Task<GattDeviceService?> GetServiceForUuidAsync(Guid serviceUuid, CancellationToken ct)
@@ -491,55 +471,39 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
 
         // Try Cached first (more reliable immediately after connect on Windows)
         Log($"Getting service {serviceUuid} (Cached)...");
-
-        GattDeviceService? service = null;  // Initialize service variable
-
         var result = await _device.GetGattServicesForUuidAsync(serviceUuid, BluetoothCacheMode.Cached).AsTask(ct);
 
         if (result.Status == GattCommunicationStatus.Success && result.Services.Count > 0)
         {
             Log($"Found service via Cached mode");
-            service = result.Services[0];
+            return result.Services[0];
         }
-        else
+
+        // Fallback to Uncached
+        Log($"Getting service {serviceUuid} (Uncached fallback)...");
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            // Fallback to Uncached
-            Log($"Getting service {serviceUuid} (Uncached fallback)...");
+            result = await _device.GetGattServicesForUuidAsync(serviceUuid, BluetoothCacheMode.Uncached).AsTask(ct);
 
-            bool isSuccess = false;  // Flag to track successful retrieval
-
-            for (var attempt = 0; attempt < 3; attempt++)
+            if (result.Status == GattCommunicationStatus.Success && result.Services.Count > 0)
             {
-                result = await _device.GetGattServicesForUuidAsync(serviceUuid, BluetoothCacheMode.Uncached).AsTask(ct);
-
-                if (result.Status == GattCommunicationStatus.Success && result.Services.Count > 0)
-                {
-                    Log($"Found service via Uncached mode (attempt {attempt + 1})");
-                    service = result.Services[0];
-                    isSuccess = true;
-                    break;  // Exit on success
-                }
-
-                Log($"Service fetch attempt {attempt + 1}: Status={result.Status}, Count={result.Services.Count}");
-                await Task.Delay(300, ct);
+                Log($"Found service via Uncached mode (attempt {attempt + 1})");
+                return result.Services[0];
             }
 
-            // If unsuccessful, log the failure and available services
-            if (!isSuccess)
-            {
-                Log($"Failed to find service {serviceUuid} after retries");
-
-                // Log available services for debugging
-                var allServices = await _device.GetGattServicesAsync(BluetoothCacheMode.Cached).AsTask(ct);
-                if (allServices.Status == GattCommunicationStatus.Success)
-                {
-                    var uuids = string.Join(", ", allServices.Services.Select(s => s.Uuid.ToString()));
-                    Log($"Available services: {uuids}");
-                }
-            }
+            Log($"Service fetch attempt {attempt + 1}: Status={result.Status}, Count={result.Services.Count}");
+            await Task.Delay(300, ct);
         }
 
-        return service;
+        // Log available services for debugging
+        var allServices = await _device.GetGattServicesAsync(BluetoothCacheMode.Cached).AsTask(ct);
+        if (allServices.Status == GattCommunicationStatus.Success)
+        {
+            var uuids = string.Join(", ", allServices.Services.Select(s => s.Uuid.ToString()));
+            Log($"Available services: {uuids}");
+        }
+
+        return null;
     }
 
     #endregion Targeted UUID Enumeration
@@ -721,4 +685,3 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
 
     #endregion Helpers
 }
-#endif

@@ -1,4 +1,4 @@
-using ObdInsight.Drivers.Adapters.Elm327;
+using ObdInsight.Core.Adapters.Elm327;
 using ObdInsight.Core.Diagnostics;
 using ObdInsight.Core.Transports.Ble;
 using Spectre.Console;
@@ -69,7 +69,7 @@ public static class ReportCommands
         ObdAdapterInfo? obdAdapterInfo = null;
         VehicleIdentification? vehicleId = null;
         SupportedPidsInfo? supportedPids = null;
-        IBleTransport? transport = null;
+        WindowsBleTransport? transport = null;
         Elm327Adapter? adapter = null;
 
         var progress = new Progress<DiagnosticProgress>(p =>
@@ -135,11 +135,7 @@ public static class ReportCommands
 
             await Task.Delay(3000);
 
-#if WINDOWS
             transport = new WindowsBleTransport(profile);
-#else
-            transport = new LinuxBleTransport(profile);
-#endif
             transport.DataSent += (_, data) => LogTraffic("TX", data);
             transport.DataReceived += (_, data) => LogTraffic("RX", data);
 
@@ -240,11 +236,7 @@ public static class ReportCommands
             // Phase 1: Connect
             AnsiConsole.MarkupLine("[cyan]Connecting to OBD adapter...[/]");
 
-#if WINDOWS
             transport = new WindowsBleTransport(profile);
-#else
-            transport = new LinuxBleTransport(profile);
-#endif
             transport.DataSent += (_, data) => LogTraffic("TX", data);
             transport.DataReceived += (_, data) => LogTraffic("RX", data);
 
