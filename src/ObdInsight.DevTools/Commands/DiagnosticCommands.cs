@@ -1,8 +1,9 @@
 using ObdInsight.Core;
 using ObdInsight.Core.Adapters;
-using ObdInsight.Core.Adapters.Elm327;
+
 using ObdInsight.Core.Vehicles;
 using ObdInsight.Drivers;
+using ObdInsight.Drivers.Adapters.Elm327;
 using Spectre.Console;
 
 namespace ObdInsight.DevTools.Commands;
@@ -121,7 +122,7 @@ public static class DiagnosticCommands
         var detector = new VehicleDetectorService();
         VehicleProfileRegistry.RegisterAllProfiles(detector);
 
-        var vehicleService = new VehicleObdService(detector: detector);
+        var vehicleService = new VehicleObdService(session.Adapter, detector: detector);
 
         var options = new VehicleServiceOptions
         {

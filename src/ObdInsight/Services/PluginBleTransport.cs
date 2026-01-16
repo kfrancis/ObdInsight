@@ -605,4 +605,12 @@ public partial class PluginBleTransport : IBleTransport, IAsyncDisposable
 
         DataReceived?.Invoke(this, data);
     }
+
+    public void DrainBuffer()
+    {
+        lock (_receiveBuffer)
+        {
+            _receiveBuffer.Clear();
+        }
+    }
 }
