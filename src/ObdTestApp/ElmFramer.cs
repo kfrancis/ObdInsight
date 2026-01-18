@@ -127,6 +127,94 @@ namespace ObdTestApp
                 ArrayPool<byte>.Shared.Return(buf);
             }
         }
+
+        /// <summary>
+        /// Writes raw data to the transport without waiting for a response.
+        /// Used for entering monitoring mode.
+        /// </summary>
+        public async ValueTask WriteAsync(string text, CancellationToken ct)
+        {
+            var bytes = System.Text.Encoding.ASCII.GetBytes(text);
+            await _transport.WriteAsync(bytes, ct);
+            await _transport.FlushAsync(ct);
+        }
+
+        /// <summary>
+        /// Reads data from the transport until a delimiter is found or timeout occurs.
+        /// Used for reading monitoring mode frames.
+        /// </summary>
+        public async ValueTask<string> ReadUntilAsync(string delimiter, TimeSpan timeout, CancellationToken ct)
+        {
+            // Check for already-cancelled token before starting
+            ct.ThrowIfCancellationRequested();
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(timeout);
+
+            var sb = new System.Text.StringBuilder(256);
+            var buf = ArrayPool<byte>.Shared.Rent(256);
+
+            try
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    // Check cancellation before each read
+                    if (ct.IsCancellationRequested)
+                    {
+                        throw new OperationCanceledException(ct);
+                    }
+
+                    var n = await _transport.ReadAsync(buf.AsMemory(0, 256), cts.Token);
+
+                    // If we got 0 bytes and cancellation is pending, exit
+                    if (n <= 0)
+                    {
+                        if (ct.IsCancellationRequested)
+                            throw new OperationCanceledException(ct);
+                        continue;
+                    }
+
+                    for (var i = 0; i < n; i++)
+                    {
+                        var b = buf[i];
+                        if (b == 0x00) continue;
+                        sb.Append((char)b);
+
+                        // Check if we've received the delimiter
+                        if (sb.Length >= delimiter.Length)
+                        {
+                            var end = sb.ToString()[^delimiter.Length..];
+                            if (end == delimiter)
+                            {
+                                return sb.ToString()[..^delimiter.Length];
+                            }
+                        }
+                    }
+                }
+
+                // Loop exited due to cancellation
+                if (ct.IsCancellationRequested)
+                    throw new OperationCanceledException(ct);
+
+                throw new TimeoutException($"Timeout reading until '{delimiter}'");
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested && !ct.IsCancellationRequested)
+            {
+                throw new TimeoutException($"Timeout reading until '{delimiter}'");
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buf);
+            }
+        }
+
+        /// <summary>
+        /// Clears any pending data from the transport buffer.
+        /// </summary>
+        public void ClearBuffer()
+        {
+            _transport.ClearBuffer();
+        }
         
         private void Log(string message)
         {

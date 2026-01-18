@@ -67,6 +67,11 @@ namespace ObdTestApp
                 .Select(d => (d.Id, d.Name))];
         }
 
+        public void ClearBuffer()
+        {
+            // No internal buffer to clear in this implementation
+        }
+
         public async ValueTask DisposeAsync()
         {
             await CleanupAsync();

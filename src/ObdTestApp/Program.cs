@@ -24,15 +24,15 @@ namespace ObdTestApp
             // Configure Serilog for file logging - create unique log file per run
             // Use the application's directory (bin\Debug\...\Logs) for easier debugging
             var logDir = Path.Combine(AppContext.BaseDirectory, "Logs");
-            
+
             try
             {
                 Directory.CreateDirectory(logDir);
-                
+
                 // Create unique log filename with date and time for this run
                 var runTimestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
                 var logFilePath = Path.Combine(logDir, $"obdtest-{runTimestamp}.log");
-                
+
                 Log.Logger = new LoggerConfiguration()
                     .MinimumLevel.Debug()
                     .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss.fff} {Level:u3}] {Message:lj}{NewLine}{Exception}")
@@ -44,7 +44,7 @@ namespace ObdTestApp
 
                 AnsiConsole.MarkupLine($"[grey]Log file: {Path.GetFileName(logFilePath).EscapeMarkup()}[/]");
                 AnsiConsole.MarkupLine($"[grey]Log directory: {logDir.EscapeMarkup()}[/]");
-                
+
                 Log.Information("=== ObdTestApp Started ===");
                 Log.Information("Log file: {LogFile}", logFilePath);
                 Log.Information("Arguments: {Args}", string.Join(" ", args));
@@ -169,13 +169,13 @@ namespace ObdTestApp
         {
             int failureCount = 0;
             const int maxFailures = 5;
-            
+
             while (!ct.IsCancellationRequested && failureCount < maxFailures)
             {
                 try
                 {
                     await RunElm327SessionAsync(selectedDevice, ct);
-                    
+
                     // If we get here, session ended normally
                     break;
                 }
@@ -184,13 +184,13 @@ namespace ObdTestApp
                     failureCount++;
                     Log.Warning(ex, "Connection failure #{FailureCount}/{MaxFailures} - {Message}", failureCount, maxFailures, ex.Message);
                     AnsiConsole.MarkupLine($"[red]Connection failure #{failureCount}/{maxFailures}:[/] {ex.Message.EscapeMarkup()}");
-                    
+
                     if (failureCount < maxFailures)
                     {
                         var retryDelay = TimeSpan.FromSeconds(Math.Min(30, Math.Pow(2, failureCount)));
                         Log.Information("Retrying in {RetryDelay} seconds (attempt {NextAttempt})", retryDelay.TotalSeconds, failureCount + 1);
                         AnsiConsole.MarkupLine($"[yellow]Retrying in {retryDelay.TotalSeconds:F0}s...[/]");
-                        
+
                         await Task.Delay(retryDelay, ct);
                         Log.Information("Starting retry attempt {Attempt}", failureCount + 1);
                         AnsiConsole.MarkupLine($"[cyan]Retry attempt {failureCount + 1}...[/]");
@@ -199,7 +199,7 @@ namespace ObdTestApp
                     {
                         Log.Error("Max retry attempts ({MaxFailures}) reached. Prompting for rescan.", maxFailures);
                         AnsiConsole.MarkupLine($"[red]Max retry attempts ({maxFailures}) reached. Giving up.[/]");
-                        
+
                         // Ask if user wants to rescan
                         if (AnsiConsole.Confirm("Scan for devices again?", defaultValue: true))
                         {
@@ -309,7 +309,7 @@ namespace ObdTestApp
                 var shouldFavorite = preferences.IsFavorite(selectedDevice) ||
                     AnsiConsole.Confirm($"Mark {selectedDevice.Name} as a favorite?", defaultValue: false);
 
-                Log.Information("User selected device #{Number}: {DeviceName} ({Address}), Favorite={IsFavorite}", 
+                Log.Information("User selected device #{Number}: {DeviceName} ({Address}), Favorite={IsFavorite}",
                     selection, selectedDevice.Name, selectedDevice.Address, shouldFavorite);
                 preferences.RememberDevice(selectedDevice, shouldFavorite);
 
@@ -332,22 +332,20 @@ namespace ObdTestApp
             try
             {
                 Log.Information("Starting BLE scan for {Duration} seconds", ScanDuration.TotalSeconds);
-                await AnsiConsole.Status()
-                    .Spinner(Spinner.Known.Dots)
-                    .StartAsync($"Scanning for BLE devices ({ScanDuration.TotalSeconds:0}s)...", async _ =>
-                    {
-                        await scanner.StartScanAsync(cancellationToken: ct);
-                        try
-                        {
-                            await Task.Delay(ScanDuration, ct);
-                        }
-                        finally
-                        {
-                            await scanner.StopScanAsync();
-                        }
-                    });
+                AnsiConsole.MarkupLine($"[cyan]Scanning for BLE devices ({ScanDuration.TotalSeconds:0}s)...[/]");
+
+                await scanner.StartScanAsync(cancellationToken: ct);
+                try
+                {
+                    await Task.Delay(ScanDuration, ct);
+                }
+                finally
+                {
+                    await scanner.StopScanAsync();
+                }
 
                 Log.Information("BLE scan completed. Found {DeviceCount} devices", devices.Count);
+                AnsiConsole.MarkupLine($"[green]✓[/] Scan complete. Found {devices.Count} device(s).");
                 return devices;
             }
             finally
@@ -421,48 +419,51 @@ namespace ObdTestApp
             var successfulQueries = 0;
             var failedQueries = 0;
             var invalidResponseQueries = 0; // Queries that completed but returned invalid/empty data
+            var monitoringFrameCount = 0;
+            var monitoringUniqueCanIds = 0;
+            var monitoringDuration = TimeSpan.Zero;
 
             Log.Information("=== Starting ELM327 session ===");
-            Log.Information("Connecting to device: {DeviceName} ({Address}), RSSI={Rssi}", 
+            Log.Information("Connecting to device: {DeviceName} ({Address}), RSSI={Rssi}",
                 selectedDevice.Name, selectedDevice.Address, selectedDevice.Rssi);
-            
+
             AnsiConsole.WriteLine();
             AnsiConsole.MarkupLine($"[cyan]Connecting to:[/] {selectedDevice.Name.EscapeMarkup()} [grey]({selectedDevice.Address.EscapeMarkup()})[/]");
 
             await using var transport = new BleElmTransport(selectedDevice.Address);
-            
+
             // Enable debug logging
-            //transport.EnableDebugLogging = true;
-            
+            transport.EnableDebugLogging = true;
+
             try
             {
                 Log.Information("Opening BLE transport");
-                await AnsiConsole.Status()
-                    .Spinner(Spinner.Known.Dots)
-                    .StartAsync("Establishing BLE connection...", async ctx =>
-                    {
-                        await transport.OpenAsync(ct);
-                    });
-                
+                AnsiConsole.MarkupLine("[cyan]Establishing BLE connection...[/]");
+                await transport.OpenAsync(ct);
+
                 Log.Information("BLE transport opened successfully");
                 AnsiConsole.MarkupLine("[green]✓[/] Bluetooth connected.");
                 AnsiConsole.WriteLine();
 
-                var framer = new ElmFramer(transport);
-                
+                var framer = new ElmFramer(transport)
+                {
+                    EnableDebugLogging = true
+                };
+
                 var session = new ElmSession(framer)
                 {
                     CommandTimeout = TimeSpan.FromSeconds(5),
-                    MaxConsecutiveFailures = 3
+                    MaxConsecutiveFailures = 3,
+                    EnableDebugLogging = true
                 };
 
-                Log.Information("Initializing ELM327 session (Timeout={CommandTimeout}s, MaxFailures={MaxFailures})", 
+                Log.Information("Initializing ELM327 session (Timeout={CommandTimeout}s, MaxFailures={MaxFailures})",
                     session.CommandTimeout.TotalSeconds, session.MaxConsecutiveFailures);
                 AnsiConsole.MarkupLine("[yellow]Initializing ELM327 session...[/]");
                 await session.InitializeAndLockAsync(ct);
                 Log.Information("ELM327 session initialized and protocol locked");
                 AnsiConsole.MarkupLine("[green]✓[/] Session initialized and protocol locked.");
-                
+
                 // Display connection info
                 var infoPanel = new Panel(new Markup(
                     $"[cyan]Device:[/] {selectedDevice.Name.EscapeMarkup()}\n" +
@@ -480,7 +481,7 @@ namespace ObdTestApp
                 // Configure ELM327 for Nissan Leaf BMS communication
                 // BMS uses addresses: TX=0x79B, RX=0x7BB
                 Log.Information("Configuring ELM327 for Nissan Leaf BMS (79B/7BB)");
-                
+
                 AnsiConsole.WriteLine();
                 AnsiConsole.Write(new Panel(
                     "[yellow]IMPORTANT: Vehicle must be in one of these states:[/]\n" +
@@ -493,7 +494,7 @@ namespace ObdTestApp
                     Border = BoxBorder.Rounded
                 });
                 AnsiConsole.WriteLine();
-                
+
                 AnsiConsole.MarkupLine("[yellow]Waking up ECUs and configuring BMS...[/]");
 
                 //var wakeupAttempts = new (string Cmd, string Desc)[]
@@ -526,7 +527,7 @@ namespace ObdTestApp
                 Log.Information("Sending wakeup to broadcast address (7DF)");
                 await framer.SendAndReadFrameAsync("ATSH7DF", session.CommandTimeout, ct);
                 var wakeupResponse = await framer.SendAndReadFrameAsync("0100", session.CommandTimeout, ct);
-                
+
                 if (wakeupResponse.Contains("NO DATA", StringComparison.OrdinalIgnoreCase))
                 {
                     Log.Warning("Wakeup query returned NO DATA - ECUs may be sleeping");
@@ -539,191 +540,203 @@ namespace ObdTestApp
                     Log.Information("Wakeup query succeeded - ECUs responding");
                     AnsiConsole.MarkupLine("[green]✓[/] ECUs responded to wakeup");
                 }
-                
+
                 await Task.Delay(200, ct); // Wait for ECUs to wake up
-                
-                // Now configure for BMS - CRITICAL: Disable CAN auto-formatting
-                Log.Information("Configuring ISO-TP for communication");
-                AnsiConsole.MarkupLine("[grey]  Configuring ISO-TP and headers...[/]");
 
-                // Turn on headers
-                await framer.SendAndReadFrameAsync("ATH1", session.CommandTimeout, ct);
-
-                // Set automatic formatting on
-                await framer.SendAndReadFrameAsync("ATCAF1", session.CommandTimeout, ct);
-                
-                // Configure ISO-TP flow control for multi-frame responses                
-                await framer.SendAndReadFrameAsync("ATFCSD300000", session.CommandTimeout, ct);
-                await framer.SendAndReadFrameAsync("ATFCSM1", session.CommandTimeout, ct);
-                
-                Log.Information("Nissan Leaf BMS configuration complete");
-                AnsiConsole.MarkupLine("[green]✓[/] BMS headers configured (79B/7BB) with ISO-TP flow control");
+                Log.Information("ECU wakeup complete - contexts configured for Nissan Leaf");
+                AnsiConsole.MarkupLine("[green]✓[/] ECU wakeup complete");
 
                 AnsiConsole.WriteLine();
-                AnsiConsole.MarkupLine("[cyan]Querying Nissan Leaf battery data (Ctrl+C to exit)...[/]");
-                AnsiConsole.MarkupLine("[grey]Using Mode 21 queries to Li-ion Battery Controller (LBC)[/]");
+                AnsiConsole.MarkupLine("[cyan]Testing Nissan Leaf data collection (monitoring + queries)...[/]");
+                AnsiConsole.MarkupLine("[grey]Phase 1: Passive monitoring, Phase 2: Active queries[/]");
                 AnsiConsole.WriteLine();
 
-                Log.Information("Starting Nissan Leaf battery data query loop (Mode 21)");
-                var lastStatsDisplay = DateTime.UtcNow;
+                Log.Information("Starting Nissan Leaf data collection test");
 
-                while (!ct.IsCancellationRequested)
+                // =====================================================================
+                // PHASE 1: PASSIVE MONITORING MODE
+                // =====================================================================
+                AnsiConsole.MarkupLine("[yellow]═══ PHASE 1: PASSIVE MONITORING ═══[/]");
+                Log.Information("Entering passive monitoring mode for HVBAT broadcast data");
+
+                await session.EnterMonitoringModeAsync(EcuContext.NissanLeafHvbatMonitor, ct);
+                AnsiConsole.MarkupLine("[green]✓[/] Monitoring mode active (AT MA)");
+
+                // Monitor for 5 seconds
+                var monitorDuration = TimeSpan.FromSeconds(5);
+                var monitorStart = DateTime.UtcNow;
+                var frameCount = 0;
+                var uniqueCanIds = new HashSet<string>();
+
+                AnsiConsole.MarkupLine($"[cyan]Monitoring CAN bus for {monitorDuration.TotalSeconds}s...[/]");
+
+                // Use a timeout-based cancellation token for monitoring
+                using var monitorCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                monitorCts.CancelAfter(monitorDuration);
+
+                try
                 {
-                    try
+                    await foreach (var frame in session.MonitorFramesAsync(monitorCts.Token))
                     {
-                        // Check cancellation before each query
-                        ct.ThrowIfCancellationRequested();
+                        frameCount++;
+                        uniqueCanIds.Add(frame.CanIdHex);
 
-                        // Set BMS addresses
-                        await framer.SendAndReadFrameAsync("ATSH79B", session.CommandTimeout, ct);
-                        await framer.SendAndReadFrameAsync("ATCRA7BB", session.CommandTimeout, ct);
-                        await framer.SendAndReadFrameAsync("ATFCSH79B", session.CommandTimeout, ct);
-
-                        // Query Nissan Leaf BMS using Mode 21 Group 1 (2101)
-                        // Response: 61 01 followed by battery data (SOC, voltage, current, temps, etc.)
-                        Log.Debug("Querying Nissan Leaf BMS Group 1 (2101) - SOC, Voltage, Current, Temps");
-                        var group1Lines = await session.QueryAsync("2101", ct);
-                        Log.Debug("Group 1 query returned {LineCount} lines: {Lines}", group1Lines.Length, string.Join(", ", group1Lines));
-                        
-                        // Look for response starting with "61 01" or containing "7BB" (BMS response ID)
-                        var group1Line = group1Lines.FirstOrDefault(l =>
-                            l.Contains("61 01", StringComparison.OrdinalIgnoreCase) ||
-                            l.Contains("7BB", StringComparison.OrdinalIgnoreCase));
-
-                        if (group1Line != null)
+                        // Display interesting frames
+                        var description = frame.CanIdHex switch
                         {
-                            if (TryParseBmsGroup01(group1Line, out var group01))
-                            {
-                                var parts = new List<string>();
+                            "1DB" => "LB_STATUS (Current/Voltage/SOC)",
+                            "1DC" => "LB_LIMITS (Power limits)",
+                            "55B" => "LB_SOC (High-res SOC)",
+                            "5BC" => "LB_GIDS (Capacity/SOH)",
+                            "5C0" => "LB_TEMPS (Temperatures)",
+                            "1DA" => "INVERTER (Motor data)",
+                            "59E" => "QC_CAPACITY",
+                            _ => null
+                        };
 
-                                if (group01?.CurrentAmps is double currentAmps)
-                                {
-                                    var currentDir = currentAmps > 0 ? "discharging" : (currentAmps < 0 ? "charging" : "idle");
-                                    parts.Add($"BMS I: {Math.Abs(currentAmps):F1}A ({currentDir})");
-                                }
-
-                                if (group01?.SocPercent is double soc)
-                                    parts.Add($"SOC: {soc:F1}%");
-
-                                if (group01?.CapacityAh is double capacityAh)
-                                    parts.Add($"CAC: {capacityAh:F2}Ah");
-
-                                if (group01?.HxPercent is double hx)
-                                    parts.Add($"HX: {hx:F1}%");
-
-                                if (parts.Count == 0)
-                                {
-                                    SafeWrite($"BMS G01: {group01?.ByteCount ?? 0}B  ");
-                                }
-                                else
-                                {
-                                    SafeWrite(string.Join("  ", parts) + "  ");
-                                }
-
-                                successfulQueries++;
-                            }
-                            else
-                            {
-                                Log.Debug("BMS Group 1 query returned invalid/unexpected response");
-                                invalidResponseQueries++;
-                            }
-                        }
-                        else
+                        if (description != null)
                         {
-                            Log.Debug("BMS Group 1 query returned no valid response");
-                            invalidResponseQueries++;
+                            AnsiConsole.MarkupLine($"[grey]  {frame.CanIdHex}: {description} - {frame.Data.Length} bytes[/]");
                         }
-
-                        ct.ThrowIfCancellationRequested();
-                        
-                        // Query Mode 21 Group 2 (2102) - Additional battery data
-                        Log.Debug("Querying Nissan Leaf BMS Group 2 (2102)");
-                        var group2Lines = await session.QueryAsync("2102", ct);
-                        Log.Debug("Group 2 query returned {LineCount} lines: {Lines}", group2Lines.Length, string.Join(", ", group2Lines));
-                        
-                        var group2Line = group2Lines.FirstOrDefault(l =>
-                            l.Contains("61 02", StringComparison.OrdinalIgnoreCase) ||
-                            l.Contains("7BB", StringComparison.OrdinalIgnoreCase));
-
-                        if (group2Line != null)
-                        {
-                            SafeWrite($"Group2: {group2Line.Substring(0, Math.Min(30, group2Line.Length))}  ");
-                            successfulQueries++;
-                        }
-                        else
-                        {
-                            Log.Debug("BMS Group 2 query returned no valid response");
-                            invalidResponseQueries++;
-                        }
-
-                        ct.ThrowIfCancellationRequested();
-
-                        // Switch to charger
-                        await framer.SendAndReadFrameAsync($"ATSH797", session.CommandTimeout, ct);
-                        await framer.SendAndReadFrameAsync($"ATCRA79A", session.CommandTimeout, ct);
-                        await framer.SendAndReadFrameAsync($"ATFCSH797", session.CommandTimeout, ct);
-                        await framer.SendAndReadFrameAsync("ATFCSD300000", session.CommandTimeout, ct);
-                        await framer.SendAndReadFrameAsync("ATFCSM1", session.CommandTimeout, ct);
-
-                        // Try standard OBD-II VIN query (Mode 09 PID 02) as fallback to verify communication
-                        Log.Debug("Querying VIN (2181)");
-                        var vinLines = await session.QueryAsync("2181", ct);
-                        
-                        Log.Debug("VIN query returned {LineCount} lines: {Lines}", vinLines.Length, string.Join(", ", vinLines));
-                        
-                        var vinResponse = string.Join("\n", vinLines);
-                        if (vinLines.Length > 0 && TryParseVin(vinResponse, out var vin))
-                        {
-                            SafeWrite($"VIN: {vin}");
-                            successfulQueries++;
-                        }
-                        else
-                        {
-                            Log.Debug("VIN query returned no valid response");
-                            invalidResponseQueries++;
-                        }
-
-                        AnsiConsole.WriteLine();
-                        
-                        // Display statistics every 30 seconds
-                        if (DateTime.UtcNow - lastStatsDisplay > TimeSpan.FromSeconds(30))
-                        {
-                            lastStatsDisplay = DateTime.UtcNow;
-                            var uptime = DateTime.UtcNow - sessionStart;
-                            var totalAttempts = successfulQueries + failedQueries + invalidResponseQueries;
-                            var successRate = totalAttempts > 0 
-                                ? (double)successfulQueries / totalAttempts * 100 
-                                : 0;
-                            
-                            AnsiConsole.MarkupLine($"[grey]Stats: Uptime={uptime:hh\\:mm\\:ss}, Success={successfulQueries}, Invalid={invalidResponseQueries}, Failed={failedQueries}, Rate={successRate:F1}%[/]");
-                            Log.Information("Session stats - Uptime={Uptime}, Success={Success}, Invalid={Invalid}, Failed={Failed}, Rate={Rate:F1}%", 
-                                uptime, successfulQueries, invalidResponseQueries, failedQueries, successRate);
-                        }
-                        
-                        // Check cancellation before delay
-                        ct.ThrowIfCancellationRequested();
-                        await Task.Delay(250, ct);
                     }
-                    catch (OperationCanceledException)
-                    {
-                        // User pressed Ctrl+C - exit cleanly
-                        Log.Information("Data collection cancelled by user");
-                        AnsiConsole.MarkupLine("\n[yellow]Stopping data collection...[/]");
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        failedQueries++;
-                        AnsiConsole.MarkupLine($"[red]Error reading data:[/] {ex.Message.EscapeMarkup()}");
-                        
-                        // Log error using Serilog
-                        LogError(ex, successfulQueries, failedQueries, DateTime.UtcNow - sessionStart);
-                        
-                        // Check cancellation before retry delay
-                        if (!ct.IsCancellationRequested)
-                            await Task.Delay(1000, ct);
-                    }
+
+                    // Monitoring ended - could be normal timeout, user cancellation, or BUFFER FULL
+                    Log.Debug("Monitoring loop completed");
                 }
+                catch (OperationCanceledException) when (monitorCts.IsCancellationRequested && !ct.IsCancellationRequested)
+                {
+                    // Expected - monitoring duration elapsed
+                    Log.Debug("Monitoring duration elapsed normally");
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    // User cancelled
+                    Log.Information("Monitoring cancelled by user");
+                    AnsiConsole.MarkupLine("[yellow]Monitoring cancelled by user[/]");
+                }
+                finally
+                {
+                    // Always try to exit monitoring mode cleanly
+                    Log.Debug("Ensuring monitoring mode is exited");
+                }
+
+                // Capture monitoring stats for final summary
+                monitoringFrameCount = frameCount;
+                monitoringUniqueCanIds = uniqueCanIds.Count;
+                monitoringDuration = DateTime.UtcNow - monitorStart;
+
+                AnsiConsole.MarkupLine($"[green]✓[/] Monitoring complete: {frameCount} frames, {uniqueCanIds.Count} unique CAN IDs");
+                Log.Information("Monitoring complete - FrameCount={FrameCount}, UniqueCanIds={UniqueCanIds}",
+                    frameCount, string.Join(", ", uniqueCanIds.OrderBy(id => id)));
+
+                // Exit monitoring mode
+                Log.Information("Exiting monitoring mode");
+                await session.ExitMonitoringModeAsync(ct);
+                AnsiConsole.MarkupLine("[green]✓[/] Exited monitoring mode");
+
+                // Pause to let the device settle
+                AnsiConsole.MarkupLine("[yellow]Pausing 2s to let device settle...[/]");
+                await Task.Delay(2000, ct);
+
+                AnsiConsole.WriteLine();
+
+                // =====================================================================
+                // PHASE 2: ACTIVE QUERY MODE
+                // =====================================================================
+                AnsiConsole.MarkupLine("[yellow]═══ PHASE 2: ACTIVE QUERIES ═══[/]");
+                Log.Information("Starting active query mode");
+
+                // Query BMS Group 1
+                AnsiConsole.MarkupLine("[cyan]Querying BMS Group 1 (2101)...[/]");
+                Log.Debug("Querying Nissan Leaf BMS Group 1 (2101) - SOC, Voltage, Current, Temps");
+                var group1Lines = await session.QueryAsync("2101", EcuContext.NissanLeafBms, ct);
+                Log.Debug("Group 1 query returned {LineCount} lines: {Lines}", group1Lines.Length, string.Join(", ", group1Lines));
+
+                var group1Line = group1Lines.FirstOrDefault(l =>
+                    l.Contains("61 01", StringComparison.OrdinalIgnoreCase) ||
+                    l.Contains("7BB", StringComparison.OrdinalIgnoreCase));
+
+                if (group1Line != null && TryParseBmsGroup01(group1Line, out var group01))
+                {
+                    var parts = new List<string>();
+
+                    if (group01?.CurrentAmps is double currentAmps)
+                    {
+                        var currentDir = currentAmps > 0 ? "discharging" : (currentAmps < 0 ? "charging" : "idle");
+                        parts.Add($"Current: {Math.Abs(currentAmps):F1}A ({currentDir})");
+                    }
+
+                    if (group01?.SocPercent is double soc)
+                        parts.Add($"SOC: {soc:F1}%");
+
+                    if (group01?.CapacityAh is double capacityAh)
+                        parts.Add($"Capacity: {capacityAh:F2}Ah");
+
+                    if (group01?.HxPercent is double hx)
+                        parts.Add($"Health: {hx:F1}%");
+
+                    AnsiConsole.MarkupLine($"[green]✓[/] BMS Group 1: {string.Join(", ", parts)}");
+                    successfulQueries++;
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] BMS Group 1: No valid response");
+                    invalidResponseQueries++;
+                }
+
+                await Task.Delay(500, ct); // Pause between queries
+
+                // Query BMS Group 2
+                AnsiConsole.MarkupLine("[cyan]Querying BMS Group 2 (2102)...[/]");
+                Log.Debug("Querying Nissan Leaf BMS Group 2 (2102)");
+                var group2Lines = await session.QueryAsync("2102", EcuContext.NissanLeafBms, ct);
+                Log.Debug("Group 2 query returned {LineCount} lines: {Lines}", group2Lines.Length, string.Join(", ", group2Lines));
+
+                var group2Line = group2Lines.FirstOrDefault(l =>
+                    l.Contains("61 02", StringComparison.OrdinalIgnoreCase) ||
+                    l.Contains("7BB", StringComparison.OrdinalIgnoreCase));
+
+                if (group2Line != null)
+                {
+                    AnsiConsole.MarkupLine($"[green]✓[/] BMS Group 2: {group2Line.Substring(0, Math.Min(40, group2Line.Length))}...");
+                    successfulQueries++;
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] BMS Group 2: No valid response");
+                    invalidResponseQueries++;
+                }
+
+                await Task.Delay(500, ct); // Pause between queries
+
+                // Query VIN from charger
+                AnsiConsole.MarkupLine("[cyan]Querying VIN from charger (2181)...[/]");
+                Log.Debug("Querying VIN (2181)");
+                var vinLines = await session.QueryAsync("2181", EcuContext.NissanLeafCharger, ct);
+                Log.Debug("VIN query returned {LineCount} lines: {Lines}", vinLines.Length, string.Join(", ", vinLines));
+
+                var vinResponse = string.Join("\n", vinLines);
+                if (vinLines.Length > 0 && TryParseVin(vinResponse, out var vin))
+                {
+                    AnsiConsole.MarkupLine($"[green]✓[/] VIN: {vin}");
+                    successfulQueries++;
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] VIN: No valid response");
+                    invalidResponseQueries++;
+                }
+
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[green]═══ TEST COMPLETE ═══[/]");
+
+                var totalQueries = successfulQueries + invalidResponseQueries;
+                var successRate = totalQueries > 0 ? (double)successfulQueries / totalQueries * 100 : 0;
+
+                AnsiConsole.MarkupLine($"[cyan]Monitoring:[/] {frameCount} frames from {uniqueCanIds.Count} CAN IDs");
+                AnsiConsole.MarkupLine($"[cyan]Queries:[/] {successfulQueries}/{totalQueries} successful ({successRate:F0}%)");
+                Log.Information("Test complete - MonitorFrames={FrameCount}, QuerySuccess={Success}/{Total}",
+                    frameCount, successfulQueries, totalQueries);
             }
             finally
             {
@@ -731,21 +744,23 @@ namespace ObdTestApp
                 var totalUptime = DateTime.UtcNow - sessionStart;
                 var totalQueries = successfulQueries + failedQueries + invalidResponseQueries;
                 var finalSuccessRate = totalQueries > 0 ? (double)successfulQueries / totalQueries * 100 : 0;
-                
+
                 AnsiConsole.WriteLine();
                 var statsPanel = new Panel(new Markup(
                     $"[cyan]Total Uptime:[/] {totalUptime:hh\\:mm\\:ss}\n" +
+                    $"[cyan]Monitoring Frames:[/] {monitoringFrameCount} ({monitoringUniqueCanIds} unique CAN IDs)\n" +
+                    $"[cyan]Monitoring Duration:[/] {monitoringDuration.TotalSeconds:F1}s\n" +
                     $"[cyan]Successful Queries:[/] {successfulQueries}\n" +
                     $"[cyan]Invalid Response Queries:[/] {invalidResponseQueries}\n" +
                     $"[cyan]Failed Queries:[/] {failedQueries}\n" +
-                    $"[cyan]Success Rate:[/] {finalSuccessRate:F1}%\n" +
+                    $"[cyan]Query Success Rate:[/] {finalSuccessRate:F1}%\n" +
                     $"[cyan]Queries/Min:[/] {(totalQueries / totalUptime.TotalMinutes):F1}"))
                 {
                     Header = new PanelHeader("[yellow]Session Statistics[/]"),
                     Border = BoxBorder.Rounded
                 };
                 AnsiConsole.Write(statsPanel);
-                
+
                 // Log session summary
                 LogSessionSummary(selectedDevice, sessionStart, totalUptime, successfulQueries, invalidResponseQueries, failedQueries);
             }
@@ -756,7 +771,7 @@ namespace ObdTestApp
         /// </summary>
         private static void LogError(Exception ex, int successCount, int failCount, TimeSpan uptime)
         {
-            Log.Error(ex, "Query error - Uptime={Uptime}, SuccessCount={SuccessCount}, FailCount={FailCount}", 
+            Log.Error(ex, "Query error - Uptime={Uptime}, SuccessCount={SuccessCount}, FailCount={FailCount}",
                 uptime, successCount, failCount);
         }
 

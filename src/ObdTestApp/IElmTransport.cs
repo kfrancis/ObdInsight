@@ -47,5 +47,10 @@
         /// <param name="ct">A cancellation token that can be used to cancel the write operation.</param>
         /// <returns>A value task that represents the asynchronous write operation.</returns>
         ValueTask WriteAsync(ReadOnlyMemory<byte> data, CancellationToken ct);
+
+        /// <summary>
+        /// Clears all data from the buffer.
+        /// </summary>
+        void ClearBuffer();
     }
 }

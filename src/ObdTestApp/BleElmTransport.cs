@@ -60,6 +60,22 @@ namespace ObdTestApp
             await CleanupAsync();
         }
 
+        /// <summary>
+        /// Clears all data from the buffer.
+        /// </summary>
+        public void ClearBuffer()
+        {
+            _bufferLock.Wait();
+            try
+            {
+                _receiveBuffer.Clear();
+            }
+            finally
+            {
+                _bufferLock.Release();
+            }
+        }
+
         public ValueTask FlushAsync(CancellationToken ct)
         {
             // BLE writes are immediately transmitted
