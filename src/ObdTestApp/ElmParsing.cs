@@ -21,6 +21,11 @@ namespace ObdTestApp
         public static bool LooksLikeAdapterError(string line)
         {
             var s = line.Trim();
+
+            // "SEARCHING..." is NOT an error - it means the adapter is actively trying protocols
+            if (s.Contains("SEARCHING", StringComparison.OrdinalIgnoreCase))
+                return false;
+
             return s == "?" || s.Contains("NO DATA", StringComparison.OrdinalIgnoreCase)
                 || s.Contains("UNABLE", StringComparison.OrdinalIgnoreCase)
                 || s.Contains("STOPPED", StringComparison.OrdinalIgnoreCase)

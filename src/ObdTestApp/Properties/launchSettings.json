@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ObdTestApp": {
+      "commandName": "Project",
+      "commandLineArgs": "--device=66:1E:87:02:C2:DB --auto"
+    }
+  }
+}

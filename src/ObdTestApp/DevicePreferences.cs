@@ -87,6 +87,28 @@ internal sealed class DevicePreferences
                .OrderByDescending(d => d.Rssi)
                .FirstOrDefault();
 
+    /// <summary>
+    /// Gets the most recently used favorite device without requiring a scan.
+    /// Returns null if no favorite exists.
+    /// </summary>
+    public BleDeviceInfo? GetFavoriteDevice()
+    {
+        // Check if there's a favorite address saved
+        var favoriteAddress = _favoriteAddresses.FirstOrDefault() ?? 
+                             _savedOrder.FirstOrDefault(addr => _favoriteAddresses.Contains(addr));
+        
+        if (string.IsNullOrEmpty(favoriteAddress))
+            return null;
+        
+        // Return a minimal device info with just the address
+        // RSSI will be 0 since we haven't scanned, but that's OK for auto-connect
+        return new BleDeviceInfo(
+            "Favorite Device", // Placeholder name, will be updated on connect
+            favoriteAddress,
+            0, // RSSI unknown without scan
+            Array.Empty<Guid>()); // No advertised services without scan
+    }
+
     public void RememberDevice(BleDeviceInfo device, bool markAsFavorite)
     {
         ArgumentNullException.ThrowIfNull(device);

@@ -38,6 +38,11 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
     private int _bytesReceived;
     private int _writeAttempts;
     private int _writeSuccesses;
+    
+    /// <summary>
+    /// Enable verbose debug logging to console (useful for troubleshooting connectivity issues).
+    /// </summary>
+    public bool EnableDebugLogging { get; set; }
 
     public WindowsBleTransport(BleDeviceProfile profile) : base(profile)
     {
@@ -52,128 +57,197 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
 
     public override async Task<bool> ConnectAsync(string deviceAddress, CancellationToken cancellationToken = default)
     {
-        try
+        const int maxRetries = 3;
+        Exception? lastException = null;
+        
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            _userDisconnecting = false;
-            _isConnected = false;
-            _notificationsReceived = 0;
-            _bytesReceived = 0;
-            _writeAttempts = 0;
-            _writeSuccesses = 0;
-            
-            SetConnectionState(BleConnectionState.Connecting);
-            DeviceAddress = deviceAddress;
-
-            var macValue = ParseMacAddress(deviceAddress);
-            Log($"Connecting to {deviceAddress} (0x{macValue:X})...");
-
-            // Connect to device
-            _device = await BluetoothLEDevice.FromBluetoothAddressAsync(macValue).AsTask(cancellationToken);
-            if (_device == null)
-            {
-                Log("Failed to get BluetoothLEDevice");
-                SetConnectionState(BleConnectionState.Disconnected);
-                return false;
-            }
-
-            Log($"Got device: {_device.Name}, ConnectionStatus: {_device.ConnectionStatus}");
-            _device.ConnectionStatusChanged += OnConnectionStatusChanged;
-
-            // Create GATT session with event-driven readiness
-            _gattReadyTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
             try
             {
-                _gattSession = await GattSession.FromDeviceIdAsync(_device.BluetoothDeviceId).AsTask(cancellationToken);
-                if (_gattSession != null)
+                _userDisconnecting = false;
+                _isConnected = false;
+                _notificationsReceived = 0;
+                _bytesReceived = 0;
+                _writeAttempts = 0;
+                _writeSuccesses = 0;
+                
+                SetConnectionState(BleConnectionState.Connecting);
+                DeviceAddress = deviceAddress;
+
+                var macValue = ParseMacAddress(deviceAddress);
+                Log($"Connection attempt {attempt}/{maxRetries}: Connecting to {deviceAddress} (0x{macValue:X})...");
+
+                // Connect to device
+                _device = await BluetoothLEDevice.FromBluetoothAddressAsync(macValue).AsTask(cancellationToken);
+                if (_device == null)
                 {
-                    _gattSession.MaintainConnection = true;
-                    _gattSession.SessionStatusChanged += OnSessionStatusChanged;
-                    _gattSession.MaxPduSizeChanged += OnMaxPduSizeChanged;
-                    _maxPduSize = _gattSession.MaxPduSize;
-                    Log($"GATT session created, MaintainConnection=true, MaxPduSize={_maxPduSize}");
+                    Log("Failed to get BluetoothLEDevice");
+                    lastException = new IOException("Failed to get BluetoothLEDevice from address");
+                    
+                    if (attempt < maxRetries)
+                    {
+                        var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1)); // Exponential backoff
+                        Log($"Retrying in {delay.TotalSeconds}s...");
+                        await Task.Delay(delay, cancellationToken);
+                        continue;
+                    }
+                    
+                    SetConnectionState(BleConnectionState.Disconnected);
+                    return false;
                 }
+
+                Log($"Got device: {_device.Name}, ConnectionStatus: {_device.ConnectionStatus}");
+                _device.ConnectionStatusChanged += OnConnectionStatusChanged;
+
+                // Create GATT session with event-driven readiness
+                _gattReadyTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+                try
+                {
+                    _gattSession = await GattSession.FromDeviceIdAsync(_device.BluetoothDeviceId).AsTask(cancellationToken);
+                    if (_gattSession != null)
+                    {
+                        _gattSession.MaintainConnection = true;
+                        _gattSession.SessionStatusChanged += OnSessionStatusChanged;
+                        _gattSession.MaxPduSizeChanged += OnMaxPduSizeChanged;
+                        _maxPduSize = _gattSession.MaxPduSize;
+                        Log($"GATT session created, MaintainConnection=true, MaxPduSize={_maxPduSize}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"Warning: Could not create GATT session: {ex.Message}");
+                }
+
+                // Get service using targeted UUID enumeration (Cached first, then Uncached)
+                _service = await GetServiceForUuidAsync(Profile.ServiceUuid, cancellationToken);
+                if (_service == null)
+                {
+                    Log($"Service {Profile.ServiceUuid} not found");
+                    lastException = new IOException($"Service {Profile.ServiceUuid} not found");
+                    await DisconnectAsync();
+                    
+                    if (attempt < maxRetries)
+                    {
+                        var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
+                        Log($"Retrying in {delay.TotalSeconds}s...");
+                        await Task.Delay(delay, cancellationToken);
+                        continue;
+                    }
+                    
+                    return false;
+                }
+
+                Log($"Found target service: {_service.Uuid}");
+
+                // Get characteristics using targeted enumeration
+                _writeCharacteristic = await GetCharacteristicForUuidAsync(_service, Profile.WriteCharacteristicUuid, cancellationToken);
+                if (_writeCharacteristic == null)
+                {
+                    Log($"Write characteristic {Profile.WriteCharacteristicUuid} not found");
+                    lastException = new IOException($"Write characteristic {Profile.WriteCharacteristicUuid} not found");
+                    await DisconnectAsync();
+                    
+                    if (attempt < maxRetries)
+                    {
+                        var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
+                        Log($"Retrying in {delay.TotalSeconds}s...");
+                        await Task.Delay(delay, cancellationToken);
+                        continue;
+                    }
+                    
+                    return false;
+                }
+
+                Log($"Write characteristic found: {_writeCharacteristic.Uuid}, Props: {_writeCharacteristic.CharacteristicProperties}");
+
+                _notifyCharacteristic = await GetCharacteristicForUuidAsync(_service, Profile.NotifyCharacteristicUuid, cancellationToken);
+                if (_notifyCharacteristic != null)
+                {
+                    Log($"Notify characteristic found: {_notifyCharacteristic.Uuid}, Props: {_notifyCharacteristic.CharacteristicProperties}");
+
+                    var notifyOk = await EnableNotificationsAsync(_notifyCharacteristic, cancellationToken);
+                    if (!notifyOk && Profile.NotificationsRequired)
+                    {
+                        Log("Failed to enable required notifications - aborting connect");
+                        lastException = new IOException("Failed to enable required notifications");
+                        await DisconnectAsync();
+                        
+                        if (attempt < maxRetries)
+                        {
+                            var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
+                            Log($"Retrying in {delay.TotalSeconds}s...");
+                            await Task.Delay(delay, cancellationToken);
+                            continue;
+                        }
+                        
+                        return false;
+                    }
+                }
+                else if (Profile.NotificationsRequired)
+                {
+                    Log($"Notify characteristic {Profile.NotifyCharacteristicUuid} not found but required");
+                    lastException = new IOException($"Notify characteristic {Profile.NotifyCharacteristicUuid} not found but required");
+                    await DisconnectAsync();
+                    
+                    if (attempt < maxRetries)
+                    {
+                        var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
+                        Log($"Retrying in {delay.TotalSeconds}s...");
+                        await Task.Delay(delay, cancellationToken);
+                        continue;
+                    }
+                    
+                    return false;
+                }
+
+                // Signal readiness and wait for GATT to be truly ready
+                TrySignalGattReady();
+
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
+
+                try
+                {
+                    await _gattReadyTcs.Task.WaitAsync(timeoutCts.Token);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    Log("GATT readiness timeout - proceeding anyway");
+                }
+
+                ClearBuffer();
+                _isConnected = true;
+                SetConnectionState(BleConnectionState.Connected);
+
+                Log("Connection complete, IsConnected=true");
+                
+                // Do a test write to wake up the adapter
+                Log("Sending wake-up sequence...");
+                await TestCommunicationAsync(cancellationToken);
+                
+                Log($"Connection successful after {attempt} attempt(s)!");
+                return true;
             }
             catch (Exception ex)
             {
-                Log($"Warning: Could not create GATT session: {ex.Message}");
-            }
-
-            // Get service using targeted UUID enumeration (Cached first, then Uncached)
-            _service = await GetServiceForUuidAsync(Profile.ServiceUuid, cancellationToken);
-            if (_service == null)
-            {
-                Log($"Service {Profile.ServiceUuid} not found");
+                lastException = ex;
+                Log($"Connection attempt {attempt}/{maxRetries} failed: {ex.GetType().Name}: {ex.Message}");
+                
                 await DisconnectAsync();
-                return false;
-            }
-
-            Log($"Found target service: {_service.Uuid}");
-
-            // Get characteristics using targeted enumeration
-            _writeCharacteristic = await GetCharacteristicForUuidAsync(_service, Profile.WriteCharacteristicUuid, cancellationToken);
-            if (_writeCharacteristic == null)
-            {
-                Log($"Write characteristic {Profile.WriteCharacteristicUuid} not found");
-                await DisconnectAsync();
-                return false;
-            }
-
-            Log($"Write characteristic found: {_writeCharacteristic.Uuid}, Props: {_writeCharacteristic.CharacteristicProperties}");
-
-            _notifyCharacteristic = await GetCharacteristicForUuidAsync(_service, Profile.NotifyCharacteristicUuid, cancellationToken);
-            if (_notifyCharacteristic != null)
-            {
-                Log($"Notify characteristic found: {_notifyCharacteristic.Uuid}, Props: {_notifyCharacteristic.CharacteristicProperties}");
-
-                var notifyOk = await EnableNotificationsAsync(_notifyCharacteristic, cancellationToken);
-                if (!notifyOk && Profile.NotificationsRequired)
+                
+                if (attempt < maxRetries)
                 {
-                    Log("Failed to enable required notifications - aborting connect");
-                    await DisconnectAsync();
-                    return false;
+                    var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
+                    Log($"Retrying in {delay.TotalSeconds}s...");
+                    await Task.Delay(delay, cancellationToken);
                 }
             }
-            else if (Profile.NotificationsRequired)
-            {
-                Log($"Notify characteristic {Profile.NotifyCharacteristicUuid} not found but required");
-                await DisconnectAsync();
-                return false;
-            }
-
-            // Signal readiness and wait for GATT to be truly ready
-            TrySignalGattReady();
-
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
-
-            try
-            {
-                await _gattReadyTcs.Task.WaitAsync(timeoutCts.Token);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                Log("GATT readiness timeout - proceeding anyway");
-            }
-
-            ClearBuffer();
-            _isConnected = true;
-            SetConnectionState(BleConnectionState.Connected);
-
-            Log("Connection complete, IsConnected=true");
-            
-            // Do a test write to wake up the adapter
-            Log("Sending wake-up sequence...");
-            await TestCommunicationAsync(cancellationToken);
-            
-            return true;
         }
-        catch (Exception ex)
-        {
-            Log($"Connection failed: {ex.GetType().Name}: {ex.Message}");
-            await DisconnectAsync();
-            return false;
-        }
+        
+        Log($"Connection failed after {maxRetries} attempts. Last error: {lastException?.Message}");
+        SetConnectionState(BleConnectionState.Disconnected);
+        return false;
     }
 
     /// <summary>
@@ -670,11 +744,20 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
 
     #region Helpers
 
-    private static void Log(string message)
+    private void Log(string message)
     {
         System.Diagnostics.Debug.WriteLine($"[BLE] {message}");
-        // Don't log to Console - it interferes with Spectre.Console's cursor positioning
-        // The session handles logging via DataSent/DataReceived events
+        
+        if (EnableDebugLogging)
+        {
+            // Escape markup characters for Spectre.Console
+            var escaped = message
+                .Replace("[", "[[")
+                .Replace("]", "]]")
+                .Replace("{", "{{")
+                .Replace("}", "}}");
+            Spectre.Console.AnsiConsole.MarkupLine($"[grey][[BLE]] {escaped}[/]");
+        }
     }
 
     private static ulong ParseMacAddress(string mac)
