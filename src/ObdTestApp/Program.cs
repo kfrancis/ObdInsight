@@ -1,4 +1,4 @@
-﻿using Serilog;
+using Serilog;
 using Spectre.Console;
 using System;
 using System.Collections.Generic;
@@ -178,7 +178,7 @@ namespace ObdTestApp
         /// </summary>
         private static async Task RunWithRetryAsync(BleDeviceInfo selectedDevice, DevicePreferences preferences, CancellationToken ct)
         {
-            int failureCount = 0;
+            var failureCount = 0;
             const int maxFailures = 5;
 
             while (!ct.IsCancellationRequested && failureCount < maxFailures)
@@ -593,7 +593,7 @@ namespace ObdTestApp
                         uniqueCanIds.Add(frame.CanIdHex);
 
                         // Parse and log the frame data
-                        ParseAndLogCanFrame(frame.CanIdHex, frame.Data);
+                        ParseAndLogCanFrame(frame.CanIdHex, frame.Data.ToArray());
 
                         // Display interesting frames
                         var description = frame.CanIdHex switch
@@ -839,8 +839,8 @@ namespace ObdTestApp
                 // Current 1: bytes 2-5, signed 32-bit, divide by 1024
                 if (bytes.Count >= 6)
                 {
-                    uint currentUnsigned = ((uint)bytes[2] << 24) | ((uint)bytes[3] << 16) | ((uint)bytes[4] << 8) | bytes[5];
-                    int currentRaw = unchecked((int)currentUnsigned);
+                    var currentUnsigned = ((uint)bytes[2] << 24) | ((uint)bytes[3] << 16) | ((uint)bytes[4] << 8) | bytes[5];
+                    var currentRaw = unchecked((int)currentUnsigned);
                     // Positive = discharging, Negative = charging/regen
                     currentAmps = currentRaw / 1024.0;
                     Log.Debug("Current raw: 0x{Raw:X8} = {Amps:F2}A", currentUnsigned, currentAmps);
@@ -950,7 +950,7 @@ namespace ObdTestApp
                 var cellVoltages = new List<int>();
                 var allRawVoltages = new List<int>(); // For debugging
 
-                for (int i = 2; i + 1 < bytes.Count && cellVoltages.Count < 96; i += 2)
+                for (var i = 2; i + 1 < bytes.Count && cellVoltages.Count < 96; i += 2)
                 {
                     var voltage = (bytes[i] << 8) | bytes[i + 1];
                     allRawVoltages.Add(voltage);
@@ -1115,7 +1115,7 @@ namespace ObdTestApp
                     // Find the next CAN ID prefix in the string (if any)
                     // Start looking after the minimum frame length (CAN ID + at least 2 bytes = 7 chars)
                     var nextFrameStart = -1;
-                    for (int i = 7; i <= remaining.Length - 6; i++)
+                    for (var i = 7; i <= remaining.Length - 6; i++)
                     {
                         // Only check positions where a new CAN frame could start
                         // A CAN ID is followed by the frame type byte (hex nibble 0-2 for SF/FF/CF)
@@ -1157,7 +1157,7 @@ namespace ObdTestApp
             Log.Debug("ParseIsoTpResponse: Split into {FrameCount} raw frames from {LineCount} lines", allFrames.Count, lines.Length);
 
             var frameSequence = new List<(int Type, int Seq, byte[] Data, int TotalLen)>();
-            int expectedTotalLength = 0;
+            var expectedTotalLength = 0;
 
             foreach (var frame in allFrames)
             {
@@ -1294,7 +1294,7 @@ namespace ObdTestApp
         private static byte[] ParseHexString(string hex)
         {
             var result = new List<byte>();
-            for (int i = 0; i + 1 < hex.Length; i += 2)
+            for (var i = 0; i + 1 < hex.Length; i += 2)
             {
                 if (byte.TryParse(hex.Substring(i, 2), System.Globalization.NumberStyles.HexNumber, null, out var b))
                 {
@@ -1336,8 +1336,8 @@ namespace ObdTestApp
                 }
 
                 // Find response header 61 81 (positive response to 21 81)
-                int vinStart = -1;
-                for (int i = 0; i < bytes.Count - 1; i++)
+                var vinStart = -1;
+                for (var i = 0; i < bytes.Count - 1; i++)
                 {
                     if (bytes[i] == 0x61 && bytes[i + 1] == 0x81)
                     {

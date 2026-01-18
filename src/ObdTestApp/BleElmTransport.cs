@@ -1,4 +1,4 @@
-﻿using Serilog;
+using Serilog;
 using System;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
@@ -84,7 +84,7 @@ namespace ObdTestApp
 
         public static ulong MAC802DOT3(string macAddress)
         {
-            string hex = macAddress.Replace(":", "");
+            var hex = macAddress.Replace(":", "");
             return Convert.ToUInt64(hex, 16);
         }
 
@@ -140,7 +140,7 @@ namespace ObdTestApp
 
                 // Wait for device to be connected (accessing services triggers connection)
                 Log($"Current ConnectionStatus: {_device.ConnectionStatus}");
-                for (int i = 0; i < 50 && _device.ConnectionStatus != BluetoothConnectionStatus.Connected; i++)
+                for (var i = 0; i < 50 && _device.ConnectionStatus != BluetoothConnectionStatus.Connected; i++)
                 {
                     await Task.Delay(100, ct);
                     if (i % 10 == 0)
@@ -199,7 +199,7 @@ namespace ObdTestApp
 
                 // Enable notifications with retries
                 GattCommunicationStatus cccdResult = GattCommunicationStatus.Unreachable;
-                for (int attempt = 1; attempt <= 3; attempt++)
+                for (var attempt = 1; attempt <= 3; attempt++)
                 {
                     Log($"Enabling notifications (attempt {attempt}/3)...");
 
@@ -277,7 +277,7 @@ namespace ObdTestApp
             while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
             {
                 // Check buffer first (before acquiring lock for better diagnostics)
-                bool hasData = false;
+                var hasData = false;
                 await _bufferLock.WaitAsync(ct);
                 try
                 {
@@ -286,7 +286,7 @@ namespace ObdTestApp
                     if (hasData)
                     {
                         var count = Math.Min(buffer.Length, _receiveBuffer.Count);
-                        for (int i = 0; i < count; i++)
+                        for (var i = 0; i < count; i++)
                             buffer.Span[i] = _receiveBuffer.Dequeue();
                         
                         if (EnableDebugLogging)
@@ -348,7 +348,7 @@ namespace ObdTestApp
                 Log($"[BLE WRITE] {data.Length} bytes: '{escaped}' (will send in {(data.Length + maxChunkSize - 1) / maxChunkSize} chunk(s))");
             }
 
-            for (int offset = 0; offset < data.Length; offset += maxChunkSize)
+            for (var offset = 0; offset < data.Length; offset += maxChunkSize)
             {
                 var chunkSize = Math.Min(maxChunkSize, data.Length - offset);
                 var chunk = data.Slice(offset, chunkSize);

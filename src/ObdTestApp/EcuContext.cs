@@ -19,12 +19,12 @@ public sealed class EcuContext
     /// <summary>
     /// Gets the CAN receive filter (AT CRA command value).
     /// </summary>
-    public required string RxFilter { get; init; }
+    public string? RxFilter { get; init; }
 
     /// <summary>
     /// Gets the ISO-TP flow control header (AT FC SH command value).
     /// </summary>
-    public required string FlowControlHeader { get; init; }
+    public string? FlowControlHeader { get; init; }
 
     /// <summary>
     /// Gets the ISO-TP flow control data (AT FC SD command value).
@@ -52,6 +52,15 @@ public sealed class EcuContext
     /// Gets the communication mode required for this ECU.
     /// </summary>
     public EcuCommunicationMode CommunicationMode { get; init; } = EcuCommunicationMode.RequestResponse;
+
+    public void Validate()
+    {
+        if (CommunicationMode == EcuCommunicationMode.RequestResponse)
+        {
+            if (string.IsNullOrWhiteSpace(RxFilter)) throw new InvalidOperationException($"{Name}: RxFilter required.");
+            if (string.IsNullOrWhiteSpace(FlowControlHeader)) throw new InvalidOperationException($"{Name}: FlowControlHeader required.");
+        }
+    }
 
     /// <summary>
     /// Gets the monitoring command to use when entering passive monitoring mode.

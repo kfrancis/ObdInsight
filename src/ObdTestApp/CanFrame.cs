@@ -5,7 +5,7 @@ namespace ObdTestApp;
 /// </summary>
 /// <param name="CanId">The CAN identifier (11-bit or 29-bit)</param>
 /// <param name="Data">The data bytes of the CAN frame</param>
-public readonly record struct CanFrame(int CanId, byte[] Data)
+public readonly record struct CanFrame(int CanId, ReadOnlyMemory<byte> Data)
 {
     /// <summary>
     /// Gets the CAN ID as a hexadecimal string (3-digit for 11-bit IDs).
@@ -16,5 +16,5 @@ public readonly record struct CanFrame(int CanId, byte[] Data)
     /// Gets a human-readable string representation of the frame.
     /// </summary>
     /// <returns>Format: "CAN_ID: BYTE1 BYTE2 BYTE3 ..."</returns>
-    public override string ToString() => $"{CanIdHex}: {BitConverter.ToString(Data).Replace("-", " ")}";
+    public override string ToString() => $"{CanIdHex}: {BitConverter.ToString(Data.ToArray()).Replace("-", " ")}";
 }

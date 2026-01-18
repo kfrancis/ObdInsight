@@ -1,7 +1,24 @@
-﻿using Serilog;
+using Serilog;
 
 namespace ObdTestApp
 {
+    public interface IElmSession
+    {
+        TimeSpan CommandTimeout { get; set; }
+        EcuCommunicationMode CurrentMode { get; }
+        bool EnableDebugLogging { get; set; }
+        int MaxConsecutiveFailures { get; set; }
+        TimeSpan ProtocolDetectionTimeout { get; set; }
+
+        ValueTask EnterMonitoringModeAsync(EcuContext context, CancellationToken ct);
+        ValueTask ExitMonitoringModeAsync(CancellationToken ct);
+        ValueTask InitializeAndLockAsync(CancellationToken ct);
+        IAsyncEnumerable<CanFrame> MonitorFramesAsync(CancellationToken ct);
+        ValueTask<string[]> QueryAsync(string obdCommand, CancellationToken ct);
+        ValueTask<string[]> QueryAsync(string obdCommand, EcuContext context, CancellationToken ct);
+        ValueTask SetEcuContextAsync(EcuContext context, CancellationToken ct);
+    }
+
     /// <summary>
     /// Represents a session for communicating with an ELM-based OBD-II adapter, managing protocol initialization,
     /// command execution, and error recovery.
@@ -10,7 +27,7 @@ namespace ObdTestApp
     /// adapter, including protocol detection and locking, command timeouts, and automatic recovery from communication
     /// failures. Instances are not thread-safe; callers should not use the same ElmSession concurrently from multiple
     /// threads.</remarks>
-    public sealed class ElmSession
+    public sealed class ElmSession : IElmSession
     {
         private readonly ElmFramer _framer;
         private readonly SemaphoreSlim _gate = new(1, 1);
@@ -69,11 +86,11 @@ namespace ObdTestApp
                 Log("Starting ELM327 initialization...");
                 await BaselineInitAsync(ct);
                 Log("Baseline initialization complete");
-                
+
                 Log("Detecting and locking protocol...");
                 await DetectAndLockProtocolAsync(ct);
                 Log($"Protocol locked: {_lockedProtocol}");
-                
+
                 _failures = 0;
             }
             finally { _gate.Release(); }
@@ -96,19 +113,19 @@ namespace ObdTestApp
             try
             {
                 Log($">>> QUERY START: {obdCommand}");
-                    
+
                 var lines = await SendAndNormalizeAsync(obdCommand, ct);
-                
+
                 if (IsValid(lines))
                 {
                     _failures = 0;
                     Log($"<<< QUERY SUCCESS: {obdCommand} returned {lines.Length} line(s): {string.Join(", ", lines)}");
                     return lines;
                 }
-                
+
                 _failures++;
                 Log($"<<< QUERY INVALID: {obdCommand} failure #{_failures} - Invalid response: {string.Join(", ", lines)}");
-                
+
                 if (_failures >= MaxConsecutiveFailures)
                 {
                     Log($"Reached max consecutive failures ({MaxConsecutiveFailures}). Attempting recovery...");
@@ -116,17 +133,17 @@ namespace ObdTestApp
                     _failures = 0;
                     Log("Recovery complete");
                 }
-                
+
                 // retry once after (possible) recovery
                 Log("Retrying query after recovery...");
                 lines = await SendAndNormalizeAsync(obdCommand, ct);
-                
+
                 if (!IsValid(lines))
                 {
                     Log($"<<< QUERY FAILED: {obdCommand} - Failed after recovery. Response: {string.Join(", ", lines)}");
                     throw new IOException($"ELM query '{obdCommand}' failed after recovery. Last response had {lines.Length} line(s).");
                 }
-                    
+
                 Log($"<<< QUERY SUCCESS (retry): {obdCommand} returned {lines.Length} line(s): {string.Join(", ", lines)}");
                 return lines;
             }
@@ -143,11 +160,11 @@ namespace ObdTestApp
         public async ValueTask SetEcuContextAsync(EcuContext context, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(context);
-            
+
             // Enforce that monitoring contexts must use EnterMonitoringModeAsync
             if (context.CommunicationMode == EcuCommunicationMode.PassiveMonitoring)
                 throw new InvalidOperationException($"Use EnterMonitoringModeAsync() for passive monitoring contexts.");
-            
+
             await _gate.WaitAsync(ct);
             try
             {
@@ -163,11 +180,11 @@ namespace ObdTestApp
                 // Configure headers and formatting
                 await _framer.SendAndReadFrameAsync($"AT H{(context.EnableHeaders ? "1" : "0")}", CommandTimeout, ct);
                 await _framer.SendAndReadFrameAsync($"AT CAF{(context.EnableAutoFormatting ? "1" : "0")}", CommandTimeout, ct);
-                
+
                 // Set CAN headers
                 await _framer.SendAndReadFrameAsync($"AT SH {context.TxHeader}", CommandTimeout, ct);
                 await _framer.SendAndReadFrameAsync($"AT CRA {context.RxFilter}", CommandTimeout, ct);
-                
+
                 // Configure ISO-TP flow control
                 await _framer.SendAndReadFrameAsync($"AT FC SH {context.FlowControlHeader}", CommandTimeout, ct);
                 await _framer.SendAndReadFrameAsync($"AT FC SD {context.FlowControlData}", CommandTimeout, ct);
@@ -196,10 +213,10 @@ namespace ObdTestApp
             // Enforce mode checking - cannot query while in monitoring mode
             if (_currentMode == EcuCommunicationMode.PassiveMonitoring)
                 throw new InvalidOperationException("Cannot query while in monitoring mode. Call ExitMonitoringModeAsync() first.");
-            
+
             // Configure context if needed (automatically handles switching between ECUs)
             await SetEcuContextAsync(context, ct);
-            
+
             // Execute query using the existing QueryAsync method
             return await QueryAsync(obdCommand, ct);
         }
@@ -292,7 +309,7 @@ namespace ObdTestApp
                         Log($"Protocol {protocol} successful!");
 
                         // If we used auto-detect, query what protocol was detected
-                        char lockedProto = protocol;
+                        var lockedProto = protocol;
                         if (protocol == '0')
                         {
                             var dpn = ElmParsing.NormalizeLines(await _framer.SendAndReadFrameAsync("AT DPN", CommandTimeout, ct))
@@ -434,14 +451,14 @@ namespace ObdTestApp
                 Log("Recovery successful at Level 0 (parser resync)");
                 return;
             }
-                
+
             Log("Recovery Level 1: Attempting protocol resync...");
             if (await TryProtocolResyncAsync(ct))
             {
                 Log("Recovery successful at Level 1 (protocol resync)");
                 return;
             }
-                
+
             Log("Recovery Level 2: Reapplying baseline + locked protocol...");
             await BaselineInitAsync(ct);
             if (_lockedProtocol is not null)
@@ -454,7 +471,7 @@ namespace ObdTestApp
                 Log("Recovery successful at Level 2 (baseline + protocol)");
                 return;
             }
-                
+
             Log("Recovery Level 3: Hard reset and full re-detect...");
             await BaselineInitAsync(ct);
             await DetectAndLockProtocolAsync(ct);
@@ -503,7 +520,7 @@ namespace ObdTestApp
             }
             catch { return false; }
         }
-        
+
         /// <summary>
         /// Enters passive monitoring mode for the specified ECU context.
         /// </summary>
@@ -517,7 +534,7 @@ namespace ObdTestApp
         public async ValueTask EnterMonitoringModeAsync(EcuContext context, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(context);
-            
+
             if (context.CommunicationMode != EcuCommunicationMode.PassiveMonitoring)
                 throw new InvalidOperationException($"ECU context '{context.Name}' does not support passive monitoring.");
 
@@ -535,7 +552,7 @@ namespace ObdTestApp
                 // Configure headers/formatting
                 await _framer.SendAndReadFrameAsync($"AT H{(context.EnableHeaders ? "1" : "0")}", CommandTimeout, ct);
                 await _framer.SendAndReadFrameAsync($"AT CAF{(context.EnableAutoFormatting ? "1" : "0")}", CommandTimeout, ct);
-                
+
                 // Enable spaces for monitoring - required for parsing (baseline init sets AT S0)
                 await _framer.SendAndReadFrameAsync("AT S1", CommandTimeout, ct);
 
@@ -635,7 +652,7 @@ namespace ObdTestApp
                         var residual = await _framer.ReadUntilAsync(">", TimeSpan.FromMilliseconds(100), CancellationToken.None);
                         if (!string.IsNullOrEmpty(residual))
                         {
-                            Log($"Drained: '{residual.Substring(0, Math.Min(50, residual.Length))}...'");
+                            Log($"Drained: '{residual[..Math.Min(50, residual.Length)]}...'");
                         }
                         // Got prompt, buffer is drained
                         Log("Buffer drain complete (got prompt)");
@@ -716,7 +733,7 @@ namespace ObdTestApp
                 }
 
                 string? rawData = null;
-                bool hasData = false;
+                var hasData = false;
 
                 try
                 {
@@ -749,7 +766,7 @@ namespace ObdTestApp
                     }
 
                     // Check for prompt character indicating ELM327 exited monitoring mode
-                    if (rawData.Contains(">"))
+                    if (rawData.Contains('>'))
                     {
                         Log("Prompt detected - ELM327 has exited monitoring mode");
                         _currentMode = EcuCommunicationMode.RequestResponse;
@@ -788,22 +805,22 @@ namespace ObdTestApp
         private bool TryParseMonitoringFrame(string rawData, out CanFrame frame)
         {
             frame = default;
-            
+
             // Skip ELM327 error messages
             if (rawData.Contains("DATA ERROR", StringComparison.OrdinalIgnoreCase) ||
                 rawData.Contains("BUFFER FULL", StringComparison.OrdinalIgnoreCase) ||
                 rawData.Contains("CAN ERROR", StringComparison.OrdinalIgnoreCase) ||
-                rawData.Contains("?", StringComparison.OrdinalIgnoreCase) ||
+                rawData.Contains('?', StringComparison.OrdinalIgnoreCase) ||
                 rawData.StartsWith('<') ||
                 string.IsNullOrWhiteSpace(rawData))
             {
                 return false;
             }
-            
+
             // Monitoring format with CAF0: "CAN_ID BYTE1 BYTE2 BYTE3 ..."
             // Example: "1DB 10 14 61 01 00 00 00"
             var parts = rawData.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            
+
             // Need at least CAN ID (1 part) - data bytes are optional for valid frames
             if (parts.Length < 1)
                 return false;
@@ -811,14 +828,14 @@ namespace ObdTestApp
             // Parse CAN ID (3 hex digits for 11-bit CAN)
             if (!int.TryParse(parts[0], System.Globalization.NumberStyles.HexNumber, null, out var canId))
                 return false;
-            
+
             // Validate CAN ID range (11-bit CAN: 0x000-0x7FF)
             if (canId < 0 || canId > 0x7FF)
                 return false;
 
             // Parse data bytes (if any)
             var dataBytes = new List<byte>();
-            for (int i = 1; i < parts.Length; i++)
+            for (var i = 1; i < parts.Length; i++)
             {
                 if (byte.TryParse(parts[i], System.Globalization.NumberStyles.HexNumber, null, out var b))
                     dataBytes.Add(b);
@@ -830,7 +847,7 @@ namespace ObdTestApp
             // If we got more than 8 bytes, something is wrong - reject the frame
             if (dataBytes.Count > 8)
                 return false;
-            
+
             // Accept frames with 0 data bytes - they're valid (e.g., RTR frames or incomplete reads)
             // But log a warning if we see too many of these
             if (dataBytes.Count == 0)
@@ -838,10 +855,10 @@ namespace ObdTestApp
                 Log($"Warning: Received CAN ID {canId:X3} with no data bytes - may be fragment or RTR frame");
             }
 
-            frame = new CanFrame(canId, [.. dataBytes]);
+            frame = new CanFrame(canId, new ReadOnlyMemory<byte>([.. dataBytes]));
             return true;
         }
-        
+
         private void Log(string message)
         {
             // Always log to Serilog for file logging
