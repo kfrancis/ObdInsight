@@ -325,9 +325,12 @@ namespace ObdTestApp
             // BLE has MTU limits - need to chunk large writes
             const int maxChunkSize = 20; // BLE 4.x default MTU - 3 for ATT header
 
-            var text = System.Text.Encoding.ASCII.GetString(data.ToArray());
-            var escaped = text.Replace("\r", "\\r").Replace("\n", "\\n");
-            Log($"[BLE WRITE] {data.Length} bytes: '{escaped}' (will send in {(data.Length + maxChunkSize - 1) / maxChunkSize} chunk(s))");
+            if (EnableDebugLogging)
+            {
+                var text = System.Text.Encoding.ASCII.GetString(data.ToArray());
+                var escaped = text.Replace("\r", "\\r").Replace("\n", "\\n");
+                Log($"[BLE WRITE] {data.Length} bytes: '{escaped}' (will send in {(data.Length + maxChunkSize - 1) / maxChunkSize} chunk(s))");
+            }
 
             for (int offset = 0; offset < data.Length; offset += maxChunkSize)
             {
@@ -360,8 +363,8 @@ namespace ObdTestApp
                 if (offset + chunkSize < data.Length)
                     await Task.Delay(10, ct);
             }
-
-            Log($"[BLE WRITE complete] Session TX total: {_txTotalBytes} bytes");
+            if (EnableDebugLogging)
+                Log($"[BLE WRITE complete] Session TX total: {_txTotalBytes} bytes");
         }
 
         private async ValueTask CleanupAsync()

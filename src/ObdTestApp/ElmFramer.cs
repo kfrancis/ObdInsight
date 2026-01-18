@@ -132,18 +132,8 @@ namespace ObdTestApp
         {
             // Always log to Serilog for file logging
             Serilog.Log.Debug("[ElmFramer] {Message}", message);
-            System.Diagnostics.Debug.WriteLine($"[ElmFramer] {message}");
-
             if (EnableDebugLogging)
-            {
-                // Escape markup characters for Spectre.Console
-                var escaped = message
-                    .Replace("[", "[[")
-                    .Replace("]", "]]")
-                    .Replace("{", "{{")
-                    .Replace("}", "}}");
-                Spectre.Console.AnsiConsole.MarkupLine($"[grey][[ElmFramer]] {escaped}[/]");
-            }
+                System.Diagnostics.Debug.WriteLine($"[ElmFramer] {message}");
         }
     }
 }

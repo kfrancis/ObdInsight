@@ -432,7 +432,7 @@ namespace ObdTestApp
             await using var transport = new BleElmTransport(selectedDevice.Address);
             
             // Enable debug logging
-            transport.EnableDebugLogging = true;
+            //transport.EnableDebugLogging = true;
             
             try
             {
@@ -448,16 +448,12 @@ namespace ObdTestApp
                 AnsiConsole.MarkupLine("[green]✓[/] Bluetooth connected.");
                 AnsiConsole.WriteLine();
 
-                var framer = new ElmFramer(transport)
-                {
-                    EnableDebugLogging = true
-                };
+                var framer = new ElmFramer(transport);
                 
                 var session = new ElmSession(framer)
                 {
                     CommandTimeout = TimeSpan.FromSeconds(5),
-                    MaxConsecutiveFailures = 3,
-                    EnableDebugLogging = true
+                    MaxConsecutiveFailures = 3
                 };
 
                 Log.Information("Initializing ELM327 session (Timeout={CommandTimeout}s, MaxFailures={MaxFailures})", 
