@@ -15,9 +15,20 @@ namespace ObdTestApp
         private sealed record BmsGroup01Data(
             int ByteCount,
             double? CurrentAmps,
+            double? VoltageVolts,
             double? CapacityAh,
             double? HxPercent,
             double? SocPercent);
+
+        private sealed record BmsGroup02Data(
+            int[] CellVoltagesMv,
+            int MinVoltageMv,
+            int MaxVoltageMv,
+            int AvgVoltageMv,
+            int DeltaVoltageMv)
+        {
+            public int CellCount => CellVoltagesMv.Length;
+        }
 
         private static async Task Main(string[] args)
         {
@@ -433,7 +444,7 @@ namespace ObdTestApp
             await using var transport = new BleElmTransport(selectedDevice.Address);
 
             // Enable debug logging
-            transport.EnableDebugLogging = true;
+            //transport.EnableDebugLogging = true;
 
             try
             {
@@ -447,14 +458,14 @@ namespace ObdTestApp
 
                 var framer = new ElmFramer(transport)
                 {
-                    EnableDebugLogging = true
+                    //EnableDebugLogging = true
                 };
 
                 var session = new ElmSession(framer)
                 {
                     CommandTimeout = TimeSpan.FromSeconds(5),
                     MaxConsecutiveFailures = 3,
-                    EnableDebugLogging = true
+                    //EnableDebugLogging = true
                 };
 
                 Log.Information("Initializing ELM327 session (Timeout={CommandTimeout}s, MaxFailures={MaxFailures})",
@@ -581,6 +592,9 @@ namespace ObdTestApp
                         frameCount++;
                         uniqueCanIds.Add(frame.CanIdHex);
 
+                        // Parse and log the frame data
+                        ParseAndLogCanFrame(frame.CanIdHex, frame.Data);
+
                         // Display interesting frames
                         var description = frame.CanIdHex switch
                         {
@@ -652,13 +666,15 @@ namespace ObdTestApp
                 var group1Lines = await session.QueryAsync("2101", EcuContext.NissanLeafBms, ct);
                 Log.Debug("Group 1 query returned {LineCount} lines: {Lines}", group1Lines.Length, string.Join(", ", group1Lines));
 
-                var group1Line = group1Lines.FirstOrDefault(l =>
-                    l.Contains("61 01", StringComparison.OrdinalIgnoreCase) ||
-                    l.Contains("7BB", StringComparison.OrdinalIgnoreCase));
+                // Join all response lines for ISO-TP reassembly - the parser handles multi-frame responses
+                var group1Response = string.Join("\r", group1Lines);
 
-                if (group1Line != null && TryParseBmsGroup01(group1Line, out var group01))
+                if (TryParseBmsGroup01(group1Response, out var group01))
                 {
                     var parts = new List<string>();
+
+                    if (group01?.VoltageVolts is double voltage)
+                        parts.Add($"Voltage: {voltage:F1}V");
 
                     if (group01?.CurrentAmps is double currentAmps)
                     {
@@ -692,13 +708,12 @@ namespace ObdTestApp
                 var group2Lines = await session.QueryAsync("2102", EcuContext.NissanLeafBms, ct);
                 Log.Debug("Group 2 query returned {LineCount} lines: {Lines}", group2Lines.Length, string.Join(", ", group2Lines));
 
-                var group2Line = group2Lines.FirstOrDefault(l =>
-                    l.Contains("61 02", StringComparison.OrdinalIgnoreCase) ||
-                    l.Contains("7BB", StringComparison.OrdinalIgnoreCase));
-
-                if (group2Line != null)
+                var group2Response = string.Join("\n", group2Lines);
+                if (TryParseBmsGroup02(group2Response, out var group02) && group02 != null)
                 {
-                    AnsiConsole.MarkupLine($"[green]✓[/] BMS Group 2: {group2Line.Substring(0, Math.Min(40, group2Line.Length))}...");
+                    AnsiConsole.MarkupLine($"[green]✓[/] BMS Group 2: {group02.CellCount} cells, " +
+                        $"Min: {group02.MinVoltageMv}mV, Max: {group02.MaxVoltageMv}mV, " +
+                        $"Avg: {group02.AvgVoltageMv}mV, Delta: {group02.DeltaVoltageMv}mV");
                     successfulQueries++;
                 }
                 else
@@ -795,74 +810,257 @@ namespace ObdTestApp
                     return false;
                 }
 
-                // NOTE: Offsets derived from OVMS Nissan Leaf implementation (`vehicle_nissanleaf.cpp`):
-                // - ZE0/AZE0: hx=@[26..27]/100, ah10000=@[33..35]/10000
-                // - ZE1:      hx=@[28..29]/102.4, soc10000=@[31..33]/10000, ah10000=@[35..37]/10000
+                // Log raw bytes for debugging
+                Log.Debug("Group 01 raw bytes ({Count}): {Hex}",
+                    bytes.Count,
+                    BitConverter.ToString(bytes.ToArray()));
+
+                // Byte layout based on Leaf2018-CAN.md documentation:
+                // Bytes 0-1:   61 01 (response header)
+                // Bytes 2-5:   HV Bat Current 1 (signed 32-bit, /1024)
+                // Bytes 6-12:  CF1 data (includes Current 2 at bytes 9-12)
+                // Bytes 13-19: CF2 data
+                // Bytes 20-21: HV Bat Voltage (/100)
+                // Bytes 22-26: CF3 rest
+                // Bytes 27-29: CF4 start
+                // Bytes 30-31: Hx (/102.4)
+                // Bytes 32:    CF4 end
+                // Bytes 33-35: SOC (24-bit, /10000)
+                // Bytes 36:    CF5 start
+                // Bytes 37-39: AHR (24-bit, /10000)
+                // Bytes 40+:   Rest of data
 
                 double? currentAmps = null;
+                double? voltageVolts = null;
                 double? capacityAh = null;
                 double? hxPercent = null;
                 double? socPercent = null;
 
-                // Current is the first 4 bytes after the 61 01 header on both variants.
+                // Current 1: bytes 2-5, signed 32-bit, divide by 1024
                 if (bytes.Count >= 6)
                 {
                     uint currentUnsigned = ((uint)bytes[2] << 24) | ((uint)bytes[3] << 16) | ((uint)bytes[4] << 8) | bytes[5];
                     int currentRaw = unchecked((int)currentUnsigned);
-                    var candidateCurrentAmps = currentRaw / 2.0;
-                    if (Math.Abs(candidateCurrentAmps) < 1000 && currentRaw != -1)
-                        currentAmps = candidateCurrentAmps;
+                    // Positive = discharging, Negative = charging/regen
+                    currentAmps = currentRaw / 1024.0;
+                    Log.Debug("Current raw: 0x{Raw:X8} = {Amps:F2}A", currentUnsigned, currentAmps);
                 }
 
+                // Voltage: bytes 20-21, unsigned 16-bit, divide by 100
+                if (bytes.Count >= 22)
+                {
+                    var voltageRaw = (bytes[20] << 8) | bytes[21];
+                    if (voltageRaw > 0 && voltageRaw < 50000) // Sanity check: 0-500V
+                    {
+                        voltageVolts = voltageRaw / 100.0;
+                        Log.Debug("Voltage raw: 0x{Raw:X4} = {Volts:F2}V", voltageRaw, voltageVolts);
+                    }
+                }
+
+                // Based on Leaf2018-CAN.md, Frame 24 contains Hx at data[4-5]
+                // Frame 24 is CF4 (seq=4), which starts at position 27 in reassembled data
+                // So Hx is at positions 27+4=31 and 27+5=32
+                // Hx (health): bytes 31-32, unsigned 16-bit, divide by 102.4
+                if (bytes.Count >= 33)
+                {
+                    var hxRaw = (bytes[31] << 8) | bytes[32];
+                    if (hxRaw > 0 && hxRaw < 15000) // Sanity check: 0-146%
+                    {
+                        hxPercent = hxRaw / 102.4;
+                        Log.Debug("Hx raw: 0x{Raw:X4} = {Hx:F2}%", hxRaw, hxPercent);
+                    }
+                }
+
+                // SOC spans Frame 24 data[7] and Frame 25 data[1-2]
+                // Frame 24 ends at position 33, Frame 25 starts at position 34
+                // SOC = data_24[7] << 16 | data_25[1] << 8 | data_25[2]
+                // Position 33 (24[7]) + positions 35-36 (25[1-2])
+                // Actually, looking at: SOC = (data 24[7] << 16 | ((data 25[1] << 8) | data 25[2]))/10000
+                // Frame 24 data[7] = position 33, Frame 25 data[1-2] = positions 35-36
+                if (bytes.Count >= 37)
+                {
+                    var socRaw = (bytes[33] << 16) | (bytes[35] << 8) | bytes[36];
+                    if (socRaw > 0 && socRaw < 1100000) // Sanity check: 0-110%
+                    {
+                        socPercent = socRaw / 10000.0;
+                        Log.Debug("SOC raw: 0x{Raw:X6} = {Soc:F2}%", socRaw, socPercent);
+                    }
+                }
+
+                // AHR (capacity): Frame 25 data[4-6]
+                // Frame 25 starts at position 34, so AHR is at positions 34+4=38, 34+5=39, 34+6=40
                 if (bytes.Count >= 41)
                 {
-                    // ZE1 (51 bytes typical, but can be shorter early)
-                    if (bytes.Count >= 30)
+                    var ahrRaw = (bytes[38] << 16) | (bytes[39] << 8) | bytes[40];
+                    if (ahrRaw > 0 && ahrRaw < 1000000) // Sanity check: 0-100 Ah
                     {
-                        var hxRaw = (bytes[28] << 8) | bytes[29];
-                        hxPercent = hxRaw / 102.4;
-                    }
-
-                    if (bytes.Count >= 34)
-                    {
-                        var socRaw = (bytes[31] << 16) | (bytes[32] << 8) | bytes[33];
-                        socPercent = socRaw / 10000.0;
-                    }
-
-                    if (bytes.Count >= 38)
-                    {
-                        var ah10000 = (bytes[35] << 16) | (bytes[36] << 8) | bytes[37];
-                        capacityAh = ah10000 / 10000.0;
-                    }
-                }
-                else
-                {
-                    // ZE0/AZE0
-                    if (bytes.Count >= 28)
-                    {
-                        var hxRaw = (bytes[26] << 8) | bytes[27];
-                        hxPercent = hxRaw / 100.0;
-                    }
-
-                    if (bytes.Count >= 36)
-                    {
-                        var ah10000 = (bytes[33] << 16) | (bytes[34] << 8) | bytes[35];
-                        capacityAh = ah10000 / 10000.0;
+                        capacityAh = ahrRaw / 10000.0;
+                        Log.Debug("AHR raw: 0x{Raw:X6} = {Ah:F2}Ah", ahrRaw, capacityAh);
                     }
                 }
 
-                data = new BmsGroup01Data(bytes.Count, currentAmps, capacityAh, hxPercent, socPercent);
+                data = new BmsGroup01Data(bytes.Count, currentAmps, voltageVolts, capacityAh, hxPercent, socPercent);
 
-                // Structured logging (avoid spamming console output):
+                // Structured logging:
                 Log.Debug(
-                    "Parsed BMS Group 01 - Bytes={ByteCount}, CurrentA={CurrentAmps}, SocPct={SocPercent}, CapacityAh={CapacityAh}, HxPct={HxPercent}",
-                    data.ByteCount, data.CurrentAmps, data.SocPercent, data.CapacityAh, data.HxPercent);
+                    "Parsed BMS Group 01 - Bytes={ByteCount}, CurrentA={CurrentAmps:F2}, VoltageV={VoltageVolts:F2}, SocPct={SocPercent:F2}, CapacityAh={CapacityAh:F2}, HxPct={HxPercent:F2}",
+                    data.ByteCount, data.CurrentAmps, data.VoltageVolts, data.SocPercent, data.CapacityAh, data.HxPercent);
                 return true;
             }
             catch (Exception ex)
             {
                 AnsiConsole.MarkupLine($"[yellow]   Parse error: {ex.Message.EscapeMarkup()}[/]");
+                Log.Warning(ex, "Error parsing BMS Group 01");
                 return false;
+            }
+        }
+
+        private static bool TryParseBmsGroup02(string response, out BmsGroup02Data? data)
+        {
+            data = null;
+            try
+            {
+                var bytes = ParseIsoTpResponse(response);
+
+                if (bytes.Count < 2)
+                {
+                    Log.Debug("Not enough bytes for Group 02");
+                    return false;
+                }
+
+                // First 2 bytes should be 61 02 (positive response to 21 02)
+                if (bytes[0] != 0x61 || bytes[1] != 0x02)
+                {
+                    Log.Debug("Unexpected response header: {Header1:X2} {Header2:X2}", bytes[0], bytes[1]);
+                    return false;
+                }
+
+                // Log raw bytes for debugging
+                Log.Debug("Group 02 raw bytes ({Count}): {Hex}",
+                    bytes.Count,
+                    bytes.Count <= 50 ? BitConverter.ToString(bytes.ToArray())
+                        : BitConverter.ToString(bytes.Take(50).ToArray()) + "...");
+
+                // Cell voltages start at byte 2, each cell is 2 bytes (big-endian millivolts)
+                // Nissan Leaf has 96 cell pairs
+                // According to Leaf2018-CAN.md:
+                // CV array[0] = bytes[2] << 8 | bytes[3]
+                // CV array[1] = bytes[4] << 8 | bytes[5]
+                // etc.
+                var cellVoltages = new List<int>();
+                var allRawVoltages = new List<int>(); // For debugging
+
+                for (int i = 2; i + 1 < bytes.Count && cellVoltages.Count < 96; i += 2)
+                {
+                    var voltage = (bytes[i] << 8) | bytes[i + 1];
+                    allRawVoltages.Add(voltage);
+
+                    // Valid cell voltages are typically 3000-4200 mV for lithium cells
+                    // But accept wider range to not miss data
+                    if (voltage >= 2500 && voltage <= 4500)
+                    {
+                        cellVoltages.Add(voltage);
+                    }
+                }
+
+                // Log first few raw voltages for debugging
+                if (allRawVoltages.Count > 0)
+                {
+                    var firstFew = string.Join(", ", allRawVoltages.Take(10).Select(v => $"{v}mV"));
+                    Log.Debug("First 10 raw cell values: {Values}", firstFew);
+                }
+
+                if (cellVoltages.Count == 0)
+                {
+                    Log.Debug("No valid cell voltages found (checked {Count} values)", allRawVoltages.Count);
+                    return false;
+                }
+
+                data = new BmsGroup02Data(
+                    cellVoltages.ToArray(),
+                    cellVoltages.Min(),
+                    cellVoltages.Max(),
+                    (int)cellVoltages.Average(),
+                    cellVoltages.Max() - cellVoltages.Min()
+                );
+
+                Log.Debug("Parsed BMS Group 02 - Cells={CellCount}, Min={MinVoltage}mV, Max={MaxVoltage}mV, Avg={AvgVoltage}mV, Delta={DeltaVoltage}mV",
+                    data.CellCount, data.MinVoltageMv, data.MaxVoltageMv, data.AvgVoltageMv, data.DeltaVoltageMv);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Error parsing BMS Group 02");
+                return false;
+            }
+        }
+
+        private static void ParseAndLogCanFrame(string canIdHex, byte[] data)
+        {
+            try
+            {
+                // Parse interesting broadcast frames based on Leaf2018-CAN.md
+                switch (canIdHex.ToUpper())
+                {
+                    case "1DB": // LB_STATUS (Current/Voltage/SOC)
+                        if (data.Length >= 7)
+                        {
+                            // Battery current (signed 16-bit, 0.5A per bit)
+                            var currentRaw = (short)((data[0] << 8) | data[1]);
+                            var current = currentRaw * 0.5;
+                            
+                            // Battery voltage (16-bit, 0.5V per bit)
+                            var voltage = ((data[2] << 8) | data[3]) * 0.5;
+                            
+                            // SOC (Gids - 10-bit from bytes 4-5)
+                            var gids = ((data[4] & 0x03) << 8) | data[5];
+                            
+                            Log.Debug("[CAN 1DB] Battery: {Current:F1}A, {Voltage:F1}V, {Gids} Gids", current, voltage, gids);
+                        }
+                        break;
+
+                    case "55B": // LB_SOC (High-res SOC)
+                        if (data.Length >= 2)
+                        {
+                            var soc = ((data[0] << 2) | (data[1] >> 6)) * 0.1;
+                            Log.Debug("[CAN 55B] SOC: {Soc:F1}%", soc);
+                        }
+                        break;
+
+                    case "5BC": // LB_GIDS (Capacity/SOH)
+                        if (data.Length >= 5)
+                        {
+                            var gids = (data[0] << 2) | (data[1] >> 6);
+                            var soh = ((data[4] & 0xFE) >> 1) * 0.5;
+                            Log.Debug("[CAN 5BC] Capacity: {Gids} Gids, SOH: {Soh:F1}%", gids, soh);
+                        }
+                        break;
+
+                    case "5C0": // LB_TEMPS (Temperatures)
+                        if (data.Length >= 4)
+                        {
+                            var temp1 = (data[0] / 2.0) - 40;
+                            var temp2 = (data[1] / 2.0) - 40;
+                            var temp3 = (data[2] / 2.0) - 40;
+                            var temp4 = (data[3] / 2.0) - 40;
+                            Log.Debug("[CAN 5C0] Battery Temps: {T1:F1}°C, {T2:F1}°C, {T3:F1}°C, {T4:F1}°C", temp1, temp2, temp3, temp4);
+                        }
+                        break;
+
+                    case "1DA": // INVERTER (Motor data)
+                        if (data.Length >= 4)
+                        {
+                            var motorRpm = (short)((data[0] << 8) | data[1]);
+                            var motorTemp = data[2] - 40;
+                            Log.Debug("[CAN 1DA] Motor: {Rpm} RPM, {Temp}°C", motorRpm, motorTemp);
+                        }
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(ex, "Error parsing CAN frame {CanId}", canIdHex);
             }
         }
 
@@ -880,6 +1078,7 @@ namespace ObdTestApp
         /// <summary>
         /// Parse ISO-TP response, handling multi-frame messages.
         /// Handles both spaced and concatenated hex formats from ELM327.
+        /// Also handles frames concatenated together on a single line (e.g., "7BB25...7BB26...").
         /// </summary>
         private static List<byte> ParseIsoTpResponse(string response)
         {
@@ -894,17 +1093,80 @@ namespace ObdTestApp
                 .Trim();
 
             var lines = cleaned.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            var frameSequence = new List<(int Type, int Seq, byte[] Data)>();
 
+            // First, split any concatenated frames (e.g., "7BB25...7BB26..." becomes two separate frames)
+            var allFrames = new List<string>();
             foreach (var line in lines)
             {
                 var trimmed = line.Trim();
                 if (trimmed.Length < 6) continue;
 
-                if (!IsCanIdPrefix(trimmed))
+                // Split concatenated frames by finding CAN ID patterns (3 hex chars followed by frame data)
+                // CAN frames are typically 19-20 hex chars: 3 (CAN ID) + 2 (PCI) + 14 (7 bytes data)
+                var remaining = trimmed;
+                while (remaining.Length >= 6)
+                {
+                    // Check if this starts with a valid CAN ID
+                    if (!IsCanIdPrefixForIsoTp(remaining))
+                    {
+                        break;
+                    }
+
+                    // Find the next CAN ID prefix in the string (if any)
+                    // Start looking after the minimum frame length (CAN ID + at least 2 bytes = 7 chars)
+                    var nextFrameStart = -1;
+                    for (int i = 7; i <= remaining.Length - 6; i++)
+                    {
+                        // Only check positions where a new CAN frame could start
+                        // A CAN ID is followed by the frame type byte (hex nibble 0-2 for SF/FF/CF)
+                        var potentialCanId = remaining.Substring(i, 3);
+                        if (!potentialCanId.All(c => Uri.IsHexDigit(c))) continue;
+                        if (!int.TryParse(potentialCanId, System.Globalization.NumberStyles.HexNumber, null, out var id)) continue;
+
+                        // Must be a valid CAN ID in the expected range
+                        if (!((id >= 0x700 && id <= 0x7FF) || (id >= 0x790 && id <= 0x79F))) continue;
+
+                        // Check if the 4th character is a valid ISO-TP frame type indicator (0, 1, 2, 3 nibble)
+                        if (i + 3 < remaining.Length)
+                        {
+                            var frameTypeChar = remaining[i + 3];
+                            // Valid frame types: 0x (SF), 1x (FF), 2x (CF), 3x (FC)
+                            if (frameTypeChar == '0' || frameTypeChar == '1' || frameTypeChar == '2' || frameTypeChar == '3')
+                            {
+                                nextFrameStart = i;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (nextFrameStart > 0)
+                    {
+                        // Extract first frame and continue with the rest
+                        allFrames.Add(remaining[..nextFrameStart]);
+                        remaining = remaining[nextFrameStart..];
+                    }
+                    else
+                    {
+                        // No more frames, take the whole thing
+                        allFrames.Add(remaining);
+                        break;
+                    }
+                }
+            }
+
+            Log.Debug("ParseIsoTpResponse: Split into {FrameCount} raw frames from {LineCount} lines", allFrames.Count, lines.Length);
+
+            var frameSequence = new List<(int Type, int Seq, byte[] Data, int TotalLen)>();
+            int expectedTotalLength = 0;
+
+            foreach (var frame in allFrames)
+            {
+                if (frame.Length < 6) continue;
+
+                if (!IsCanIdPrefixForIsoTp(frame))
                     continue;
 
-                var frameHex = trimmed[3..];
+                var frameHex = frame[3..];
 
                 if (frameHex.Length < 2) continue;
 
@@ -918,55 +1180,73 @@ namespace ObdTestApp
 
                 switch (frameType)
                 {
-                    case 0:
+                    case 0: // Single Frame - length in low nibble
                         var sfLen = frameInfo;
                         var sfDataHex = frameHex[2..];
                         frameData = ParseHexString(sfDataHex);
                         if (frameData.Length > sfLen)
                             frameData = frameData[..sfLen];
-                        frameSequence.Add((0, 0, frameData));
+                        frameSequence.Add((0, 0, frameData, sfLen));
                         break;
 
-                    case 1:
+                    case 1: // First Frame - 12-bit length in low nibble + next byte
                         if (frameHex.Length < 4) continue;
                         if (!byte.TryParse(frameHex[2..4], System.Globalization.NumberStyles.HexNumber, null, out var lenLowByte))
                             continue;
+                        expectedTotalLength = (frameInfo << 8) | lenLowByte;
                         var ffDataHex = frameHex[4..];
                         frameData = ParseHexString(ffDataHex);
-                        frameSequence.Add((1, 0, frameData));
+                        // First frame contains up to 6 bytes of data (7 bytes total - 1 byte PCI - 1 byte length)
+                        frameSequence.Add((1, 0, frameData, expectedTotalLength));
                         break;
 
-                    case 2:
+                    case 2: // Consecutive Frame - 4-bit sequence number in low nibble
                         var seqNum = frameInfo;
                         var cfDataHex = frameHex[2..];
                         frameData = ParseHexString(cfDataHex);
-                        frameSequence.Add((2, seqNum, frameData));
+                        // Consecutive frames contain up to 7 bytes of data
+                        frameSequence.Add((2, seqNum, frameData, 0));
                         break;
 
                     default:
                         frameData = ParseHexString(frameHex);
                         if (frameData.Length > 0)
-                            frameSequence.Add((-1, 0, frameData));
+                            frameSequence.Add((-1, 0, frameData, 0));
                         break;
                 }
             }
 
+            // First, try to find Single Frame or First Frame
             var firstFrame = frameSequence.FirstOrDefault(f => f.Type == 0 || f.Type == 1);
             if (firstFrame.Data != null)
             {
                 bytes.AddRange(firstFrame.Data);
+                expectedTotalLength = firstFrame.TotalLen;
             }
 
+            // Then add all consecutive frames in order
+            // Handle sequence number wraparound (0-F)
             var consecutiveFrames = frameSequence
                 .Where(f => f.Type == 2)
-                .OrderBy(f => f.Seq)
                 .ToList();
 
-            foreach (var cf in consecutiveFrames)
+            // Sort by sequence number, handling wraparound
+            if (consecutiveFrames.Count > 0)
             {
-                bytes.AddRange(cf.Data);
+                // Simple approach: just add them in order they appear (ELM327 should return them in order)
+                foreach (var cf in consecutiveFrames)
+                {
+                    bytes.AddRange(cf.Data);
+                }
             }
 
+            // Trim to expected length if we know it
+            if (expectedTotalLength > 0 && bytes.Count > expectedTotalLength)
+            {
+                bytes = bytes.Take(expectedTotalLength).ToList();
+            }
+
+            // Fallback: if no ISO-TP frames found, try parsing as raw hex
             if (bytes.Count == 0)
             {
                 foreach (var line in lines)
@@ -979,7 +1259,27 @@ namespace ObdTestApp
                 }
             }
 
+            Log.Debug("ParseIsoTpResponse: Parsed {ByteCount} bytes from {FrameCount} frames (expected {ExpectedLen})",
+                bytes.Count, frameSequence.Count, expectedTotalLength);
+
             return bytes;
+        }
+
+        /// <summary>
+        /// Checks if a string starts with a valid CAN ID prefix for ISO-TP frames.
+        /// Accepts both standard OBD range (7xx) and extended Nissan Leaf ECU range (79x).
+        /// </summary>
+        private static bool IsCanIdPrefixForIsoTp(string s)
+        {
+            if (s.Length < 3) return false;
+            var prefix = s[..3];
+            if (!prefix.All(c => Uri.IsHexDigit(c))) return false;
+            if (!int.TryParse(prefix, System.Globalization.NumberStyles.HexNumber, null, out var id)) return false;
+
+            // Accept:
+            // - 0x700-0x7FF: Standard OBD-II response range
+            // - 0x79x: Nissan Leaf charger response (79A)
+            return (id >= 0x700 && id <= 0x7FF) || (id >= 0x790 && id <= 0x79F);
         }
 
         private static bool IsCanIdPrefix(string s)
