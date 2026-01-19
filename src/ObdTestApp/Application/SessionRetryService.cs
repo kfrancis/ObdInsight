@@ -6,6 +6,7 @@ using Serilog;
 using Spectre.Console;
 using ObdTestApp.Core.Communication.Bluetooth;
 using ObdTestApp.Application;
+using ObdTestApp.Core.Vehicles;
 
 namespace ObdTestApp.Application;
 
@@ -22,7 +23,9 @@ public class SessionRetryService
     public async Task RunWithRetryAsync(
         BleDeviceInfo selectedDevice,
         DevicePreferences preferences,
-        Func<BleDeviceInfo, CancellationToken, Task> sessionFunc,
+        Func<BleDeviceInfo, IVehicleProfile?, VehicleVariant?, CancellationToken, Task> sessionFunc,
+        IVehicleProfile? vehicleProfile,
+        VehicleVariant? vehicleVariant,
         CancellationToken ct)
     {
         var failureCount = 0;
@@ -32,7 +35,7 @@ public class SessionRetryService
         {
             try
             {
-                await sessionFunc(currentDevice, ct);
+                await sessionFunc(currentDevice, vehicleProfile, vehicleVariant, ct);
 
                 // If we get here, session ended normally
                 break;
