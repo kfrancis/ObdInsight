@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using ObdTestApp.Core.Application;
 using ObdTestApp.Core.Communication.Bluetooth;
 using ObdTestApp.Core.Communication.Elm327;
@@ -17,7 +12,7 @@ namespace ObdTestApp
 {
     internal class Program
     {
-        private static readonly TimeSpan ScanDuration = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan s_scanDuration = TimeSpan.FromSeconds(10);
 
         private sealed record BmsGroup01Data(
             int ByteCount,
@@ -145,7 +140,7 @@ namespace ObdTestApp
                 if (selectedDevice == null)
                 {
                     Log.Information("Starting device scan and selection");
-                    var scanService = new DeviceScanService(ScanDuration);
+                    var scanService = new DeviceScanService(s_scanDuration);
                     selectedDevice = await scanService.ScanAndSelectDeviceAsync(preferences, cts.Token);
                     if (selectedDevice == null)
                     {
@@ -301,6 +296,9 @@ namespace ObdTestApp
                 var leaf = new NissanLeaf();
                 var commands = leaf.GetCommands(new VehicleVariantId("AZE0-2-2016-2017"), session);
 
+                // ===========================================
+                // 1. Battery Management System (BMS) - 5 consecutive reads for stability
+                // ===========================================
                 if (commands.TryGet<IBatteryManagementSystem>(out var bms))
                 {
                     // Acceptance criteria: 5 consecutive stable reads
@@ -355,7 +353,7 @@ namespace ObdTestApp
                             successCount++;
                             successfulQueries++; // Track for session stats
 
-                            // Small delay between reads0
+                            // Small delay between reads
                             if (i < RequiredReads)
                                 await Task.Delay(500, ct);
                         }
@@ -491,191 +489,382 @@ namespace ObdTestApp
                         "AZE0-2-2016-2017");
                 }
 
-                //// =====================================================================
-                //// PHASE 1: PASSIVE MONITORING MODE
-                //// =====================================================================
-                //AnsiConsole.MarkupLine("[yellow]═══ PHASE 1: PASSIVE MONITORING ═══[/]");
-                //Log.Information("Entering passive monitoring mode for HVBAT broadcast data");
-
-                //await session.EnterMonitoringModeAsync(EcuContext.NissanLeafHvbatMonitor, ct);
-                //AnsiConsole.MarkupLine("[green]✓[/] Monitoring mode active (AT MA)");
-
-                //// Monitor for 5 seconds
-                //var monitorDuration = TimeSpan.FromSeconds(5);
-                //var monitorStart = DateTime.UtcNow;
-                //var frameCount = 0;
-                //var uniqueCanIds = new HashSet<string>();
-
-                //AnsiConsole.MarkupLine($"[cyan]Monitoring CAN bus for {monitorDuration.TotalSeconds}s...[/]");
-
-                //// Use a timeout-based cancellation token for monitoring
-                //using var monitorCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                //monitorCts.CancelAfter(monitorDuration);
-
-                //try
-                //{
-                //    await foreach (var frame in session.MonitorFramesAsync(monitorCts.Token))
-                //    {
-                //        frameCount++;
-                //        uniqueCanIds.Add(frame.CanIdHex);
-
-                //        // Parse and log the frame data
-                //        ParseAndLogCanFrame(frame.CanIdHex, frame.Data.ToArray());
-
-                //        // Display interesting frames
-                //        var description = frame.CanIdHex switch
-                //        {
-                //            "1DB" => "LB_STATUS (Current/Voltage/SOC)",
-                //            "1DC" => "LB_LIMITS (Power limits)",
-                //            "55B" => "LB_SOC (High-res SOC)",
-                //            "5BC" => "LB_GIDS (Capacity/SOH)",
-                //            "5C0" => "LB_TEMPS (Temperatures)",
-                //            "1DA" => "INVERTER (Motor data)",
-                //            "59E" => "QC_CAPACITY",
-                //            _ => null
-                //        };
-
-                //        if (description != null)
-                //        {
-                //            AnsiConsole.MarkupLine($"[grey]  {frame.CanIdHex}: {description} - {frame.Data.Length} bytes[/]");
-                //        }
-                //    }
-
-                //    // Monitoring ended - could be normal timeout, user cancellation, or BUFFER FULL
-                //    Log.Debug("Monitoring loop completed");
-                //}
-                //catch (OperationCanceledException) when (monitorCts.IsCancellationRequested && !ct.IsCancellationRequested)
-                //{
-                //    // Expected - monitoring duration elapsed
-                //    Log.Debug("Monitoring duration elapsed normally");
-                //}
-                //catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                //{
-                //    // User cancelled
-                //    Log.Information("Monitoring cancelled by user");
-                //    AnsiConsole.MarkupLine("[yellow]Monitoring cancelled by user[/]");
-                //}
-                //finally
-                //{
-                //    // Always try to exit monitoring mode cleanly
-                //    Log.Debug("Ensuring monitoring mode is exited");
-                //}
-
-                //// Capture monitoring stats for final summary
-                //monitoringFrameCount = frameCount;
-                //monitoringUniqueCanIds = uniqueCanIds.Count;
-                //monitoringDuration = DateTime.UtcNow - monitorStart;
-
-                //AnsiConsole.MarkupLine($"[green]✓[/] Monitoring complete: {frameCount} frames, {uniqueCanIds.Count} unique CAN IDs");
-                //Log.Information("Monitoring complete - FrameCount={FrameCount}, UniqueCanIds={UniqueCanIds}",
-                //    frameCount, string.Join(", ", uniqueCanIds.OrderBy(id => id)));
-
-                //// Exit monitoring mode
-                //Log.Information("Exiting monitoring mode");
-                //await session.ExitMonitoringModeAsync(ct);
-                //AnsiConsole.MarkupLine("[green]✓[/] Exited monitoring mode");
-
-                //// Pause to let the device settle
-                //AnsiConsole.MarkupLine("[yellow]Pausing 2s to let device settle...[/]");
-                //await Task.Delay(2000, ct);
-
-                //AnsiConsole.WriteLine();
-
-                //// =====================================================================
-                //// PHASE 2: ACTIVE QUERY MODE
-                //// =====================================================================
-                //AnsiConsole.MarkupLine("[yellow]═══ PHASE 2: ACTIVE QUERIES ═══[/]");
-                //Log.Information("Starting active query mode");
-
-                //// Query BMS Group 1
-                //AnsiConsole.MarkupLine("[cyan]Querying BMS Group 1 (2101)...[/]");
-                //Log.Debug("Querying Nissan Leaf BMS Group 1 (2101) - SOC, Voltage, Current, Temps");
-                //var group1Lines = await session.QueryAsync("2101", EcuContext.NissanLeafBms, ct);
-                //Log.Debug("Group 1 query returned {LineCount} lines: {Lines}", group1Lines.Length, string.Join(", ", group1Lines));
-
-                //// Join all response lines for ISO-TP reassembly - the parser handles multi-frame responses
-                //var group1Response = string.Join("\r", group1Lines);
-
-                //if (TryParseBmsGroup01(group1Response, out var group01))
-                //{
-                //    var parts = new List<string>();
-
-                //    if (group01?.VoltageVolts is double voltage)
-                //        parts.Add($"Voltage: {voltage:F1}V");
-
-                //    if (group01?.CurrentAmps is double currentAmps)
-                //    {
-                //        var currentDir = currentAmps > 0 ? "discharging" : (currentAmps < 0 ? "charging" : "idle");
-                //        parts.Add($"Current: {Math.Abs(currentAmps):F1}A ({currentDir})");
-                //    }
-
-                //    if (group01?.SocPercent is double soc)
-                //        parts.Add($"SOC: {soc:F1}%");
-
-                //    if (group01?.CapacityAh is double capacityAh)
-                //        parts.Add($"Capacity: {capacityAh:F2}Ah");
-
-                //    if (group01?.HxPercent is double hx)
-                //        parts.Add($"Health: {hx:F1}%");
-
-                //    AnsiConsole.MarkupLine($"[green]✓[/] BMS Group 1: {string.Join(", ", parts)}");
-                //    successfulQueries++;
-                //}
-                //else
-                //{
-                //    AnsiConsole.MarkupLine("[yellow]⚠[/] BMS Group 1: No valid response");
-                //    invalidResponseQueries++;
-                //}
-
-                //await Task.Delay(500, ct); // Pause between queries
-
-                //// Query BMS Group 2
-                //AnsiConsole.MarkupLine("[cyan]Querying BMS Group 2 (2102)...[/]");
-                //Log.Debug("Querying Nissan Leaf BMS Group 2 (2102)");
-                //var group2Lines = await session.QueryAsync("2102", EcuContext.NissanLeafBms, ct);
-                //Log.Debug("Group 2 query returned {LineCount} lines: {Lines}", group2Lines.Length, string.Join(", ", group2Lines));
-
-                //var group2Response = string.Join("\n", group2Lines);
-                //if (TryParseBmsGroup02(group2Response, out var group02) && group02 != null)
-                //{
-                //    AnsiConsole.MarkupLine($"[green]✓[/] BMS Group 2: {group02.CellCount} cells, " +
-                //        $"Min: {group02.MinVoltageMv}mV, Max: {group02.MaxVoltageMv}mV, " +
-                //        $"Avg: {group02.AvgVoltageMv}mV, Delta: {group02.DeltaVoltageMv}mV");
-                //    successfulQueries++;
-                //}
-                //else
-                //{
-                //    AnsiConsole.MarkupLine("[yellow]⚠[/] BMS Group 2: No valid response");
-                //    invalidResponseQueries++;
-                //}
-
-                //await Task.Delay(500, ct); // Pause between queries
-
-                // Query VIN from charger
-                AnsiConsole.MarkupLine("[cyan]Querying VIN from charger (2181)...[/]");
-                Log.Debug("Querying VIN (2181)");
-                var vinLines = await session.QueryAsync("2181", EcuContext.NissanLeafCharger, ct);
-                Log.Debug("VIN query returned {LineCount} lines: {Lines}", vinLines.Length, string.Join(", ", vinLines));
-
-                var vinResponse = string.Join("\n", vinLines);
-                if (vinLines.Length > 0 && TryParseVin(vinResponse, out var vin))
+                // ===========================================
+                // 2. Vehicle Identification (VIN)
+                // ===========================================
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[cyan]Querying Vehicle Identification (VIN)...[/]");
+                if (commands.TryGet<IVehicleIdentification>(out var vi))
                 {
-                    AnsiConsole.MarkupLine($"[green]✓[/] VIN: {vin}");
-                    successfulQueries++;
+                    try
+                    {
+                        var vinResponse = await vi.GetVinAsync(ct);
+
+                        if (TryParseVin(vinResponse, out var vin))
+                        {
+                            AnsiConsole.MarkupLine($"[green]✓[/] VIN: {vin}");
+                            Log.Information("VIN retrieved: {Vin}", vin);
+                            successfulQueries++;
+                        }
+                        else
+                        {
+                            AnsiConsole.MarkupLine("[yellow]⚠[/] VIN: No valid response");
+                            Log.Warning("VIN query returned invalid response");
+                            invalidResponseQueries++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]✗[/] VIN query failed: {ex.Message}");
+                        Log.Warning(ex, "VIN query failed: {Message}", ex.Message);
+                        failedQueries++;
+                    }
                 }
                 else
                 {
-                    AnsiConsole.MarkupLine("[yellow]⚠[/] VIN: No valid response");
-                    invalidResponseQueries++;
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] Vehicle Identification not available");
+                    Log.Warning("Vehicle Identification capability not available");
                 }
 
-                //AnsiConsole.WriteLine();
-                //AnsiConsole.MarkupLine("[green]═══ TEST COMPLETE ═══[/]");
+                // ===========================================
+                // 3. Motor Controller (Inverter/Motor)
+                // ===========================================
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[cyan]Querying Motor Controller status...[/]");
+                if (commands.TryGet<IMotorController>(out var motor))
+                {
+                    try
+                    {
+                        var motorStatus = await motor.GetStatusAsync(ct);
+                        var parts = new List<string>();
+
+                        if (motorStatus.InputVoltageV is double voltage)
+                            parts.Add($"V: {voltage:F1}V");
+                        if (motorStatus.EffectiveTorqueNm is double torque)
+                            parts.Add($"Torque: {torque:F1}Nm");
+                        if (motorStatus.OutputRevolutionRpm is int rpm)
+                            parts.Add($"RPM: {rpm}");
+                        if (motorStatus.MotorTempC is double temp)
+                            parts.Add($"Motor: {temp:F1}°C");
+                        if (motorStatus.IgbtTempC is double igbtTemp)
+                            parts.Add($"IGBT: {igbtTemp:F1}°C");
+                        if (motorStatus.PowerWatts is double power)
+                            parts.Add($"Power: {power / 1000:F2}kW");
+
+                        if (parts.Count > 0)
+                        {
+                            AnsiConsole.MarkupLine($"[green]✓[/] Motor: {string.Join(", ", parts)}");
+                            Log.Information("Motor status: {Status}", string.Join(", ", parts));
+                            successfulQueries++;
+                        }
+                        else
+                        {
+                            AnsiConsole.MarkupLine("[yellow]⚠[/] Motor: No data available");
+                            Log.Warning("Motor status returned no data");
+                            invalidResponseQueries++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]✗[/] Motor query failed: {ex.Message}");
+                        Log.Warning(ex, "Motor status query failed: {Message}", ex.Message);
+                        failedQueries++;
+                    }
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] Motor Controller not available");
+                    Log.Warning("Motor Controller capability not available");
+                }
+
+                // ===========================================
+                // 4. Onboard Charger
+                // ===========================================
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[cyan]Querying Onboard Charger status...[/]");
+                if (commands.TryGet<IOnboardCharger>(out var charger))
+                {
+                    try
+                    {
+                        var chargingStatus = await charger.GetChargingStatusAsync(ct);
+
+                        if (chargingStatus != null)
+                        {
+                            var parts = new List<string>
+                            {
+                                $"Plugged: {(chargingStatus.IsPluggedIn ? "Yes" : "No")}",
+                                $"Charging: {(chargingStatus.IsCharging ? "Yes" : "No")}"
+                            };
+
+                            if (chargingStatus.ChargePowerKw is double power)
+                                parts.Add($"Power: {power:F2}kW");
+                            if (chargingStatus.ChargerVoltage is double voltage)
+                                parts.Add($"V: {voltage:F1}V");
+                            if (chargingStatus.ChargerCurrent is double current)
+                                parts.Add($"I: {current:F1}A");
+                            if (chargingStatus.EstimatedTimeToFull is TimeSpan eta)
+                                parts.Add($"ETA: {eta:hh\\:mm}");
+
+                            AnsiConsole.MarkupLine($"[green]✓[/] Charger: {string.Join(", ", parts)}");
+                            Log.Information("Charger status: {Status}", string.Join(", ", parts));
+                            successfulQueries++;
+                        }
+                        else
+                        {
+                            AnsiConsole.MarkupLine("[yellow]⚠[/] Charger: No data available");
+                            Log.Warning("Charger status returned null");
+                            invalidResponseQueries++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]✗[/] Charger query failed: {ex.Message}");
+                        Log.Warning(ex, "Charger status query failed: {Message}", ex.Message);
+                        failedQueries++;
+                    }
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] Onboard Charger not available");
+                    Log.Warning("Onboard Charger capability not available");
+                }
+
+                // ===========================================
+                // 5. Vehicle Control Module (VCM)
+                // ===========================================
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[cyan]Querying VCM status...[/]");
+                if (commands.TryGet<IVcm>(out var vcm))
+                {
+                    try
+                    {
+                        var vcmStatus = await vcm.GetStatusAsync(ct);
+                        var parts = new List<string>();
+
+                        if (vcmStatus.ClimateControlActive is bool climateActive)
+                            parts.Add($"Climate: {(climateActive ? "ON" : "OFF")}");
+                        if (vcmStatus.ClimateControlPowerKw is double climatePower)
+                            parts.Add($"Climate Power: {climatePower:F2}kW");
+                        if (vcmStatus.OutsideAmbientTempC is double outsideTemp)
+                            parts.Add($"Outside: {outsideTemp:F1}°C");
+                        if (vcmStatus.EcoIndicator is int eco)
+                            parts.Add($"Eco: {eco}/15");
+
+                        if (parts.Count > 0)
+                        {
+                            AnsiConsole.MarkupLine($"[green]✓[/] VCM: {string.Join(", ", parts)}");
+                            Log.Information("VCM status: {Status}", string.Join(", ", parts));
+                            successfulQueries++;
+                        }
+                        else
+                        {
+                            AnsiConsole.MarkupLine("[yellow]⚠[/] VCM: No data available");
+                            Log.Warning("VCM status returned no data");
+                            invalidResponseQueries++;
+                        }
+
+                        // Also query gear position
+                        try
+                        {
+                            var gear = await vcm.GetGearPositionAsync(ct);
+                            AnsiConsole.MarkupLine($"[green]✓[/] Gear: {gear}");
+                            Log.Information("Gear position: {Gear}", gear);
+                            successfulQueries++;
+                        }
+                        catch (Exception ex)
+                        {
+                            AnsiConsole.MarkupLine($"[yellow]⚠[/] Gear position query failed: {ex.Message}");
+                            Log.Warning(ex, "Gear position query failed: {Message}", ex.Message);
+                            failedQueries++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]✗[/] VCM query failed: {ex.Message}");
+                        Log.Warning(ex, "VCM status query failed: {Message}", ex.Message);
+                        failedQueries++;
+                    }
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] VCM not available");
+                    Log.Warning("VCM capability not available");
+                }
+
+                // ===========================================
+                // 6. ABS (Anti-lock Braking System)
+                // ===========================================
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[cyan]Querying ABS status...[/]");
+                if (commands.TryGet<IAntilockBrakingSystem>(out var abs))
+                {
+                    try
+                    {
+                        var absStatus = await abs.GetStatusAsync(ct);
+                        var parts = new List<string>();
+
+                        if (absStatus.VehicleSpeedKmh is double speed)
+                            parts.Add($"Speed: {speed:F1}km/h");
+                        if (absStatus.WheelSpeedFlKmh is double fl)
+                            parts.Add($"FL: {fl:F1}");
+                        if (absStatus.WheelSpeedFrKmh is double fr)
+                            parts.Add($"FR: {fr:F1}");
+                        if (absStatus.WheelSpeedRlKmh is double rl)
+                            parts.Add($"RL: {rl:F1}");
+                        if (absStatus.WheelSpeedRrKmh is double rr)
+                            parts.Add($"RR: {rr:F1}");
+                        if (absStatus.LeadAcidBatteryVoltage is double battV)
+                            parts.Add($"12V Batt: {battV:F1}V");
+
+                        if (parts.Count > 0)
+                        {
+                            AnsiConsole.MarkupLine($"[green]✓[/] ABS: {string.Join(", ", parts)}");
+                            Log.Information("ABS status: {Status}", string.Join(", ", parts));
+                            successfulQueries++;
+                        }
+                        else
+                        {
+                            AnsiConsole.MarkupLine("[yellow]⚠[/] ABS: No data available");
+                            Log.Warning("ABS status returned no data");
+                            invalidResponseQueries++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]✗[/] ABS query failed: {ex.Message}");
+                        Log.Warning(ex, "ABS status query failed: {Message}", ex.Message);
+                        failedQueries++;
+                    }
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] ABS not available");
+                    Log.Warning("ABS capability not available");
+                }
+
+                // ===========================================
+                // 7. Brake System
+                // ===========================================
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[cyan]Querying Brake system status...[/]");
+                if (commands.TryGet<IBrake>(out var brake))
+                {
+                    try
+                    {
+                        var brakeStatus = await brake.GetStatusAsync(ct);
+                        // BrakeStatus is a struct, check if it has any meaningful data
+                        AnsiConsole.MarkupLine($"[green]✓[/] Brake: Status retrieved");
+                        Log.Information("Brake status retrieved: {@BrakeStatus}", brakeStatus);
+                        successfulQueries++;
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]✗[/] Brake query failed: {ex.Message}");
+                        Log.Warning(ex, "Brake status query failed: {Message}", ex.Message);
+                        failedQueries++;
+                    }
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] Brake system not available");
+                    Log.Warning("Brake capability not available");
+                }
+
+                // ===========================================
+                // 8. HVAC (Climate Control)
+                // ===========================================
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[cyan]Querying HVAC status...[/]");
+                if (commands.TryGet<IHvac>(out var hvac))
+                {
+                    try
+                    {
+                        var hvacStatus = await hvac.GetStatusAsync(ct);
+                        AnsiConsole.MarkupLine($"[green]✓[/] HVAC: Status retrieved");
+                        Log.Information("HVAC status retrieved: {@HvacStatus}", hvacStatus);
+                        successfulQueries++;
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]✗[/] HVAC query failed: {ex.Message}");
+                        Log.Warning(ex, "HVAC status query failed: {Message}", ex.Message);
+                        failedQueries++;
+                    }
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] HVAC not available");
+                    Log.Warning("HVAC capability not available");
+                }
+
+                // ===========================================
+                // 9. Body Control
+                // ===========================================
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[cyan]Querying Body Control status...[/]");
+                if (commands.TryGet<IBodyControl>(out var bodyControl))
+                {
+                    try
+                    {
+                        var bodyStatus = await bodyControl.GetStatusAsync(ct);
+                        var parts = new List<string>
+                        {
+                            $"Doors: {(bodyStatus.DoorsLocked ? "Locked" : "Unlocked")}",
+                            $"Headlights: {(bodyStatus.HeadlightsOn ? "ON" : "OFF")}",
+                            $"Hazards: {(bodyStatus.HazardLightsOn ? "ON" : "OFF")}"
+                        };
+
+                        AnsiConsole.MarkupLine($"[green]✓[/] Body Control: {string.Join(", ", parts)}");
+                        Log.Information("Body Control status: {Status}", string.Join(", ", parts));
+                        successfulQueries++;
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]✗[/] Body Control query failed: {ex.Message}");
+                        Log.Warning(ex, "Body Control status query failed: {Message}", ex.Message);
+                        failedQueries++;
+                    }
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] Body Control not available");
+                    Log.Warning("Body Control capability not available");
+                }
+
+                // ===========================================
+                // 10. Steering
+                // ===========================================
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[cyan]Querying Steering status...[/]");
+                if (commands.TryGet<ISteering>(out var steering))
+                {
+                    try
+                    {
+                        var steeringStatus = await steering.GetStatusAsync(ct);
+                        AnsiConsole.MarkupLine($"[green]✓[/] Steering: Angle={steeringStatus.AngleDegrees:F1}°, Torque={steeringStatus.TorqueNm:F1}Nm");
+                        Log.Information("Steering status: Angle={Angle:F1}°, Torque={Torque:F1}Nm",
+                            steeringStatus.AngleDegrees, steeringStatus.TorqueNm);
+                        successfulQueries++;
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]✗[/] Steering query failed: {ex.Message}");
+                        Log.Warning(ex, "Steering status query failed: {Message}", ex.Message);
+                        failedQueries++;
+                    }
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] Steering not available");
+                    Log.Warning("Steering capability not available");
+                }
+
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[green]═══ TEST COMPLETE ═══[/]");
 
                 var totalQueries = successfulQueries + invalidResponseQueries;
                 var successRate = totalQueries > 0 ? (double)successfulQueries / totalQueries * 100 : 0;
 
-                //AnsiConsole.MarkupLine($"[cyan]Monitoring:[/] {frameCount} frames from {uniqueCanIds.Count} CAN IDs");
                 AnsiConsole.MarkupLine($"[cyan]Queries:[/] {successfulQueries}/{totalQueries} successful ({successRate:F0}%)");
                 Log.Information("Test complete - MonitorFrames={FrameCount}, QuerySuccess={Success}/{Total}",
                     0, successfulQueries, totalQueries);
@@ -684,7 +873,7 @@ namespace ObdTestApp
             {
                 // Final statistics
                 var totalUptime = DateTime.UtcNow - sessionStart;
-                
+
                 DeviceRenderer.RenderSessionStats(
                     totalUptime,
                     monitoringFrameCount,
@@ -709,280 +898,6 @@ namespace ObdTestApp
                 uptime, successCount, failCount);
         }
 
-        private static bool TryParseBmsGroup01(string response, out BmsGroup01Data? data)
-        {
-            data = null;
-            try
-            {
-                var bytes = IsoTpParser.ParseIsoTpResponse(response);
-
-                if (bytes.Count < 2)
-                {
-                    AnsiConsole.MarkupLine("[yellow]   Parse: Not enough bytes for Group 01[/]");
-                    return false;
-                }
-
-                // First 2 bytes should be 61 01 (positive response to 21 01)
-                if (bytes[0] != 0x61 || bytes[1] != 0x01)
-                {
-                    AnsiConsole.MarkupLine($"[yellow]   Parse: Unexpected response header: {bytes[0]:X2} {bytes[1]:X2}[/]");
-                    return false;
-                }
-
-                // Log raw bytes for debugging
-                Log.Debug("Group 01 raw bytes ({Count}): {Hex}",
-                    bytes.Count,
-                    BitConverter.ToString(bytes.ToArray()));
-
-                // Byte layout based on Leaf2018-CAN.md documentation:
-                // Bytes 0-1:   61 01 (response header)
-                // Bytes 2-5:   HV Bat Current 1 (signed 32-bit, /1024)
-                // Bytes 6-12:  CF1 data (includes Current 2 at bytes 9-12)
-                // Bytes 13-19: CF2 data
-                // Bytes 20-21: HV Bat Voltage (/100)
-                // Bytes 22-26: CF3 rest
-                // Bytes 27-29: CF4 start
-                // Bytes 30-31: Hx (/102.4)
-                // Bytes 32:    CF4 end
-                // Bytes 33-35: SOC (24-bit, /10000)
-                // Bytes 36:    CF5 start
-                // Bytes 37-39: AHR (24-bit, /10000)
-                // Bytes 40+:   Rest of data
-
-                double? currentAmps = null;
-                double? voltageVolts = null;
-                double? capacityAh = null;
-                double? hxPercent = null;
-                double? socPercent = null;
-
-                // Current 1: bytes 2-5, signed 32-bit, divide by 1024
-                if (bytes.Count >= 6)
-                {
-                    var currentUnsigned = ((uint)bytes[2] << 24) | ((uint)bytes[3] << 16) | ((uint)bytes[4] << 8) | bytes[5];
-                    var currentRaw = unchecked((int)currentUnsigned);
-                    // Positive = discharging, Negative = charging/regen
-                    currentAmps = currentRaw / 1024.0;
-                    Log.Debug("Current raw: 0x{Raw:X8} = {Amps:F2}A", currentUnsigned, currentAmps);
-                }
-
-                // Voltage: bytes 20-21, unsigned 16-bit, divide by 100
-                if (bytes.Count >= 22)
-                {
-                    var voltageRaw = (bytes[20] << 8) | bytes[21];
-                    if (voltageRaw > 0 && voltageRaw < 50000) // Sanity check: 0-500V
-                    {
-                        voltageVolts = voltageRaw / 100.0;
-                        Log.Debug("Voltage raw: 0x{Raw:X4} = {Volts:F2}V", voltageRaw, voltageVolts);
-                    }
-                }
-
-                // Based on Leaf2018-CAN.md, Frame 24 contains Hx at data[4-5]
-                // Frame 24 is CF4 (seq=4), which starts at position 27 in reassembled data
-                // So Hx is at positions 27+4=31 and 27+5=32
-                // Hx (health): bytes 31-32, unsigned 16-bit, divide by 102.4
-                if (bytes.Count >= 33)
-                {
-                    var hxRaw = (bytes[31] << 8) | bytes[32];
-                    if (hxRaw > 0 && hxRaw < 15000) // Sanity check: 0-146%
-                    {
-                        hxPercent = hxRaw / 102.4;
-                        Log.Debug("Hx raw: 0x{Raw:X4} = {Hx:F2}%", hxRaw, hxPercent);
-                    }
-                }
-
-                // SOC spans Frame 24 data[7] and Frame 25 data[1-2]
-                // Frame 24 ends at position 33, Frame 25 starts at position 34
-                // SOC = data_24[7] << 16 | data_25[1] << 8 | data_25[2]
-                // Position 33 (24[7]) + positions 35-36 (25[1-2])
-                // Actually, looking at: SOC = (data 24[7] << 16 | ((data 25[1] << 8) | data 25[2]))/10000
-                // Frame 24 data[7] = position 33, Frame 25 data[1-2] = positions 35-36
-                if (bytes.Count >= 37)
-                {
-                    var socRaw = (bytes[33] << 16) | (bytes[35] << 8) | bytes[36];
-                    if (socRaw > 0 && socRaw < 1100000) // Sanity check: 0-110%
-                    {
-                        socPercent = socRaw / 10000.0;
-                        Log.Debug("SOC raw: 0x{Raw:X6} = {Soc:F2}%", socRaw, socPercent);
-                    }
-                }
-
-                // AHR (capacity): Frame 25 data[4-6]
-                // Frame 25 starts at position 34, so AHR is at positions 34+4=38, 34+5=39, 34+6=40
-                if (bytes.Count >= 41)
-                {
-                    var ahrRaw = (bytes[38] << 16) | (bytes[39] << 8) | bytes[40];
-                    if (ahrRaw > 0 && ahrRaw < 1000000) // Sanity check: 0-100 Ah
-                    {
-                        capacityAh = ahrRaw / 10000.0;
-                        Log.Debug("AHR raw: 0x{Raw:X6} = {Ah:F2}Ah", ahrRaw, capacityAh);
-                    }
-                }
-
-                data = new BmsGroup01Data(bytes.Count, currentAmps, voltageVolts, capacityAh, hxPercent, socPercent);
-
-                // Structured logging:
-                Log.Debug(
-                    "Parsed BMS Group 01 - Bytes={ByteCount}, CurrentA={CurrentAmps:F2}, VoltageV={VoltageVolts:F2}, SocPct={SocPercent:F2}, CapacityAh={CapacityAh:F2}, HxPct={HxPercent:F2}",
-                    data.ByteCount, data.CurrentAmps, data.VoltageVolts, data.SocPercent, data.CapacityAh, data.HxPercent);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                AnsiConsole.MarkupLine($"[yellow]   Parse error: {ex.Message.EscapeMarkup()}[/]");
-                Log.Warning(ex, "Error parsing BMS Group 01");
-                return false;
-            }
-        }
-
-        private static bool TryParseBmsGroup02(string response, out BmsGroup02Data? data)
-        {
-            data = null;
-            try
-            {
-                var bytes = IsoTpParser.ParseIsoTpResponse(response);
-
-                if (bytes.Count < 2)
-                {
-                    Log.Debug("Not enough bytes for Group 02");
-                    return false;
-                }
-
-                // First 2 bytes should be 61 02 (positive response to 21 02)
-                if (bytes[0] != 0x61 || bytes[1] != 0x02)
-                {
-                    Log.Debug("Unexpected response header: {Header1:X2} {Header2:X2}", bytes[0], bytes[1]);
-                    return false;
-                }
-
-                // Log raw bytes for debugging
-                Log.Debug("Group 02 raw bytes ({Count}): {Hex}",
-                    bytes.Count,
-                    bytes.Count <= 50 ? BitConverter.ToString(bytes.ToArray())
-                        : BitConverter.ToString(bytes.Take(50).ToArray()) + "...");
-
-                // Cell voltages start at byte 2, each cell is 2 bytes (big-endian millivolts)
-                // Nissan Leaf has 96 cell pairs
-                // According to Leaf2018-CAN.md:
-                // CV array[0] = bytes[2] << 8 | bytes[3]
-                // CV array[1] = bytes[4] << 8 | bytes[5]
-                // etc.
-                var cellVoltages = new List<int>();
-                var allRawVoltages = new List<int>(); // For debugging
-
-                for (var i = 2; i + 1 < bytes.Count && cellVoltages.Count < 96; i += 2)
-                {
-                    var voltage = (bytes[i] << 8) | bytes[i + 1];
-                    allRawVoltages.Add(voltage);
-
-                    // Valid cell voltages are typically 3000-4200 mV for lithium cells
-                    // But accept wider range to not miss data
-                    if (voltage >= 2500 && voltage <= 4500)
-                    {
-                        cellVoltages.Add(voltage);
-                    }
-                }
-
-                // Log first few raw voltages for debugging
-                if (allRawVoltages.Count > 0)
-                {
-                    var firstFew = string.Join(", ", allRawVoltages.Take(10).Select(v => $"{v}mV"));
-                    Log.Debug("First 10 raw cell values: {Values}", firstFew);
-                }
-
-                if (cellVoltages.Count == 0)
-                {
-                    Log.Debug("No valid cell voltages found (checked {Count} values)", allRawVoltages.Count);
-                    return false;
-                }
-
-                data = new BmsGroup02Data(
-                    cellVoltages.ToArray(),
-                    cellVoltages.Min(),
-                    cellVoltages.Max(),
-                    (int)cellVoltages.Average(),
-                    cellVoltages.Max() - cellVoltages.Min()
-                );
-
-                Log.Debug("Parsed BMS Group 02 - Cells={CellCount}, Min={MinVoltage}mV, Max={MaxVoltage}mV, Avg={AvgVoltage}mV, Delta={DeltaVoltage}mV",
-                    data.CellCount, data.MinVoltageMv, data.MaxVoltageMv, data.AvgVoltageMv, data.DeltaVoltageMv);
-
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "Error parsing BMS Group 02");
-                return false;
-            }
-        }
-
-        private static void ParseAndLogCanFrame(string canIdHex, byte[] data)
-        {
-            try
-            {
-                // Parse interesting broadcast frames based on Leaf2018-CAN.md
-                switch (canIdHex.ToUpper())
-                {
-                    case "1DB": // LB_STATUS (Current/Voltage/SOC)
-                        if (data.Length >= 7)
-                        {
-                            // Battery current (signed 16-bit, 0.5A per bit)
-                            var currentRaw = (short)((data[0] << 8) | data[1]);
-                            var current = currentRaw * 0.5;
-
-                            // Battery voltage (16-bit, 0.5V per bit)
-                            var voltage = ((data[2] << 8) | data[3]) * 0.5;
-
-                            // SOC (Gids - 10-bit from bytes 4-5)
-                            var gids = ((data[4] & 0x03) << 8) | data[5];
-
-                            Log.Debug("[CAN 1DB] Battery: {Current:F1}A, {Voltage:F1}V, {Gids} Gids", current, voltage, gids);
-                        }
-                        break;
-
-                    case "55B": // LB_SOC (High-res SOC)
-                        if (data.Length >= 2)
-                        {
-                            var soc = ((data[0] << 2) | (data[1] >> 6)) * 0.1;
-                            Log.Debug("[CAN 55B] SOC: {Soc:F1}%", soc);
-                        }
-                        break;
-
-                    case "5BC": // LB_GIDS (Capacity/SOH)
-                        if (data.Length >= 5)
-                        {
-                            var gids = (data[0] << 2) | (data[1] >> 6);
-                            var soh = ((data[4] & 0xFE) >> 1) * 0.5;
-                            Log.Debug("[CAN 5BC] Capacity: {Gids} Gids, SOH: {Soh:F1}%", gids, soh);
-                        }
-                        break;
-
-                    case "5C0": // LB_TEMPS (Temperatures)
-                        if (data.Length >= 4)
-                        {
-                            var temp1 = (data[0] / 2.0) - 40;
-                            var temp2 = (data[1] / 2.0) - 40;
-                            var temp3 = (data[2] / 2.0) - 40;
-                            var temp4 = (data[3] / 2.0) - 40;
-                            Log.Debug("[CAN 5C0] Battery Temps: {T1:F1}°C, {T2:F1}°C, {T3:F1}°C, {T4:F1}°C", temp1, temp2, temp3, temp4);
-                        }
-                        break;
-
-                    case "1DA": // INVERTER (Motor data)
-                        if (data.Length >= 4)
-                        {
-                            var motorRpm = (short)((data[0] << 8) | data[1]);
-                            var motorTemp = data[2] - 40;
-                            Log.Debug("[CAN 1DA] Motor: {Rpm} RPM, {Temp}°C", motorRpm, motorTemp);
-                        }
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Debug(ex, "Error parsing CAN frame {CanId}", canIdHex);
-            }
-        }
-
         /// <summary>
         /// Logs session summary using Serilog for proper file logging and analysis
         /// </summary>
@@ -1000,8 +915,10 @@ namespace ObdTestApp
         /// Decoded: 61 81 31 4E 34 42 5A 30 43 50 33 48 43 33 31 30 34 30 38 00
         ///        = "1N4BZ0CP3HC310408" (example)
         /// </summary>
-        private static bool TryParseVin(string response, out string? vin)
+        private static bool TryParseVin(string? response, out string? vin)
         {
+            ArgumentNullException.ThrowIfNull(response);
+
             vin = null;
             try
             {
