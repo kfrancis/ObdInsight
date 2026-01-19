@@ -14,14 +14,25 @@ public class LeafChargerVinParsingTests
 {
     /// <summary>
     /// Golden sample for a 2017 Nissan Leaf AZE0 VIN query (Mode 21 PID 81).
-    /// Expected VIN: 1N4AZ0CP7HC308656
-    /// Payload: 61 81 + ASCII("1N4AZ0CP7HC308656") = 0x13 bytes
+    /// Fake/Generated VIN: 1N4AZ0CP7HC308656
     /// </summary>
     private static readonly string[] s_goldenVinLines =
     [
-        "79A10136181314E3441",  // FF: 10 13 61 81 31 4E 34 41  => "1N4A"
-        "79A2155A304350374843",  // CF1: 21 5A 30 43 50 37 48 43 => "Z0CP7HC"
-        "79A22233303836353600",  // CF2: 22 33 30 38 36 35 36 00 => "308656" + pad
+        // FF (First Frame): ID=79A, PCI=10 (First Frame), Len=0x15 (21 decimal)
+        // Payload: [61 81] (Response) + "1N4A" (31 4E 34 41)
+        "79A10156181314E3441",
+
+        // CF1 (Consecutive Frame 1): ID=79A, PCI=21
+        // Payload: "Z0CP7HC" (5A 30 43 50 37 48 43)
+        "79A215A304350374843",
+
+        // CF2 (Consecutive Frame 2): ID=79A, PCI=22
+        // Payload: "308656" (33 30 38 36 35 36) + 00 (Padding/Termination)
+        "79A2233303836353600",
+
+        // CF3 (Consecutive Frame 3): ID=79A, PCI=23
+        // Payload: 00 (Remaining Termination) + CAN Frame Padding
+        "79A230000000000000"
     ];
 
     [Test]

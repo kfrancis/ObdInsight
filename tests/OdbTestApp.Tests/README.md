@@ -48,7 +48,7 @@ Tests specific to the Nissan Leaf AZE0 (2016-2017 30kWh) vehicle:
   - Tests ISO-TP frame parsing from VIN query
   - Validates 17-character VIN format
   - Tests handling of invalid/null responses
-  - Uses golden sample: `1N4BZ0CP3HC310408`
+  - Uses golden sample: `1N4AZ0CP7HC308656`
 
 **Integration tests** - Requires BLE:
 - `LeafChargerIntegrationTests`: Tests VIN query against real vehicle
