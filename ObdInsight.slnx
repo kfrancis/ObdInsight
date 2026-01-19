@@ -1,4 +1,8 @@
 <Solution>
+  <Folder Name="/newarch/">
+    <Project Path="src/ObdTestApp/ObdTestApp.csproj" Id="36c169ba-2379-4f56-b741-6cc9277e9c44" />
+    <Project Path="tests/OdbTestApp.Tests/OdbTestApp.Tests.csproj" />
+  </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
     <File Path=".gitignore" />
@@ -24,7 +28,6 @@
     <Project Path="src/ObdInsight/ObdInsight.csproj" Id="85a1989b-1fe0-477e-a7e7-8f96b78f5837">
       <Deploy Solution="Debug|*" />
     </Project>
-    <Project Path="src/ObdTestApp/ObdTestApp.csproj" Id="36c169ba-2379-4f56-b741-6cc9277e9c44" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ObdInsight.AdapterComplianceTests/ObdInsight.AdapterComplianceTests.csproj" />

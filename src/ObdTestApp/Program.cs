@@ -613,8 +613,9 @@ namespace ObdTestApp
                             AnsiConsole.MarkupLine($"  [green]✓[/] {string.Join(", ", parts)}");
                             Log.Information("Read {Index}/{Total}: {Status}", i, RequiredReads, string.Join(", ", parts));
                             successCount++;
+                            successfulQueries++; // Track for session stats
 
-                            // Small delay between reads
+                            // Small delay between reads0
                             if (i < RequiredReads)
                                 await Task.Delay(500, ct);
                         }
@@ -622,6 +623,7 @@ namespace ObdTestApp
                         {
                             AnsiConsole.MarkupLine($"  [red]✗[/] Read {i} failed: {ex.Message}");
                             Log.Warning(ex, "Read {Index} failed: {Message}", i, ex.Message);
+                            failedQueries++; // Track for session stats
                         }
                     }
 
@@ -909,23 +911,23 @@ namespace ObdTestApp
 
                 //await Task.Delay(500, ct); // Pause between queries
 
-                //// Query VIN from charger
-                //AnsiConsole.MarkupLine("[cyan]Querying VIN from charger (2181)...[/]");
-                //Log.Debug("Querying VIN (2181)");
-                //var vinLines = await session.QueryAsync("2181", EcuContext.NissanLeafCharger, ct);
-                //Log.Debug("VIN query returned {LineCount} lines: {Lines}", vinLines.Length, string.Join(", ", vinLines));
+                // Query VIN from charger
+                AnsiConsole.MarkupLine("[cyan]Querying VIN from charger (2181)...[/]");
+                Log.Debug("Querying VIN (2181)");
+                var vinLines = await session.QueryAsync("2181", EcuContext.NissanLeafCharger, ct);
+                Log.Debug("VIN query returned {LineCount} lines: {Lines}", vinLines.Length, string.Join(", ", vinLines));
 
-                //var vinResponse = string.Join("\n", vinLines);
-                //if (vinLines.Length > 0 && TryParseVin(vinResponse, out var vin))
-                //{
-                //    AnsiConsole.MarkupLine($"[green]✓[/] VIN: {vin}");
-                //    successfulQueries++;
-                //}
-                //else
-                //{
-                //    AnsiConsole.MarkupLine("[yellow]⚠[/] VIN: No valid response");
-                //    invalidResponseQueries++;
-                //}
+                var vinResponse = string.Join("\n", vinLines);
+                if (vinLines.Length > 0 && TryParseVin(vinResponse, out var vin))
+                {
+                    AnsiConsole.MarkupLine($"[green]✓[/] VIN: {vin}");
+                    successfulQueries++;
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] VIN: No valid response");
+                    invalidResponseQueries++;
+                }
 
                 //AnsiConsole.WriteLine();
                 //AnsiConsole.MarkupLine("[green]═══ TEST COMPLETE ═══[/]");

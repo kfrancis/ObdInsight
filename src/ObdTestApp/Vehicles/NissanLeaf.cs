@@ -205,6 +205,18 @@ internal sealed class LeafAze0Bms : IBatteryManagementSystem
         _context = context;
     }
 
+    /// <summary>
+    /// Parses ISO-TP frames - made internal static so LeafAze0Charger can use it.
+    /// </summary>
+    internal static List<(int FrameType, int SeqOrLen, byte[] Data)> ParseIsoTpFrames(string[] lines) =>
+        ParseIsoTpFramesImpl(lines);
+
+    /// <summary>
+    /// Reassembles ISO-TP payload - made internal static so LeafAze0Charger can use it.
+    /// </summary>
+    internal static byte[] ReassembleIsoTpPayload(List<(int FrameType, int SeqOrLen, byte[] Data)> frames) =>
+        ReassembleIsoTpPayloadImpl(frames);
+
     public async ValueTask<BatteryStatus> GetStatusAsync(CancellationToken ct = default)
     {
         // Nissan-specific: Query Mode 21 PID 01
@@ -216,13 +228,13 @@ internal sealed class LeafAze0Bms : IBatteryManagementSystem
 
         // Parse ISO-TP frames from ELM327 response
         // Each line format: "7BB102B6101..." (CAN_ID 3 chars + frame bytes as hex, no spaces with AT S0)
-        var frames = ParseIsoTpFrames(lines);
+        var frames = ParseIsoTpFramesImpl(lines);
 
         if (frames.Count == 0)
             throw new InvalidOperationException("No valid ISO-TP frames received from BMS");
 
         // Reassemble ISO-TP payload
-        var payload = ReassembleIsoTpPayload(frames);
+        var payload = ReassembleIsoTpPayloadImpl(frames);
 
         Log($"[BMS Group01] Reassembled {payload.Length} payload bytes: {Convert.ToHexString(payload)}");
 
@@ -233,16 +245,16 @@ internal sealed class LeafAze0Bms : IBatteryManagementSystem
         }
 
         // Parse the full payload including header using frame-based parsing
-        var result = ParseGroup01FromFrames(frames);
+        var (socPercent, voltageVolts, currentAmps, capacityAh, hxPercent) = ParseGroup01FromFrames(frames);
 
         // Map to generic BatteryStatus
         return new BatteryStatus
         {
-            SocPercent = result.SocPercent,
-            VoltageVolts = result.VoltageVolts,
-            CurrentAmps = result.CurrentAmps,
-            CapacityAh = result.CapacityAh,
-            HealthPercent = result.HxPercent,
+            SocPercent = socPercent,
+            VoltageVolts = voltageVolts,
+            CurrentAmps = currentAmps,
+            CapacityAh = capacityAh,
+            HealthPercent = hxPercent,
             TemperatureC = null
         };
     }
@@ -257,7 +269,7 @@ internal sealed class LeafAze0Bms : IBatteryManagementSystem
             Log($"[BMS Group02] Line {i}: {lines[i]}");
 
         // Parse ISO-TP frames
-        var frames = ParseIsoTpFrames(lines);
+        var frames = ParseIsoTpFramesImpl(lines);
 
         if (frames.Count == 0)
         {
@@ -266,7 +278,7 @@ internal sealed class LeafAze0Bms : IBatteryManagementSystem
         }
 
         // Reassemble payload for cell voltages
-        var payload = ReassembleIsoTpPayload(frames);
+        var payload = ReassembleIsoTpPayloadImpl(frames);
 
         Log($"[BMS Group02] Reassembled {payload.Length} payload bytes");
 
@@ -308,7 +320,7 @@ internal sealed class LeafAze0Bms : IBatteryManagementSystem
 
         return new CellVoltageData
         {
-            CellVoltagesMv = cellVoltages.ToArray(),
+            CellVoltagesMv = [.. cellVoltages],
             MinVoltageMv = cellVoltages.Min(),
             MaxVoltageMv = cellVoltages.Max(),
             AvgVoltageMv = (int)cellVoltages.Average()
@@ -319,7 +331,7 @@ internal sealed class LeafAze0Bms : IBatteryManagementSystem
     /// Parses ISO-TP frames from ELM327 response lines.
     /// Handles format like "7BB102B6101000000EB" (CAN_ID + frame bytes, no spaces).
     /// </summary>
-    private static List<(int FrameType, int SeqOrLen, byte[] Data)> ParseIsoTpFrames(string[] lines)
+    private static List<(int FrameType, int SeqOrLen, byte[] Data)> ParseIsoTpFramesImpl(string[] lines)
     {
         var frames = new List<(int FrameType, int SeqOrLen, byte[] Data)>();
 
@@ -338,6 +350,9 @@ internal sealed class LeafAze0Bms : IBatteryManagementSystem
             // Parse frame data bytes (everything after CAN ID)
             var frameHex = trimmed[3..];
             if (frameHex.Length < 2) continue;
+
+            // Handle 'H' characters in captured data - they represent ASCII 'H' (0x48)
+            frameHex = frameHex.Replace("H", "48");
 
             // Parse all bytes
             var frameBytes = new List<byte>();
@@ -387,28 +402,28 @@ internal sealed class LeafAze0Bms : IBatteryManagementSystem
     /// ISO-TP consecutive frames use sequence numbers 0-F that wrap around.
     /// For long messages (>112 bytes), we need to maintain arrival order, not sort by sequence.
     /// </summary>
-    private static byte[] ReassembleIsoTpPayload(List<(int FrameType, int SeqOrLen, byte[] Data)> frames)
+    private static byte[] ReassembleIsoTpPayloadImpl(List<(int FrameType, int SeqOrLen, byte[] Data)> frames)
     {
         var payload = new List<byte>();
         var expectedLength = 0;
 
         // Find First Frame or Single Frame
-        var firstFrame = frames.FirstOrDefault(f => f.FrameType == 0 || f.FrameType == 1);
-        if (firstFrame.Data == null)
+        var (frameType, seqOrLen, data) = frames.FirstOrDefault(f => f.FrameType == 0 || f.FrameType == 1);
+        if (data == null)
             return [];
 
-        if (firstFrame.FrameType == 0)
+        if (frameType == 0)
         {
             // Single Frame - all data in one frame
-            expectedLength = firstFrame.SeqOrLen;
-            var dataLen = Math.Min(expectedLength, firstFrame.Data.Length);
-            payload.AddRange(firstFrame.Data.Take(dataLen));
+            expectedLength = seqOrLen;
+            var dataLen = Math.Min(expectedLength, data.Length);
+            payload.AddRange(data.Take(dataLen));
         }
         else
         {
             // First Frame - multi-frame response
-            expectedLength = firstFrame.SeqOrLen;
-            payload.AddRange(firstFrame.Data); // First 6 bytes
+            expectedLength = seqOrLen;
+            payload.AddRange(data); // First 6 bytes
 
             // Add Consecutive Frames in ARRIVAL ORDER (not sorted by sequence number!)
             // ISO-TP sequence numbers are 0-F and wrap around, so sorting doesn't work
@@ -418,9 +433,9 @@ internal sealed class LeafAze0Bms : IBatteryManagementSystem
                 .Where(f => f.FrameType == 2)
                 .ToList(); // Keep arrival order, don't sort!
 
-            foreach (var cf in consecutiveFrames)
+            foreach (var (cfFrameType, cfSeqOrLen, cfData) in consecutiveFrames)
             {
-                payload.AddRange(cf.Data);
+                payload.AddRange(cfData);
                 if (payload.Count >= expectedLength)
                     break;
             }
@@ -428,9 +443,9 @@ internal sealed class LeafAze0Bms : IBatteryManagementSystem
 
         // Trim to expected length
         if (expectedLength > 0 && payload.Count > expectedLength)
-            return payload.Take(expectedLength).ToArray();
+            return [.. payload.Take(expectedLength)];
 
-        return payload.ToArray();
+        return [.. payload];
     }
 
     /// <summary>
@@ -462,7 +477,7 @@ internal sealed class LeafAze0Bms : IBatteryManagementSystem
         double? hxPercent = null;
 
         // Reassemble payload to get contiguous data for OVMS-style offset access
-        var payload = ReassembleIsoTpPayload(frames);
+        var payload = ReassembleIsoTpPayloadImpl(frames);
 
         // Validate response header (61 01)
         if (payload.Length < 4 || payload[0] != 0x61 || payload[1] != 0x01)
@@ -499,7 +514,7 @@ internal sealed class LeafAze0Bms : IBatteryManagementSystem
         }
 
         // Hx and AHR: Use OVMS offsets based on response length
-        bool isZE1 = dataLen >= 49; // ZE1 has 51 bytes total (49 data + 2 header)
+        var isZE1 = dataLen >= 49; // ZE1 has 51 bytes total (49 data + 2 header)
 
         if (isZE1)
         {
@@ -587,8 +602,12 @@ internal sealed class LeafAze0Charger : ICharger
     {
         // Nissan-specific: Query Mode 21 PID 81
         var lines = await _session.QueryAsync("2181", _context, ct);
-        var response = string.Join("\n", lines);
-        return ParseNissanVin(response);
+
+        Log($"[Charger VIN] Received {lines.Length} lines");
+        for (var i = 0; i < lines.Length; i++)
+            Log($"[Charger VIN] Line {i}: {lines[i]}");
+
+        return ParseNissanVin(lines);
     }
 
     public async ValueTask<ChargingStatus?> GetChargingStatusAsync(CancellationToken ct = default)
@@ -598,10 +617,71 @@ internal sealed class LeafAze0Charger : ICharger
         throw new NotImplementedException("Charging status for Nissan Leaf");
     }
 
-    private static string? ParseNissanVin(string response)
+    /// <summary>
+    /// Parses VIN from ELM327 response lines containing ISO-TP frames.
+    /// Expected format: Mode 21 PID 81 response with header [61 81] followed by VIN ASCII bytes.
+    /// </summary>
+    private static string? ParseNissanVin(string[] lines)
     {
-        // Your existing VIN parsing logic
-        return "";
+        if (lines == null || lines.Length == 0)
+            return null;
+
+        // Parse ISO-TP frames (reuse existing method from LeafAze0Bms)
+        var frames = LeafAze0Bms.ParseIsoTpFrames(lines);
+        if (frames.Count == 0)
+        {
+            Log("[Charger VIN] No valid ISO-TP frames");
+            return null;
+        }
+
+        // Reassemble payload
+        var payload = LeafAze0Bms.ReassembleIsoTpPayload(frames);
+        Log($"[Charger VIN] Reassembled {payload.Length} bytes: {Convert.ToHexString(payload)}");
+
+        // Validate response header (61 81 = positive response to Mode 21 PID 81)
+        if (payload.Length < 3 || payload[0] != 0x61 || payload[1] != 0x81)
+        {
+            Log($"[Charger VIN] Invalid header: {Convert.ToHexString(payload.AsSpan(0, Math.Min(10, payload.Length)))}");
+            return null;
+        }
+
+        // VIN data starts at byte 2, typically 17 ASCII characters
+        var vinBytes = payload.AsSpan(2);
+        var chars = new List<char>();
+
+        foreach (var b in vinBytes)
+        {
+            // Stop at null terminator
+            if (b == 0x00)
+                break;
+
+            // Skip 'H' characters (appear as placeholders in captured data)
+            if (b == 'H')
+                continue;
+
+            // Convert to ASCII
+            if (b >= 0x20 && b <= 0x7E) // Printable ASCII range
+            {
+                chars.Add((char)b);
+            }
+        }
+
+        // VIN should be exactly 17 characters
+        if (chars.Count != 17)
+        {
+            Log($"[Charger VIN] Invalid length: {chars.Count} (expected 17)");
+            return null;
+        }
+
+        var vin = new string([.. chars]);
+        Log($"[Charger VIN] Parsed: {vin}");
+        return vin;
+    }
+
+    private static void Log(string message)
+    {
+        Serilog.Log.Debug(message);
+        System.Diagnostics.Debug.WriteLine(message);
     }
 }
 
