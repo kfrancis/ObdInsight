@@ -14,6 +14,7 @@ public sealed class LeafAze0CommandSet : VehicleCommandSet
         Add<IHvac>(new LeafAze0Hvac(session, LeafAze0Contexts.HvacBroadcast));
         Add<IMotorController>(new LeafAze0MotorController(session, LeafAze0Contexts.InvMcBroadcast));
         Add<IOnboardCharger>(new LeafAze0Charger(session, LeafAze0Contexts.ObcPdBroadcast));
+        Add<ISteering>(new LeafAze0Steering(session, LeafAze0Contexts.SteeringBroadcast));
         Add<IVcm>(new LeafAze0Vcm(session, LeafAze0Contexts.VcmBroadcast));
         Add<IVehicleIdentification>(new LeafAze0VehicleIdentification(session, LeafAze0Contexts.Ident));
     }

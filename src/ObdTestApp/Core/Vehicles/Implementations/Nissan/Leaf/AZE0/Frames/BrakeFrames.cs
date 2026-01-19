@@ -28,8 +28,13 @@ public partial class BrakeFrame_1CA_AZE0
         MinValue = 0, MaxValue = 255)]
     public partial int BrakePressure4 { get; init; }
 
+    [CanSignal(42, 6,
+        Description = "Regenerative braking level (0-63)",
+        MinValue = 0, MaxValue = 63)]
+    public partial int RegenBraking { get; init; }
+
     [CanSignal(32, 8,
-        Description = "Unknown byte 4",
+            Description = "Unknown byte 4",
         MinValue = 0, MaxValue = 255)]
     public partial int Unknown4 { get; init; }
 
@@ -37,11 +42,6 @@ public partial class BrakeFrame_1CA_AZE0
         Description = "Unknown bits (byte 5, bits 0-1)",
         MinValue = 0, MaxValue = 3)]
     public partial int Unknown5Low { get; init; }
-
-    [CanSignal(42, 6,
-        Description = "Regenerative braking level (0-63)",
-        MinValue = 0, MaxValue = 63)]
-    public partial int RegenBraking { get; init; }
 
     [CanSignal(48, 8,
         Description = "Unknown byte 6",
@@ -53,4 +53,3 @@ public partial class BrakeFrame_1CA_AZE0
         MinValue = 0, MaxValue = 255)]
     public partial int Unknown7 { get; init; }
 }
-
