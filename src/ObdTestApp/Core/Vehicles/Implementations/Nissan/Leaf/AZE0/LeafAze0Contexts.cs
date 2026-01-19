@@ -228,9 +228,12 @@ public static class LeafAze0Contexts
 
     public static EcuContext Vcm => ReqResp("VCM", "797", "79A");
 
-    public static EcuContext VcmBroadcast => new()
+    /// <summary>
+    /// VCM broadcast frames on EV-CAN bus.
+    /// </summary>
+    public static EcuContext VcmEvCanBroadcast => new()
     {
-        Name = "VCM Broadcast (0x11A, 0x1D4, 0x1F2, 0x284, 0x5A9)",
+        Name = "VCM EV-CAN Broadcast (0x11A, 0x1D4, 0x1F2, 0x284, 0x5A9)",
         TxHeader = "000",            // unused in monitoring mode
         RxFilter = "000",            // unused in monitoring mode
         FlowControlHeader = "000",   // unused in monitoring mode
@@ -239,7 +242,7 @@ public static class LeafAze0Contexts
         // Monitor all standard CAN frames
         MonitoringCommand = "AT MA",
 
-        // Accept VCM broadcast frames (0x11A, 0x1D4, 0x1F2, 0x284, 0x5A9, 0x50A-0x50C, 0x5B9, 0x603)
+        // Accept VCM broadcast frames on EV-CAN (0x11A, 0x1D4, 0x1F2, 0x284, 0x5A9, 0x50A-0x50C, 0x5B9, 0x603)
         // Using a broader filter to catch all VCM frames
         CanFilterMask = "000",  // No filtering, accept all
         CanFilterPattern = "000",
@@ -249,6 +252,43 @@ public static class LeafAze0Contexts
         EnableHeaders = true,
         EnableAutoFormatting = true
     };
+
+    /// <summary>
+    /// VCM broadcast frames on CAR-CAN bus.
+    /// </summary>
+    public static EcuContext VcmCarCanBroadcast => new()
+    {
+        Name = "VCM CAR-CAN Broadcast (0x174, 0x176, 0x180, 0x260, 0x421, 0x50A, 0x50D, 0x510)",
+        TxHeader = "000",            // unused in monitoring mode
+        RxFilter = "000",            // unused in monitoring mode
+        FlowControlHeader = "000",   // unused in monitoring mode
+        CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
+
+        // Monitor all standard CAN frames
+        MonitoringCommand = "AT MA",
+
+        // Accept VCM broadcast frames on CAR-CAN
+        // 0x174 (8 bytes) - Shifter relay data
+        // 0x176 (7 bytes) - Motor RPM relay
+        // 0x180 (8 bytes) - Motor current and throttle
+        // 0x260 (4 bytes) - Motor power consumption
+        // 0x421 (1 byte) - Dashboard shifter position
+        // 0x50A (8 bytes) - AC status relay
+        // 0x50D (8 bytes) - Dashboard indicator lights
+        // 0x510 (8 bytes) - Power consumption and climate data
+        CanFilterMask = "000",  // No filtering, accept all
+        CanFilterPattern = "000",
+
+        ExpectedCanIds = ["174", "176", "180", "260", "421", "50A", "50D", "510"],
+
+        EnableHeaders = true,
+        EnableAutoFormatting = true
+    };
+
+    /// <summary>
+    /// Alias for VcmEvCanBroadcast to maintain backward compatibility.
+    /// </summary>
+    public static EcuContext VcmBroadcast => VcmEvCanBroadcast;
 
     public static EcuContext Vsp => ReqResp("VSP", "73F", "761");
 

@@ -83,8 +83,13 @@ public interface IVcm : IVehicleCapability
     /// <summary>
     /// Reads the current gear selector position as reported by the Vehicle Control Module (VCM).
     /// </summary>
-
     ValueTask<GearPosition> GetGearPositionAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets comprehensive VCM status including power consumption, climate data, and eco indicators.
+    /// This data is typically transmitted on the CAR-CAN bus.
+    /// </summary>
+    ValueTask<VcmStatus> GetStatusAsync(CancellationToken ct = default);
 }
 
 public interface IVehicleCapability
@@ -258,5 +263,41 @@ public sealed record AbsStatus
 
     /// <summary>ABS bitmask status byte</summary>
     public int? BitmaskAbs { get; init; }
+}
+
+/// <summary>
+/// VCM (Vehicle Control Module) status information including power consumption and climate data.
+/// </summary>
+public sealed record VcmStatus
+{
+    /// <summary>Climate control active flag</summary>
+    public bool? ClimateControlActive { get; init; }
+
+    /// <summary>Climate control power consumption (kW)</summary>
+    public double? ClimateControlPowerKw { get; init; }
+
+    /// <summary>Outside ambient temperature (°C)</summary>
+    public double? OutsideAmbientTempC { get; init; }
+
+    /// <summary>Integrated motor power consumption (raw value, 0-255)</summary>
+    public int? IntegratedMotorPowerConsumption { get; init; }
+
+    /// <summary>Integrated A/C power consumption (raw value, 0-31)</summary>
+    public int? IntegratedAcPowerConsumption { get; init; }
+
+    /// <summary>Integrated auxiliary power consumption (raw value, 0-15)</summary>
+    public int? IntegratedAuxPowerConsumption { get; init; }
+
+    /// <summary>Instantaneous auxiliary power consumption (raw value, 0-31)</summary>
+    public int? PowerConsumptionAux { get; init; }
+
+    /// <summary>Eco indicator level (0-15)</summary>
+    public int? EcoIndicator { get; init; }
+
+    /// <summary>Eco tree growth level (0-31)</summary>
+    public int? EcoTree { get; init; }
+
+    /// <summary>Charge mode (0-3)</summary>
+    public int? ChargeMode { get; init; }
 }
 
