@@ -1,4 +1,4 @@
-using ObdInsight.SourceGeneration;
+using ObdInsight.SourceGeneration.Attributes;
 
 namespace ObdTestApp.Core.Vehicles.Implementations.Nissan.AZE0;
 

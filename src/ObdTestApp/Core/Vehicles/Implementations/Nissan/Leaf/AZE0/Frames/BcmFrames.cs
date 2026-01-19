@@ -1,4 +1,5 @@
 using ObdInsight.SourceGeneration;
+using ObdInsight.SourceGeneration.Attributes;
 
 namespace ObdTestApp.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 
