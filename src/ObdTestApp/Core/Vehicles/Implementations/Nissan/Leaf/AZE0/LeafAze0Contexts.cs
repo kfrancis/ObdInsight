@@ -38,7 +38,7 @@ public static class LeafAze0Contexts
 
     public static IReadOnlyList<EcuContext> All { get; } =
     [
-        Vcm, Bcm, BcmBroadcast, Abs, AbsBroadcast, LbcBms, InverterMc, Meter, Hvac, Brake, Vsp, Eps, Tcu, MultiAv, IpdmEr, Airbag, Ident, Shift, Consult3Plus
+        Vcm, Bcm, BcmBroadcast, Abs, AbsBroadcast, LbcBms, InverterMc, Meter, Hvac, Brake, BrakeBroadcast, Vsp, Eps, Tcu, MultiAv, IpdmEr, Airbag, Ident, Shift, Consult3Plus
     ];
 
     public static EcuContext Avm => new()
@@ -80,6 +80,29 @@ public static class LeafAze0Contexts
 
 
     public static EcuContext Brake => ReqResp("BRAKE", "70E", "70F");
+
+    public static EcuContext BrakeBroadcast => new()
+    {
+        Name = "BRAKE Broadcast (0x1CA)",
+        TxHeader = "000",            // unused in monitoring mode
+        RxFilter = "000",            // unused in monitoring mode
+        FlowControlHeader = "000",   // unused in monitoring mode
+        CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
+
+        // Monitor all standard CAN frames
+        MonitoringCommand = "AT MA",
+
+        // Accept Brake broadcast frame
+        // 0x1CA (20ms) - Brake pressure and regen braking
+        CanFilterMask = "000",  // No filtering, accept all
+        CanFilterPattern = "000",
+
+        ExpectedCanIds = ["1CA"],
+
+        EnableHeaders = true,
+        EnableAutoFormatting = true
+    };
+
 
     public static IReadOnlyDictionary<string, EcuContext> ByName { get; } =
         All.ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
