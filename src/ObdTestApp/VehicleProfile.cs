@@ -141,23 +141,79 @@ internal static class Hex
     }
 
     /// <summary>
-    /// If the payload is ISO-TP single frame "N ..." (e.g. 04 62 11 56 01 ...),
-    /// returns the ISO-TP payload portion (the next N bytes).
+    /// Extracts the payload from ISO-TP framed data.
+    /// Handles:
+    /// - Single Frame (0x0N): N bytes follow
+    /// - Multi-Frame (0x1N NN ... 0x2N ... 0x2N ...): First Frame + Consecutive Frames
+    /// Returns just the payload data with framing bytes removed.
     /// If it doesn't look like ISO-TP, returns the original span.
     /// </summary>
     public static ReadOnlySpan<byte> TryExtractIsoTpPayload(ReadOnlySpan<byte> bytes)
     {
         if (bytes.Length == 0) return bytes;
 
-        // ISO-TP SF: high nibble 0, low nibble = payload length
         var pci = bytes[0];
-        if ((pci & 0xF0) != 0x00) return bytes;
+        var frameType = (pci & 0xF0) >> 4;
 
-        var len = pci & 0x0F;
-        if (len == 0) return bytes;
-        if (bytes.Length < 1 + len) return bytes;
+        // Single Frame (0x0N)
+        if (frameType == 0x0)
+        {
+            var len = pci & 0x0F;
+            if (len == 0 || bytes.Length < 1 + len) return bytes;
+            return bytes.Slice(1, len);
+        }
 
-        return bytes.Slice(1, len);
+        // Multi-Frame: First Frame (0x1N) followed by Consecutive Frames (0x2N)
+        if (frameType == 0x1)
+        {
+            // First Frame: 0x1N NN [6 data bytes]
+            // Length is in next 12 bits: (pci & 0x0F) << 8 | bytes[1]
+            if (bytes.Length < 2) return bytes;
+            
+            var totalLength = ((pci & 0x0F) << 8) | bytes[1];
+            if (totalLength == 0) return bytes;
+
+            var payload = new List<byte>(totalLength);
+            
+            // Extract first 6 bytes from First Frame
+            var firstFrameDataLen = Math.Min(6, bytes.Length - 2);
+            for (int i = 0; i < firstFrameDataLen; i++)
+            {
+                payload.Add(bytes[2 + i]);
+            }
+
+            // Process Consecutive Frames (0x2N)
+            int pos = 8; // First frame is always 8 bytes (1 PCI + 1 length + 6 data)
+            while (pos < bytes.Length && payload.Count < totalLength)
+            {
+                if (pos >= bytes.Length) break;
+                
+                var cfPci = bytes[pos];
+                var cfFrameType = (cfPci & 0xF0) >> 4;
+                
+                // Consecutive Frame should be 0x2N
+                if (cfFrameType != 0x2) break;
+                
+                pos++; // Skip PCI byte
+                
+                // Extract up to 7 bytes of data from this frame
+                var remainingInFrame = Math.Min(7, bytes.Length - pos);
+                var remainingNeeded = totalLength - payload.Count;
+                var bytesToCopy = Math.Min(remainingInFrame, remainingNeeded);
+                
+                for (int i = 0; i < bytesToCopy; i++)
+                {
+                    payload.Add(bytes[pos + i]);
+                }
+                
+                pos += 7; // Consecutive frames are 8 bytes total (1 PCI + 7 data)
+            }
+
+            return payload.ToArray();
+        }
+
+        // Unknown frame type, return original
+        return bytes;
     }
 }
 

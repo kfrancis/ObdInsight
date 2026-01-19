@@ -62,16 +62,16 @@ public static class NissanLeafCommands
             Based on OVMS (Open Vehicle Monitoring System) implementation.
             
             [cyan]Key Points:[/]
-            • ECUs sleep when car is off - wakeup sequence required
-            • BMS (Battery Management System): TX 0x79B ? RX 0x7BB
-            • Charger: TX 0x797 ? RX 0x79A
-            • Uses Mode 21 (manufacturer-specific diagnostic)
-            • Multi-frame responses use ISO-TP flow control
+            â€¢ ECUs sleep when car is off - wakeup sequence required
+            â€¢ BMS (Battery Management System): TX 0x79B ? RX 0x7BB
+            â€¢ Charger: TX 0x797 ? RX 0x79A
+            â€¢ Uses Mode 21 (manufacturer-specific diagnostic)
+            â€¢ Multi-frame responses use ISO-TP flow control
             
             [green]Wakeup Messages:[/]
-            • 0x679 - VCM startup spoof
-            • 0x5C0 - Battery heater request spoof
-            • 0x68C - TCU wakeup (pre-2013)
+            â€¢ 0x679 - VCM startup spoof
+            â€¢ 0x5C0 - Battery heater request spoof
+            â€¢ 0x68C - TCU wakeup (pre-2013)
             
             [yellow]Vehicle State:[/]
             The car should be in READY mode (foot on brake + start)
@@ -110,7 +110,7 @@ public static class NissanLeafCommands
         {
             // Step 1: Initialize adapter
             AnsiConsole.MarkupLine("[cyan]Step 1: Initialize ELM327 adapter[/]");
-            
+
             var initCommands = new (string Cmd, string Desc, TimeSpan Timeout)[]
             {
                 ("ATZ", "Reset", TimeSpan.FromSeconds(5)),
@@ -134,7 +134,7 @@ public static class NissanLeafCommands
             // Step 2: Configure ISO-TP flow control for multi-frame responses
             AnsiConsole.MarkupLine("[cyan]Step 2: Configure ISO-TP flow control[/]");
             AnsiConsole.MarkupLine("[grey]   (Required for multi-frame BMS responses)[/]");
-            
+
             var flowControlSetup = new (string Cmd, string Desc)[]
             {
                 ("ATCAF0", "CAN auto-formatting off"),
@@ -170,10 +170,10 @@ public static class NissanLeafCommands
             foreach (var (cmd, desc, expectedLen) in bmsQueries)
             {
                 AnsiConsole.MarkupLine($"   [cyan]Sending {cmd}[/] - {desc}");
-                
+
                 // Send with longer timeout for multi-frame responses
                 var response = await SendCommandAsync(cmd, TimeSpan.FromSeconds(10));
-                
+
                 var hasData = !string.IsNullOrWhiteSpace(response) &&
                              !response.Contains("NO DATA") &&
                              !response.Contains("ERROR") &&
@@ -185,7 +185,7 @@ public static class NissanLeafCommands
                 if (hasData)
                 {
                     AnsiConsole.MarkupLine($"   [green]?[/] Got {response.Length} chars");
-                    
+
                     // Show preview and try to parse
                     var preview = response.Length > 100 ? response[..100] + "..." : response;
                     AnsiConsole.MarkupLine($"   [grey]{preview.EscapeMarkup()}[/]");
@@ -275,10 +275,10 @@ public static class NissanLeafCommands
             else
             {
                 AnsiConsole.MarkupLine("[yellow]No BMS data received. Possible causes:[/]");
-                AnsiConsole.MarkupLine("  • Vehicle not in READY mode");
-                AnsiConsole.MarkupLine("  • Vehicle not charging");
-                AnsiConsole.MarkupLine("  • ECUs still asleep (try again after wakeup)");
-                AnsiConsole.MarkupLine("  • BLE connection unstable");
+                AnsiConsole.MarkupLine("  â€¢ Vehicle not in READY mode");
+                AnsiConsole.MarkupLine("  â€¢ Vehicle not charging");
+                AnsiConsole.MarkupLine("  â€¢ ECUs still asleep (try again after wakeup)");
+                AnsiConsole.MarkupLine("  â€¢ BLE connection unstable");
             }
         }
         catch (Exception ex)
@@ -296,7 +296,7 @@ public static class NissanLeafCommands
     {
         // The ELM327 can't directly send arbitrary CAN messages without OBD framing,
         // but we can try to wake up ECUs by sending to specific headers
-        
+
         var wakeupAttempts = new (string Cmd, string Desc)[]
         {
             // Try sending to VCM wakeup address
@@ -348,7 +348,7 @@ public static class NissanLeafCommands
             }
 
             AnsiConsole.MarkupLine($"[cyan]   Parsed BMS Group 01 ({bytes.Count} bytes):[/]");
-            
+
             // Show raw data for debugging
             if (bytes.Count <= 60)
             {
@@ -362,15 +362,15 @@ public static class NissanLeafCommands
             //   Bytes 2-5:   Current (signed, big-endian) - FFFFF770 = -2192 ? -4.38A (charging)
             //   Bytes 26-28: Unknown (5C 0D D8)
             //   Bytes 29-32: Capacity in Ah * 10000 (00 06 AC 74 = 437,364 ? 43.74 Ah)
-            
+
             if (bytes.Count >= 33)
             {
                 // Battery current (bytes 2-5, signed 32-bit big-endian, divide by 2 for amps)
                 uint currentUnsigned = ((uint)bytes[2] << 24) | ((uint)bytes[3] << 16) | ((uint)bytes[4] << 8) | bytes[5];
                 int currentRaw = unchecked((int)currentUnsigned);
-                
+
                 var currentAmps = currentRaw / 2.0;
-                
+
                 if (Math.Abs(currentAmps) < 500 && currentRaw != -1) // -1 = 0xFFFFFFFF = invalid
                 {
                     var currentDir = currentAmps > 0 ? "discharging" : (currentAmps < 0 ? "charging" : "idle");
@@ -382,15 +382,15 @@ public static class NissanLeafCommands
                 {
                     var capacityRaw = (bytes[29] << 24) | (bytes[30] << 16) | (bytes[31] << 8) | bytes[32];
                     var capacityAh = capacityRaw / 10000.0;
-                    
+
                     if (capacityAh is > 10 and < 100)
                     {
                         AnsiConsole.MarkupLine($"   [green]Battery Capacity: {capacityAh:F2} Ah[/]");
-                        
+
                         // Calculate estimated kWh (360V nominal for 30kWh pack)
                         var kwhEst = capacityAh * 360 / 1000;
                         AnsiConsole.MarkupLine($"   [grey]   (~{kwhEst:F1} kWh at nominal voltage)[/]");
-                        
+
                         // Calculate SOH based on original capacity
                         // 30 kWh pack = ~79 Ah nominal, 24 kWh = ~66 Ah nominal
                         var sohFrom30 = (capacityAh / 79.0) * 100;
@@ -398,7 +398,7 @@ public static class NissanLeafCommands
                         AnsiConsole.MarkupLine($"   [grey]   SOH: ~{sohFrom30:F0}% (if 30kWh) / ~{sohFrom24:F0}% (if 24kWh)[/]");
                     }
                 }
-                
+
                 // HX value - check bytes 24-25 area (5C 0D in sample = 23565)
                 // This doesn't match expected HX range, so it may be at different offset
                 // Let's scan for reasonable HX values
@@ -439,20 +439,20 @@ public static class NissanLeafCommands
             if (bytes[0] == 0x61 && bytes[1] == 0x61)
             {
                 AnsiConsole.MarkupLine($"[cyan]   Parsed BMS Group 61 ({bytes.Count} bytes):[/]");
-                
+
                 // From 2017 Leaf data: 61-61-0D-D8-19-D7-FF-19-E4-19-D7-03-FF
                 // Bytes 2-3: 0DD8 = 3544 
                 // This appears to be related to capacity/health
-                
+
                 if (bytes.Count >= 4)
                 {
                     var val1 = (bytes[2] << 8) | bytes[3];
                     AnsiConsole.MarkupLine($"   [grey]Value at bytes 2-3: {val1} (0x{val1:X4})[/]");
-                    
+
                     // Try various interpretations
                     var asGids = val1; // GIDs remaining
                     var asAh = val1 / 100.0; // Ah (if scaled by 100)
-                    
+
                     if (asGids is > 0 and < 300)
                     {
                         AnsiConsole.MarkupLine($"   [green]GIDs: {asGids}[/]");
@@ -461,14 +461,14 @@ public static class NissanLeafCommands
                         AnsiConsole.MarkupLine($"   [grey]   (~{kwhEst:F1} kWh estimated)[/]");
                     }
                 }
-                
+
                 // Look for additional values
                 if (bytes.Count >= 6)
                 {
                     var val2 = (bytes[4] << 8) | bytes[5];
                     AnsiConsole.MarkupLine($"   [grey]Value at bytes 4-5: {val2} (0x{val2:X4})[/]");
                 }
-                
+
                 if (bytes.Count >= 10)
                 {
                     var val3 = (bytes[7] << 8) | bytes[8];
@@ -504,7 +504,7 @@ public static class NissanLeafCommands
                     AnsiConsole.MarkupLine($"   [grey]   Byte {i}: {ah:F2} Ah? (raw: {val3:X6})[/]");
                 }
             }
-            
+
             // Look for 2-byte values that could be HX (50-100% typical)
             if (i + 1 < data.Count)
             {
@@ -536,7 +536,7 @@ public static class NissanLeafCommands
             }
 
             var cellData = bytes.Skip(dataStart).ToList();
-            
+
             if (cellData.Count < 4)
             {
                 AnsiConsole.MarkupLine($"[yellow]   Parse: Only {cellData.Count} bytes for cell voltages[/]");
@@ -544,13 +544,13 @@ public static class NissanLeafCommands
             }
 
             var voltages = new List<double>();
-            
+
             // Parse cell voltages (2 bytes each, big-endian, millivolts)
             // 96 cells in 24/30 kWh Leaf
             for (int i = 0; i + 1 < cellData.Count && voltages.Count < 96; i += 2)
             {
                 int millivolt = (cellData[i] << 8) | cellData[i + 1];
-                
+
                 // Valid cell voltage range: 2.5V - 4.3V (2500-4300mV)
                 if (millivolt >= 2500 && millivolt <= 4300)
                 {
@@ -574,7 +574,7 @@ public static class NissanLeafCommands
                 AnsiConsole.MarkupLine($"[cyan]   Cell Voltages ({voltages.Count} cells):[/]");
                 AnsiConsole.MarkupLine($"   [green]Min: {min:F3}V  Max: {max:F3}V  Avg: {avg:F3}V[/]");
                 AnsiConsole.MarkupLine($"   [green]Delta: {delta * 1000:F0}mV  Pack Total: {total:F1}V[/]");
-                
+
                 // Cell balance assessment
                 if (delta < 0.020) // < 20mV
                     AnsiConsole.MarkupLine($"   [green]Cell balance: Excellent[/]");
@@ -588,7 +588,7 @@ public static class NissanLeafCommands
             else
             {
                 AnsiConsole.MarkupLine($"[yellow]   Could not parse cell voltages from {bytes.Count} bytes[/]");
-                
+
                 // Show raw data for debugging
                 if (cellData.Count <= 20)
                 {
@@ -625,25 +625,25 @@ public static class NissanLeafCommands
                 dataStart = 2;
                 AnsiConsole.MarkupLine($"[cyan]   Parsed BMS Group 04 ({bytes.Count} bytes):[/]");
             }
-            
+
             var data = bytes.Skip(dataStart).ToList();
-            
+
             // From AZE0 data: 2B-40-20-2B-60-2F-FF-FF-FF-02-D7
             // Temperature bytes appear to be at specific offsets
             // Values like 2B (43), 40 (64), 20 (32), 2B (43), 60 (96) need interpretation
             // Likely: raw - 40 = Celsius, or direct Celsius
-            
+
             var temps = new List<(int Index, int Raw, int Celsius)>();
-            
-            // Check bytes that might be temperatures (0x00-0x50 range suggests 0-80°C)
+
+            // Check bytes that might be temperatures (0x00-0x50 range suggests 0-80Â°C)
             int[] possibleTempOffsets = { 0, 1, 2, 3, 4, 5 };
-            
+
             foreach (var offset in possibleTempOffsets)
             {
                 if (offset < data.Count)
                 {
                     var raw = data[offset];
-                    
+
                     // Try different interpretations
                     if (raw >= 0x10 && raw <= 0x50) // 16-80 range - likely direct Celsius
                     {
@@ -656,31 +656,31 @@ public static class NissanLeafCommands
                 }
             }
 
-            // Filter to reasonable temperature range (0-60°C typical for battery)
+            // Filter to reasonable temperature range (0-60Â°C typical for battery)
             var validTemps = temps.Where(t => t.Celsius is > 0 and < 60).ToList();
-            
+
             if (validTemps.Count > 0)
             {
                 AnsiConsole.MarkupLine($"[cyan]   Pack Temperatures:[/]");
                 foreach (var t in validTemps.Take(4))
                 {
-                    AnsiConsole.MarkupLine($"   [grey]   Sensor {t.Index}: {t.Celsius}°C (raw: 0x{t.Raw:X2})[/]");
+                    AnsiConsole.MarkupLine($"   [grey]   Sensor {t.Index}: {t.Celsius}Â°C (raw: 0x{t.Raw:X2})[/]");
                 }
-                
+
                 var avgTemp = validTemps.Average(t => t.Celsius);
                 var minTemp = validTemps.Min(t => t.Celsius);
                 var maxTemp = validTemps.Max(t => t.Celsius);
-                
-                AnsiConsole.MarkupLine($"   [green]Min: {minTemp}°C  Max: {maxTemp}°C  Avg: {avgTemp:F0}°C[/]");
-                
+
+                AnsiConsole.MarkupLine($"   [green]Min: {minTemp}Â°C  Max: {maxTemp}Â°C  Avg: {avgTemp:F0}Â°C[/]");
+
                 // Temperature spread assessment
                 var spread = maxTemp - minTemp;
                 if (spread <= 3)
-                    AnsiConsole.MarkupLine($"   [green]Temperature balance: Excellent ({spread}°C spread)[/]");
+                    AnsiConsole.MarkupLine($"   [green]Temperature balance: Excellent ({spread}Â°C spread)[/]");
                 else if (spread <= 6)
-                    AnsiConsole.MarkupLine($"   [yellow]Temperature balance: Good ({spread}°C spread)[/]");
+                    AnsiConsole.MarkupLine($"   [yellow]Temperature balance: Good ({spread}Â°C spread)[/]");
                 else
-                    AnsiConsole.MarkupLine($"   [red]Temperature balance: Check cooling ({spread}°C spread)[/]");
+                    AnsiConsole.MarkupLine($"   [red]Temperature balance: Check cooling ({spread}Â°C spread)[/]");
             }
             else
             {
@@ -703,12 +703,12 @@ public static class NissanLeafCommands
         try
         {
             var bytes = ParseIsoTpResponse(response);
-            
+
             // Response should be: 62 12 03 XX XX (positive response + PID + count)
             // Or in raw form: 05 62 12 03 XX XX (length + response)
-            
+
             AnsiConsole.MarkupLine($"[grey]   Parsed {bytes.Count} bytes: {string.Join("-", bytes.Select(b => b.ToString("X2")))}[/]");
-            
+
             if (bytes.Count >= 5)
             {
                 // Find the response header 62 12 03
@@ -725,7 +725,7 @@ public static class NissanLeafCommands
                     }
                 }
             }
-            
+
             // Fallback: last 2 bytes
             if (bytes.Count >= 2)
             {
@@ -751,9 +751,9 @@ public static class NissanLeafCommands
         try
         {
             var bytes = ParseIsoTpResponse(response);
-            
+
             AnsiConsole.MarkupLine($"[grey]   Parsed {bytes.Count} bytes: {string.Join("-", bytes.Select(b => b.ToString("X2")))}[/]");
-            
+
             if (bytes.Count >= 5)
             {
                 // Find the response header 62 12 05
@@ -770,7 +770,7 @@ public static class NissanLeafCommands
                     }
                 }
             }
-            
+
             // Fallback: last 2 bytes
             if (bytes.Count >= 2)
             {
@@ -798,21 +798,21 @@ public static class NissanLeafCommands
         try
         {
             var bytes = ParseIsoTpResponse(response);
-            
+
             AnsiConsole.MarkupLine($"[grey]   Parsed {bytes.Count} bytes[/]");
-            
+
             if (bytes.Count < 5)
             {
                 AnsiConsole.MarkupLine("[yellow]   Not enough data for VIN[/]");
                 return;
             }
-            
+
             // Show raw for debugging
             if (bytes.Count <= 25)
             {
                 AnsiConsole.MarkupLine($"[grey]   Raw: {BitConverter.ToString(bytes.ToArray())}[/]");
             }
-            
+
             // Find response header 61 81 (positive response to 21 81)
             int vinStart = -1;
             for (int i = 0; i < bytes.Count - 1; i++)
@@ -823,20 +823,20 @@ public static class NissanLeafCommands
                     break;
                 }
             }
-            
+
             if (vinStart >= 0)
             {
                 // Extract up to 17 characters for VIN
                 var vinBytes = bytes.Skip(vinStart).Take(17).ToArray();
-                
+
                 // Convert to ASCII, filtering out non-printable
                 var vinChars = vinBytes
                     .Where(b => b >= 0x20 && b < 0x7F)
                     .Select(b => (char)b)
                     .ToArray();
-                
+
                 var vin = new string(vinChars).Trim('\0', ' ');
-                
+
                 if (vin.Length >= 10)
                 {
                     AnsiConsole.MarkupLine($"   [green]VIN: {vin}[/]");
@@ -844,20 +844,20 @@ public static class NissanLeafCommands
                     return;
                 }
             }
-            
+
             // Alternative: try to find ASCII printable characters
             var allPrintable = bytes
                 .Where(b => b >= 0x30 && b <= 0x5A) // 0-9, A-Z
                 .Select(b => (char)b)
                 .ToArray();
-                
+
             if (allPrintable.Length >= 10)
             {
                 var rawVin = new string(allPrintable);
                 // Take first 17 VIN characters
                 if (rawVin.Length > 17)
                     rawVin = rawVin[..17];
-                    
+
                 AnsiConsole.MarkupLine($"   [green]VIN: {rawVin}[/]");
                 DecodeVin(rawVin);
             }
@@ -879,7 +879,7 @@ public static class NissanLeafCommands
     {
         if (string.IsNullOrEmpty(vin) || vin.Length < 10)
             return;
-            
+
         // World Manufacturer Identifier (first 3 chars)
         var wmi = vin[..3];
         var manufacturer = wmi switch
@@ -891,7 +891,7 @@ public static class NissanLeafCommands
             _ => $"Unknown ({wmi})"
         };
         AnsiConsole.MarkupLine($"   [grey]   Manufacturer: {manufacturer}[/]");
-        
+
         // Vehicle attributes (chars 4-8)
         if (vin.Length >= 5)
         {
@@ -904,23 +904,35 @@ public static class NissanLeafCommands
             };
             AnsiConsole.MarkupLine($"   [grey]   Model: {model}[/]");
         }
-        
+
         // Model year (10th character)
         if (vin.Length >= 10)
         {
             var yearChar = vin[9];
             var year = yearChar switch
             {
-                'A' => 2010, 'B' => 2011, 'C' => 2012, 'D' => 2013,
-                'E' => 2014, 'F' => 2015, 'G' => 2016, 'H' => 2017,
-                'J' => 2018, 'K' => 2019, 'L' => 2020, 'M' => 2021,
-                'N' => 2022, 'P' => 2023, 'R' => 2024, 'S' => 2025,
+                'A' => 2010,
+                'B' => 2011,
+                'C' => 2012,
+                'D' => 2013,
+                'E' => 2014,
+                'F' => 2015,
+                'G' => 2016,
+                'H' => 2017,
+                'J' => 2018,
+                'K' => 2019,
+                'L' => 2020,
+                'M' => 2021,
+                'N' => 2022,
+                'P' => 2023,
+                'R' => 2024,
+                'S' => 2025,
                 _ => 0
             };
             if (year > 0)
             {
                 AnsiConsole.MarkupLine($"   [grey]   Model Year: {year}[/]");
-                
+
                 // Determine battery type based on year
                 string battery;
                 if (year <= 2015)
@@ -933,11 +945,11 @@ public static class NissanLeafCommands
                     battery = "40/62 kWh (ZE1)";
                 else
                     battery = "40/60 kWh (ZE1)";
-                    
+
                 AnsiConsole.MarkupLine($"   [grey]   Battery Type: {battery}[/]");
             }
         }
-        
+
         // Assembly plant (11th character)
         if (vin.Length >= 11)
         {
@@ -951,7 +963,7 @@ public static class NissanLeafCommands
             };
             AnsiConsole.MarkupLine($"   [grey]   Assembly Plant: {plant}[/]");
         }
-        
+
         // Serial number (chars 12-17)
         if (vin.Length >= 17)
         {
@@ -967,7 +979,7 @@ public static class NissanLeafCommands
     private static List<byte> ParseIsoTpResponse(string response)
     {
         var bytes = new List<byte>();
-        
+
         if (string.IsNullOrWhiteSpace(response))
             return bytes;
 
@@ -978,27 +990,27 @@ public static class NissanLeafCommands
 
         var lines = cleaned.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         var frameSequence = new List<(int Type, int Seq, byte[] Data)>();
-        
+
         foreach (var line in lines)
         {
             var trimmed = line.Trim();
             if (trimmed.Length < 6) continue;
-            
+
             if (!IsCanIdPrefix(trimmed))
                 continue;
-                
+
             var frameHex = trimmed[3..];
-            
+
             if (frameHex.Length < 2) continue;
-            
+
             if (!byte.TryParse(frameHex[..2], System.Globalization.NumberStyles.HexNumber, null, out var frameTypeByte))
                 continue;
-                
+
             var frameType = (frameTypeByte & 0xF0) >> 4;
             var frameInfo = frameTypeByte & 0x0F;
-            
+
             byte[] frameData;
-            
+
             switch (frameType)
             {
                 case 0:
@@ -1009,7 +1021,7 @@ public static class NissanLeafCommands
                         frameData = frameData[..sfLen];
                     frameSequence.Add((0, 0, frameData));
                     break;
-                    
+
                 case 1:
                     if (frameHex.Length < 4) continue;
                     if (!byte.TryParse(frameHex[2..4], System.Globalization.NumberStyles.HexNumber, null, out var lenLowByte))
@@ -1018,14 +1030,14 @@ public static class NissanLeafCommands
                     frameData = ParseHexString(ffDataHex);
                     frameSequence.Add((1, 0, frameData));
                     break;
-                    
+
                 case 2:
                     var seqNum = frameInfo;
                     var cfDataHex = frameHex[2..];
                     frameData = ParseHexString(cfDataHex);
                     frameSequence.Add((2, seqNum, frameData));
                     break;
-                    
+
                 default:
                     frameData = ParseHexString(frameHex);
                     if (frameData.Length > 0)
@@ -1033,23 +1045,23 @@ public static class NissanLeafCommands
                     break;
             }
         }
-        
+
         var firstFrame = frameSequence.FirstOrDefault(f => f.Type == 0 || f.Type == 1);
         if (firstFrame.Data != null)
         {
             bytes.AddRange(firstFrame.Data);
         }
-        
+
         var consecutiveFrames = frameSequence
             .Where(f => f.Type == 2)
             .OrderBy(f => f.Seq)
             .ToList();
-            
+
         foreach (var cf in consecutiveFrames)
         {
             bytes.AddRange(cf.Data);
         }
-        
+
         if (bytes.Count == 0)
         {
             foreach (var line in lines)
@@ -1061,7 +1073,7 @@ public static class NissanLeafCommands
                 }
             }
         }
-        
+
         return bytes;
     }
 
@@ -1069,7 +1081,7 @@ public static class NissanLeafCommands
     {
         if (s.Length < 3) return false;
         var prefix = s[..3];
-        return prefix.All(c => Uri.IsHexDigit(c)) && 
+        return prefix.All(c => Uri.IsHexDigit(c)) &&
                int.TryParse(prefix, System.Globalization.NumberStyles.HexNumber, null, out var id) &&
                id >= 0x700 && id <= 0x7FF;
     }
@@ -1103,17 +1115,17 @@ public static class NissanLeafCommands
         }
 
         var transport = session.Transport!;
-        
+
         _sessionLog.Clear();
         _isRecording = false;
         var sessionStartTime = DateTime.Now;
-        
+
         void LogToSession(string message)
         {
             var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
             var entry = $"[{timestamp}] {message}";
             _sessionLog.Add(entry);
-            
+
             if (_isRecording)
             {
                 AnsiConsole.MarkupLine($"[grey]?[/] {message.EscapeMarkup()}");
@@ -1125,21 +1137,21 @@ public static class NissanLeafCommands
             LogToSession($"TX: {cmd}");
             transport.DrainBuffer();
             await transport.WriteAsync(cmd + "\r");
-            
+
             var response = new System.Text.StringBuilder();
             var startTime = DateTime.UtcNow;
             var lastDataTime = DateTime.UtcNow;
-            
+
             while (DateTime.UtcNow - startTime < timeout)
             {
                 try
                 {
                     var chunk = await transport.ReadUntilAsync(">", TimeSpan.FromMilliseconds(500));
                     response.Append(chunk);
-                    
+
                     if (chunk.Contains(">"))
                         break;
-                    
+
                     lastDataTime = DateTime.UtcNow;
                 }
                 catch (TimeoutException)
@@ -1148,12 +1160,12 @@ public static class NissanLeafCommands
                         break;
                 }
             }
-            
+
             var result = response.ToString()
                 .Replace(cmd, "")
                 .Replace(">", "")
                 .Trim();
-                
+
             LogToSession($"RX: {result.Replace("\r", "\\r").Replace("\n", "\\n")}");
             return result;
         }
@@ -1163,19 +1175,19 @@ public static class NissanLeafCommands
             LogToSession($"TX: {cmd}");
             transport.DrainBuffer();
             await transport.WriteAsync(cmd + "\r");
-            
+
             await Task.Delay(initialWait);
-            
+
             var response = new System.Text.StringBuilder();
             var endTime = DateTime.UtcNow + collectTime;
-            
+
             while (DateTime.UtcNow < endTime)
             {
                 try
                 {
                     var chunk = await transport.ReadUntilAsync(">", TimeSpan.FromMilliseconds(200));
                     response.Append(chunk);
-                    
+
                     if (chunk.Contains(">"))
                         break;
                 }
@@ -1184,12 +1196,12 @@ public static class NissanLeafCommands
                     await Task.Delay(100);
                 }
             }
-            
+
             var result = response.ToString()
                 .Replace(cmd, "")
                 .Replace(">", "")
                 .Trim();
-                
+
             LogToSession($"RX: {result.Replace("\r", "\\r").Replace("\n", "\\n")}");
             return result;
         }
@@ -1197,7 +1209,7 @@ public static class NissanLeafCommands
         AnsiConsole.MarkupLine("[grey]Initializing ELM327...[/]");
         LogToSession("=== Session Started ===");
         LogToSession($"Device: {session.DeviceName ?? session.DeviceAddress}");
-        
+
         await SendAsync("ATZ", TimeSpan.FromSeconds(3));
         await Task.Delay(500);
         await SendAsync("ATE0", TimeSpan.FromSeconds(2));
@@ -1218,7 +1230,7 @@ public static class NissanLeafCommands
                 "Query BMS Group 04 (Temperatures)",
                 "Query BMS Group 61 (SOH)",
                 "Query Charger: QC Count",
-                "Query Charger: L1/L2 Count", 
+                "Query Charger: L1/L2 Count",
                 "Query Charger: VIN",
                 "?? Passive CAN Monitor ??",
                 "Monitor live battery data (0x1DB/0x5BC)",
@@ -1493,7 +1505,7 @@ public static class NissanLeafCommands
         await sendAsync("ATSH7DF", TimeSpan.FromSeconds(2)); // Broadcast
         await sendAsync("0100", TimeSpan.FromSeconds(2));    // Standard OBD query to wake ECUs
         await Task.Delay(200);
-        
+
         // Now configure for BMS
         await sendAsync($"ATSH{BMS_TXID:X3}", TimeSpan.FromSeconds(2));
         await sendAsync($"ATCRA{BMS_RXID:X3}", TimeSpan.FromSeconds(2));
@@ -1512,7 +1524,7 @@ public static class NissanLeafCommands
         await sendAsync("ATSH7DF", TimeSpan.FromSeconds(2));
         await sendAsync("0100", TimeSpan.FromSeconds(2));
         await Task.Delay(200);
-        
+
         // Now configure for Charger
         await sendAsync($"ATSH{CHARGER_TXID:X3}", TimeSpan.FromSeconds(2));
         await sendAsync($"ATCRA{CHARGER_RXID:X3}", TimeSpan.FromSeconds(2));
@@ -1539,15 +1551,15 @@ public static class NissanLeafCommands
             These frames are sent automatically when the car is ON (READY mode).
             
             [cyan]Key Frames (from DBC glossary):[/]
-            • 0x1DB: Current, Voltage, Dash SOC (10ms cycle)
-            • 0x5BC: GIDs, SOH, Charge Time (100ms cycle)
-            • 0x55B: High-resolution SOC (100ms cycle)
-            • 0x1DC: Power Limits (10ms cycle)
+            â€¢ 0x1DB: Current, Voltage, Dash SOC (10ms cycle)
+            â€¢ 0x5BC: GIDs, SOH, Charge Time (100ms cycle)
+            â€¢ 0x55B: High-resolution SOC (100ms cycle)
+            â€¢ 0x1DC: Power Limits (10ms cycle)
             
             [red]IMPORTANT: Car MUST be in one of these states:[/]
-            • READY mode (foot on brake + press start button)
-            • Actively charging (plugged in and charging)
-            • Accessory mode may work for some data
+            â€¢ READY mode (foot on brake + press start button)
+            â€¢ Actively charging (plugged in and charging)
+            â€¢ Accessory mode may work for some data
             
             [yellow]If car is completely OFF, you will get NO DATA.[/]
             The Nissan Leaf's ECUs sleep when the car is off to save battery.
@@ -1566,15 +1578,15 @@ public static class NissanLeafCommands
         await sendAsync("ATH1", TimeSpan.FromSeconds(2));
         await sendAsync("ATS0", TimeSpan.FromSeconds(2));
         await sendAsync("ATSP6", TimeSpan.FromSeconds(2));
-        
+
         // Disable auto-formatting to get raw frames
         await sendAsync("ATCAF0", TimeSpan.FromSeconds(2));
-        
+
         // Try to wake up ECUs first by sending a broadcast query
         AnsiConsole.MarkupLine("[grey]Attempting to wake ECUs...[/]");
         await sendAsync("ATSH7DF", TimeSpan.FromSeconds(2));
         var wakeResponse = await sendAsync("0100", TimeSpan.FromSeconds(3));
-        
+
         if (wakeResponse.Contains("NO DATA") || wakeResponse.Contains("UNABLE"))
         {
             AnsiConsole.MarkupLine("[yellow]? No response to wakeup - ECUs may be sleeping[/]");
@@ -1584,13 +1596,13 @@ public static class NissanLeafCommands
         {
             AnsiConsole.MarkupLine("[green]? ECU responded - car appears to be awake[/]");
         }
-        
+
         AnsiConsole.WriteLine();
-        
+
         // Set up filter for battery frames
         // Using no filter (ATAR) to see all traffic, then we'll parse what we want
         await sendAsync("ATAR", TimeSpan.FromSeconds(2)); // Auto Receive address (accept all)
-        
+
         AnsiConsole.MarkupLine("[cyan]Monitoring CAN bus for battery frames...[/]");
         AnsiConsole.MarkupLine("[grey]Looking for: 0x1DB, 0x1DC, 0x55B, 0x5BC, 0x5C0[/]");
         AnsiConsole.WriteLine();
@@ -1608,7 +1620,7 @@ public static class NissanLeafCommands
         try
         {
             var cts = new CancellationTokenSource();
-            
+
             // Start key listener
             _ = Task.Run(() =>
             {
@@ -1617,7 +1629,7 @@ public static class NissanLeafCommands
             });
 
             var buffer = new System.Text.StringBuilder();
-            
+
             while (!cts.Token.IsCancellationRequested)
             {
                 try
@@ -1625,24 +1637,24 @@ public static class NissanLeafCommands
                     // Read available data with short timeout
                     var chunk = await transport.ReadUntilAsync("\r", TimeSpan.FromMilliseconds(100));
                     buffer.Append(chunk);
-                    
+
                     // Process complete lines
                     var lines = buffer.ToString().Split('\r', StringSplitOptions.RemoveEmptyEntries);
                     buffer.Clear();
-                    
+
                     // Keep incomplete line in buffer
                     if (!chunk.EndsWith("\r") && lines.Length > 0)
                     {
                         buffer.Append(lines[^1]);
                         lines = lines[..^1];
                     }
-                    
+
                     foreach (var line in lines)
                     {
                         var trimmed = line.Trim();
                         if (string.IsNullOrEmpty(trimmed) || trimmed == ">" || trimmed == "STOPPED" || trimmed == "NO DATA")
                             continue;
-                            
+
                         // Parse CAN frame
                         var frame = ParseCanFrame(trimmed);
                         if (frame != null)
@@ -1650,7 +1662,7 @@ public static class NissanLeafCommands
                             frameCount++;
                             lastFrameTime = DateTime.Now;
                             logToSession($"CAN: {trimmed}");
-                            
+
                             // Only update display every 500ms to avoid flicker
                             if ((DateTime.Now - lastUpdate).TotalMilliseconds > 500)
                             {
@@ -1664,7 +1676,7 @@ public static class NissanLeafCommands
                 {
                     // Check if we've been waiting too long with no data
                     var timeSinceLastFrame = (DateTime.Now - lastFrameTime).TotalSeconds;
-                    
+
                     if (frameCount == 0 && timeSinceLastFrame > 5 && !noDataWarningShown)
                     {
                         AnsiConsole.WriteLine();
@@ -1714,22 +1726,22 @@ public static class NissanLeafCommands
     {
         if (string.IsNullOrEmpty(raw) || raw.Length < 5)
             return null;
-            
+
         // Skip non-hex content
         if (!raw.All(c => Uri.IsHexDigit(c)))
             return null;
-            
+
         // First 3 chars = CAN ID (11-bit)
         if (!int.TryParse(raw[..3], System.Globalization.NumberStyles.HexNumber, null, out var canId))
             return null;
-            
+
         // Rest is data (up to 8 bytes = 16 hex chars)
         var dataHex = raw[3..];
         var data = ParseHexString(dataHex);
-        
+
         if (data.Length == 0)
             return null;
-            
+
         return new CanFrame(canId, data);
     }
 
@@ -1743,19 +1755,19 @@ public static class NissanLeafCommands
             case CAN_LB_STATUS: // 0x1DB
                 ParseAndDisplay1DB(frame.Data);
                 break;
-                
+
             case CAN_LB_GIDS: // 0x5BC
                 ParseAndDisplay5BC(frame.Data);
                 break;
-                
+
             case CAN_LB_SOC: // 0x55B
                 ParseAndDisplay55B(frame.Data);
                 break;
-                
+
             case CAN_LB_LIMITS: // 0x1DC
                 ParseAndDisplay1DC(frame.Data);
                 break;
-                
+
             default:
                 AnsiConsole.MarkupLine($"[grey]Frame 0x{frame.Id:X3}: {BitConverter.ToString(frame.Data)}[/]");
                 break;
@@ -1769,7 +1781,7 @@ public static class NissanLeafCommands
     private static void ParseAndDisplay1DB(byte[] data)
     {
         if (data.Length < 7) return;
-        
+
         // LB_Current: bits 7-17 (11 bits), big-endian, signed, factor 0.5
         // Start bit 7 = byte 0 bit 7, 11 bits
         int currentRaw = ((data[0] & 0x7F) << 4) | ((data[1] & 0xF0) >> 4);
@@ -1777,16 +1789,16 @@ public static class NissanLeafCommands
         if ((currentRaw & 0x400) != 0)
             currentRaw |= unchecked((int)0xFFFFF800);
         var currentAmps = currentRaw * 0.5;
-        
+
         // LB_Total_Voltage: bits 23-32 (10 bits), big-endian, unsigned, factor 0.5
         int voltageRaw = ((data[2] & 0x03) << 8) | data[3];
         var voltage = voltageRaw * 0.5;
-        
+
         // LB_Usable_SOC: bits 32-38 (7 bits), byte 4 bits 0-6
         var socDash = data[4] & 0x7F;
-        
+
         var currentDir = currentAmps > 0.5 ? "[red]?[/]" : (currentAmps < -0.5 ? "[green]?[/]" : "[grey]?[/]");
-        
+
         AnsiConsole.MarkupLine(
             $"[cyan]0x1DB[/] | " +
             $"Current: {currentDir} {Math.Abs(currentAmps):F1}A | " +
@@ -1801,16 +1813,16 @@ public static class NissanLeafCommands
     private static void ParseAndDisplay5BC(byte[] data)
     {
         if (data.Length < 6) return;
-        
+
         // LB_Remain_Capacity_GIDS: bits 7-16 (10 bits), big-endian
         int gids = ((data[0] & 0x01) << 9) | (data[1] << 1) | ((data[2] & 0x80) >> 7);
-        
+
         // LB_Capacity_Deterioration_Rate (SOH): bits 33-39 (7 bits)
         var soh = data[4] & 0x7F;
-        
+
         // Estimate kWh from GIDs (80 Wh per GID for 30kWh pack)
         var kwhRemaining = gids * 0.08;
-        
+
         AnsiConsole.MarkupLine(
             $"[cyan]0x5BC[/] | " +
             $"GIDs: [yellow]{gids}[/] | " +
@@ -1824,11 +1836,11 @@ public static class NissanLeafCommands
     private static void ParseAndDisplay55B(byte[] data)
     {
         if (data.Length < 2) return;
-        
+
         // LB_SOC: bits 7-16 (10 bits), big-endian, 0.1% resolution
         int socRaw = ((data[0] & 0x01) << 9) | (data[1] << 1) | ((data[2] & 0x80) >> 7);
         var socPercent = socRaw * 0.1;
-        
+
         AnsiConsole.MarkupLine(
             $"[cyan]0x55B[/] | " +
             $"SOC (fine): [green]{socPercent:F1}%[/]");
@@ -1840,15 +1852,15 @@ public static class NissanLeafCommands
     private static void ParseAndDisplay1DC(byte[] data)
     {
         if (data.Length < 4) return;
-        
+
         // LB_Discharge_Power_Limit: bits 7-16 (10 bits), factor 0.25 kW
         int dischargeLimitRaw = ((data[0] & 0x01) << 9) | (data[1] << 1) | ((data[2] & 0x80) >> 7);
         var dischargeLimit = dischargeLimitRaw * 0.25;
-        
+
         // LB_Charge_Power_Limit: bits 13-22 (10 bits), factor 0.25 kW
         int chargeLimitRaw = ((data[1] & 0x07) << 7) | ((data[2] & 0xFE) >> 1);
         var chargeLimit = chargeLimitRaw * 0.25;
-        
+
         AnsiConsole.MarkupLine(
             $"[cyan]0x1DC[/] | " +
             $"Discharge Limit: [yellow]{dischargeLimit:F1} kW[/] | " +

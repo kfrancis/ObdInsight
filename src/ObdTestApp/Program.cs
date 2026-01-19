@@ -1,10 +1,11 @@
-using Serilog;
-using Spectre.Console;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using ObdTestApp.Vehicles;
+using Serilog;
+using Spectre.Console;
 
 namespace ObdTestApp
 {
@@ -32,6 +33,14 @@ namespace ObdTestApp
 
         private static async Task Main(string[] args)
         {
+            // Handle --test flag for running unit tests
+            if (args.Contains("--test"))
+            {
+                var passed = LeafBmsParsingTests.RunAllTests();
+                Environment.Exit(passed ? 0 : 1);
+                return;
+            }
+
             // Configure Serilog for file logging - create unique log file per run
             // Use the application's directory (bin\Debug\...\Logs) for easier debugging
             var logDir = Path.Combine(AppContext.BaseDirectory, "Logs");
@@ -508,21 +517,6 @@ namespace ObdTestApp
 
                 AnsiConsole.MarkupLine("[yellow]Waking up ECUs and configuring BMS...[/]");
 
-                //var wakeupAttempts = new (string Cmd, string Desc)[]
-                //{
-                //    // Try sending to VCM wakeup address
-                //    ($"}", "Set header to VCM wakeup (0x679)"),
-                //    ("00", "Send empty wakeup byte"),
-
-                //    // Try battery heater spoof
-                //    ($"ATSH{BATTERY_HEATER_WAKEUP_ID:X3}", "Set header to battery heater (0x5C0)"),
-                //    ("0000000000000000", "Send 8-byte empty message"),
-
-                //    // Try broadcast
-                //    ($"ATSH{BROADCAST_TXID:X3}", "Set header to broadcast (0x7DF)"),
-                //    ("0100", "Send Mode 01 PID 00 (supported PIDs)"),
-                //};
-
                 // Try sending to VCM wakeup address
                 Log.Information("Sending VCM wakeup (679)");
                 await framer.SendAndReadFrameAsync("ATSH679", session.CommandTimeout, ct);
@@ -564,194 +558,385 @@ namespace ObdTestApp
 
                 Log.Information("Starting Nissan Leaf data collection test");
 
-                // =====================================================================
-                // PHASE 1: PASSIVE MONITORING MODE
-                // =====================================================================
-                AnsiConsole.MarkupLine("[yellow]═══ PHASE 1: PASSIVE MONITORING ═══[/]");
-                Log.Information("Entering passive monitoring mode for HVBAT broadcast data");
+                var leaf = new NissanLeaf();
+                var commands = leaf.GetCommands(new VehicleVariantId("AZE0-2-2016-2017"), session);
 
-                await session.EnterMonitoringModeAsync(EcuContext.NissanLeafHvbatMonitor, ct);
-                AnsiConsole.MarkupLine("[green]✓[/] Monitoring mode active (AT MA)");
-
-                // Monitor for 5 seconds
-                var monitorDuration = TimeSpan.FromSeconds(5);
-                var monitorStart = DateTime.UtcNow;
-                var frameCount = 0;
-                var uniqueCanIds = new HashSet<string>();
-
-                AnsiConsole.MarkupLine($"[cyan]Monitoring CAN bus for {monitorDuration.TotalSeconds}s...[/]");
-
-                // Use a timeout-based cancellation token for monitoring
-                using var monitorCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                monitorCts.CancelAfter(monitorDuration);
-
-                try
+                if (commands.TryGet<IBatteryManagementSystem>(out var bms))
                 {
-                    await foreach (var frame in session.MonitorFramesAsync(monitorCts.Token))
+                    // Acceptance criteria: 5 consecutive stable reads
+                    const int RequiredReads = 5;
+                    const double VoltageStabilityThreshold = 2.0; // V
+                    const double CurrentStabilityThreshold = 3.0; // A
+                    const double HxStabilityThreshold = 0.5; // %
+
+                    AnsiConsole.MarkupLine($"[cyan]Running {RequiredReads} consecutive BMS reads for stability verification...[/]");
+                    Log.Information("Starting {Count} consecutive BMS reads for acceptance criteria", RequiredReads);
+
+                    var voltageReadings = new List<double>();
+                    var currentReadings = new List<double>();
+                    var hxReadings = new List<double>();
+                    var ahrReadings = new List<double>();
+                    var successCount = 0;
+
+                    for (int i = 1; i <= RequiredReads; i++)
                     {
-                        frameCount++;
-                        uniqueCanIds.Add(frame.CanIdHex);
-
-                        // Parse and log the frame data
-                        ParseAndLogCanFrame(frame.CanIdHex, frame.Data.ToArray());
-
-                        // Display interesting frames
-                        var description = frame.CanIdHex switch
+                        try
                         {
-                            "1DB" => "LB_STATUS (Current/Voltage/SOC)",
-                            "1DC" => "LB_LIMITS (Power limits)",
-                            "55B" => "LB_SOC (High-res SOC)",
-                            "5BC" => "LB_GIDS (Capacity/SOH)",
-                            "5C0" => "LB_TEMPS (Temperatures)",
-                            "1DA" => "INVERTER (Motor data)",
-                            "59E" => "QC_CAPACITY",
-                            _ => null
-                        };
+                            AnsiConsole.MarkupLine($"[cyan]Read {i}/{RequiredReads}...[/]");
+                            var battery = await bms.GetStatusAsync(ct);
 
-                        if (description != null)
+                            var parts = new List<string>();
+                            if (battery.VoltageVolts is double voltage)
+                            {
+                                parts.Add($"V: {voltage:F2}V");
+                                voltageReadings.Add(voltage);
+                            }
+                            if (battery.CurrentAmps is double current)
+                            {
+                                var dir = current > 0 ? "dis" : (current < 0 ? "chg" : "idle");
+                                parts.Add($"I: {current:F3}A ({dir})");
+                                currentReadings.Add(current);
+                            }
+                            if (battery.SocPercent is double soc)
+                                parts.Add($"SOC: {soc:F1}%");
+                            if (battery.HealthPercent is double health)
+                            {
+                                parts.Add($"Hx: {health:F2}%");
+                                hxReadings.Add(health);
+                            }
+                            if (battery.CapacityAh is double capacity)
+                            {
+                                parts.Add($"AHR: {capacity:F2}Ah");
+                                ahrReadings.Add(capacity);
+                            }
+
+                            AnsiConsole.MarkupLine($"  [green]✓[/] {string.Join(", ", parts)}");
+                            Log.Information("Read {Index}/{Total}: {Status}", i, RequiredReads, string.Join(", ", parts));
+                            successCount++;
+
+                            // Small delay between reads
+                            if (i < RequiredReads)
+                                await Task.Delay(500, ct);
+                        }
+                        catch (Exception ex)
                         {
-                            AnsiConsole.MarkupLine($"[grey]  {frame.CanIdHex}: {description} - {frame.Data.Length} bytes[/]");
+                            AnsiConsole.MarkupLine($"  [red]✗[/] Read {i} failed: {ex.Message}");
+                            Log.Warning(ex, "Read {Index} failed: {Message}", i, ex.Message);
                         }
                     }
 
-                    // Monitoring ended - could be normal timeout, user cancellation, or BUFFER FULL
-                    Log.Debug("Monitoring loop completed");
-                }
-                catch (OperationCanceledException) when (monitorCts.IsCancellationRequested && !ct.IsCancellationRequested)
-                {
-                    // Expected - monitoring duration elapsed
-                    Log.Debug("Monitoring duration elapsed normally");
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    // User cancelled
-                    Log.Information("Monitoring cancelled by user");
-                    AnsiConsole.MarkupLine("[yellow]Monitoring cancelled by user[/]");
-                }
-                finally
-                {
-                    // Always try to exit monitoring mode cleanly
-                    Log.Debug("Ensuring monitoring mode is exited");
-                }
+                    // Analyze stability
+                    AnsiConsole.WriteLine();
+                    AnsiConsole.MarkupLine("[yellow]═══ STABILITY ANALYSIS ═══[/]");
 
-                // Capture monitoring stats for final summary
-                monitoringFrameCount = frameCount;
-                monitoringUniqueCanIds = uniqueCanIds.Count;
-                monitoringDuration = DateTime.UtcNow - monitorStart;
+                    var allStable = true;
 
-                AnsiConsole.MarkupLine($"[green]✓[/] Monitoring complete: {frameCount} frames, {uniqueCanIds.Count} unique CAN IDs");
-                Log.Information("Monitoring complete - FrameCount={FrameCount}, UniqueCanIds={UniqueCanIds}",
-                    frameCount, string.Join(", ", uniqueCanIds.OrderBy(id => id)));
-
-                // Exit monitoring mode
-                Log.Information("Exiting monitoring mode");
-                await session.ExitMonitoringModeAsync(ct);
-                AnsiConsole.MarkupLine("[green]✓[/] Exited monitoring mode");
-
-                // Pause to let the device settle
-                AnsiConsole.MarkupLine("[yellow]Pausing 2s to let device settle...[/]");
-                await Task.Delay(2000, ct);
-
-                AnsiConsole.WriteLine();
-
-                // =====================================================================
-                // PHASE 2: ACTIVE QUERY MODE
-                // =====================================================================
-                AnsiConsole.MarkupLine("[yellow]═══ PHASE 2: ACTIVE QUERIES ═══[/]");
-                Log.Information("Starting active query mode");
-
-                // Query BMS Group 1
-                AnsiConsole.MarkupLine("[cyan]Querying BMS Group 1 (2101)...[/]");
-                Log.Debug("Querying Nissan Leaf BMS Group 1 (2101) - SOC, Voltage, Current, Temps");
-                var group1Lines = await session.QueryAsync("2101", EcuContext.NissanLeafBms, ct);
-                Log.Debug("Group 1 query returned {LineCount} lines: {Lines}", group1Lines.Length, string.Join(", ", group1Lines));
-
-                // Join all response lines for ISO-TP reassembly - the parser handles multi-frame responses
-                var group1Response = string.Join("\r", group1Lines);
-
-                if (TryParseBmsGroup01(group1Response, out var group01))
-                {
-                    var parts = new List<string>();
-
-                    if (group01?.VoltageVolts is double voltage)
-                        parts.Add($"Voltage: {voltage:F1}V");
-
-                    if (group01?.CurrentAmps is double currentAmps)
+                    if (voltageReadings.Count >= 2)
                     {
-                        var currentDir = currentAmps > 0 ? "discharging" : (currentAmps < 0 ? "charging" : "idle");
-                        parts.Add($"Current: {Math.Abs(currentAmps):F1}A ({currentDir})");
+                        var vMin = voltageReadings.Min();
+                        var vMax = voltageReadings.Max();
+                        var vDelta = vMax - vMin;
+                        var vStable = vDelta <= VoltageStabilityThreshold;
+                        allStable &= vStable;
+                        var status = vStable ? "[green]✓ STABLE[/]" : "[red]✗ UNSTABLE[/]";
+                        AnsiConsole.MarkupLine($"  Voltage: {vMin:F2}V - {vMax:F2}V (Δ{vDelta:F2}V) {status}");
+                        Log.Information("Voltage stability: Min={Min:F2}V, Max={Max:F2}V, Delta={Delta:F2}V, Stable={Stable}",
+                            vMin, vMax, vDelta, vStable);
+                    }
+                    else
+                    {
+                        AnsiConsole.MarkupLine("  Voltage: [red]Insufficient data[/]");
+                        allStable = false;
                     }
 
-                    if (group01?.SocPercent is double soc)
-                        parts.Add($"SOC: {soc:F1}%");
+                    if (currentReadings.Count >= 2)
+                    {
+                        var iMin = currentReadings.Min();
+                        var iMax = currentReadings.Max();
+                        var iDelta = iMax - iMin;
+                        var iStable = iDelta <= CurrentStabilityThreshold;
+                        allStable &= iStable;
+                        var status = iStable ? "[green]✓ STABLE[/]" : "[yellow]⚠ VARIABLE[/]";
+                        AnsiConsole.MarkupLine($"  Current: {iMin:F3}A - {iMax:F3}A (Δ{iDelta:F3}A) {status}");
+                        Log.Information("Current stability: Min={Min:F3}A, Max={Max:F3}A, Delta={Delta:F3}A, Stable={Stable}",
+                            iMin, iMax, iDelta, iStable);
+                    }
 
-                    if (group01?.CapacityAh is double capacityAh)
-                        parts.Add($"Capacity: {capacityAh:F2}Ah");
+                    if (hxReadings.Count >= 2)
+                    {
+                        var hMin = hxReadings.Min();
+                        var hMax = hxReadings.Max();
+                        var hDelta = hMax - hMin;
+                        var hStable = hDelta <= HxStabilityThreshold;
+                        allStable &= hStable;
+                        var status = hStable ? "[green]✓ STABLE[/]" : "[red]✗ UNSTABLE[/]";
+                        AnsiConsole.MarkupLine($"  Hx (Health): {hMin:F2}% - {hMax:F2}% (Δ{hDelta:F2}%) {status}");
+                        Log.Information("Hx stability: Min={Min:F2}%, Max={Max:F2}%, Delta={Delta:F2}%, Stable={Stable}",
+                            hMin, hMax, hDelta, hStable);
+                    }
 
-                    if (group01?.HxPercent is double hx)
-                        parts.Add($"Health: {hx:F1}%");
+                    if (ahrReadings.Count >= 2)
+                    {
+                        var aMin = ahrReadings.Min();
+                        var aMax = ahrReadings.Max();
+                        var aDelta = aMax - aMin;
+                        var aStable = aDelta <= 0.1; // 0.1 Ah tolerance
+                        allStable &= aStable;
+                        var status = aStable ? "[green]✓ STABLE[/]" : "[red]✗ UNSTABLE[/]";
+                        AnsiConsole.MarkupLine($"  AHR (Capacity): {aMin:F2}Ah - {aMax:F2}Ah (Δ{aDelta:F2}Ah) {status}");
+                        Log.Information("AHR stability: Min={Min:F2}Ah, Max={Max:F2}Ah, Delta={Delta:F2}Ah, Stable={Stable}",
+                            aMin, aMax, aDelta, aStable);
+                    }
 
-                    AnsiConsole.MarkupLine($"[green]✓[/] BMS Group 1: {string.Join(", ", parts)}");
-                    successfulQueries++;
+                    AnsiConsole.WriteLine();
+                    if (successCount == RequiredReads && allStable)
+                    {
+                        AnsiConsole.MarkupLine($"[green]═══ ACCEPTANCE CRITERIA: PASSED ═══[/]");
+                        Log.Information("Acceptance criteria PASSED: {SuccessCount}/{RequiredReads} reads, all stable",
+                            successCount, RequiredReads);
+                    }
+                    else
+                    {
+                        AnsiConsole.MarkupLine($"[yellow]═══ ACCEPTANCE CRITERIA: {(successCount < RequiredReads ? "INCOMPLETE" : "UNSTABLE")} ═══[/]");
+                        Log.Warning("Acceptance criteria not fully met: {SuccessCount}/{RequiredReads} reads, stable={AllStable}",
+                            successCount, RequiredReads, allStable);
+                    }
+
+                    // Query cell voltages once at the end
+                    AnsiConsole.WriteLine();
+                    AnsiConsole.MarkupLine("[cyan]Querying cell voltages...[/]");
+                    try
+                    {
+                        var cells = await bms.GetCellVoltagesAsync(ct);
+                        if (cells != null)
+                        {
+                            AnsiConsole.MarkupLine($"[green]✓[/] Cells: {cells.CellCount} cells, " +
+                                $"Min: {cells.MinVoltageMv}mV, Max: {cells.MaxVoltageMv}mV, Delta: {cells.DeltaVoltageMv}mV");
+
+                            Log.Information("Cell voltages: Count={CellCount}, Min={Min}mV, Max={Max}mV, Avg={Avg}mV, Delta={Delta}mV",
+                                cells.CellCount,
+                                cells.MinVoltageMv,
+                                cells.MaxVoltageMv,
+                                cells.AvgVoltageMv,
+                                cells.DeltaVoltageMv);
+
+                            successfulQueries++; // Track for session stats
+
+                            // Note: 21 cells is partial - Leaf has 96 cell pairs, may need multiple Group 02 queries
+                            if (cells.CellCount < 96)
+                            {
+                                AnsiConsole.MarkupLine($"[yellow]⚠[/] Note: Only {cells.CellCount}/96 cells returned (partial response)");
+                                Log.Warning("Partial cell data: {CellCount}/96 cells", cells.CellCount);
+                            }
+                        }
+                        else
+                        {
+                            AnsiConsole.MarkupLine("[yellow]⚠[/] Cell voltages not available");
+                            invalidResponseQueries++; // Track for session stats
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[yellow]⚠[/] Cell voltage query failed: {ex.Message}");
+                        Log.Warning(ex, "Cell voltage query failed: {Message}", ex.Message);
+                        failedQueries++; // Track for session stats
+                    }
                 }
                 else
                 {
-                    AnsiConsole.MarkupLine("[yellow]⚠[/] BMS Group 1: No valid response");
-                    invalidResponseQueries++;
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] BMS commands not available for this vehicle variant");
+                    Log.Warning("BMS commands not available for vehicle variant: {VariantId}",
+                        "AZE0-2-2016-2017");
                 }
 
-                await Task.Delay(500, ct); // Pause between queries
+                //// =====================================================================
+                //// PHASE 1: PASSIVE MONITORING MODE
+                //// =====================================================================
+                //AnsiConsole.MarkupLine("[yellow]═══ PHASE 1: PASSIVE MONITORING ═══[/]");
+                //Log.Information("Entering passive monitoring mode for HVBAT broadcast data");
 
-                // Query BMS Group 2
-                AnsiConsole.MarkupLine("[cyan]Querying BMS Group 2 (2102)...[/]");
-                Log.Debug("Querying Nissan Leaf BMS Group 2 (2102)");
-                var group2Lines = await session.QueryAsync("2102", EcuContext.NissanLeafBms, ct);
-                Log.Debug("Group 2 query returned {LineCount} lines: {Lines}", group2Lines.Length, string.Join(", ", group2Lines));
+                //await session.EnterMonitoringModeAsync(EcuContext.NissanLeafHvbatMonitor, ct);
+                //AnsiConsole.MarkupLine("[green]✓[/] Monitoring mode active (AT MA)");
 
-                var group2Response = string.Join("\n", group2Lines);
-                if (TryParseBmsGroup02(group2Response, out var group02) && group02 != null)
-                {
-                    AnsiConsole.MarkupLine($"[green]✓[/] BMS Group 2: {group02.CellCount} cells, " +
-                        $"Min: {group02.MinVoltageMv}mV, Max: {group02.MaxVoltageMv}mV, " +
-                        $"Avg: {group02.AvgVoltageMv}mV, Delta: {group02.DeltaVoltageMv}mV");
-                    successfulQueries++;
-                }
-                else
-                {
-                    AnsiConsole.MarkupLine("[yellow]⚠[/] BMS Group 2: No valid response");
-                    invalidResponseQueries++;
-                }
+                //// Monitor for 5 seconds
+                //var monitorDuration = TimeSpan.FromSeconds(5);
+                //var monitorStart = DateTime.UtcNow;
+                //var frameCount = 0;
+                //var uniqueCanIds = new HashSet<string>();
 
-                await Task.Delay(500, ct); // Pause between queries
+                //AnsiConsole.MarkupLine($"[cyan]Monitoring CAN bus for {monitorDuration.TotalSeconds}s...[/]");
 
-                // Query VIN from charger
-                AnsiConsole.MarkupLine("[cyan]Querying VIN from charger (2181)...[/]");
-                Log.Debug("Querying VIN (2181)");
-                var vinLines = await session.QueryAsync("2181", EcuContext.NissanLeafCharger, ct);
-                Log.Debug("VIN query returned {LineCount} lines: {Lines}", vinLines.Length, string.Join(", ", vinLines));
+                //// Use a timeout-based cancellation token for monitoring
+                //using var monitorCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                //monitorCts.CancelAfter(monitorDuration);
 
-                var vinResponse = string.Join("\n", vinLines);
-                if (vinLines.Length > 0 && TryParseVin(vinResponse, out var vin))
-                {
-                    AnsiConsole.MarkupLine($"[green]✓[/] VIN: {vin}");
-                    successfulQueries++;
-                }
-                else
-                {
-                    AnsiConsole.MarkupLine("[yellow]⚠[/] VIN: No valid response");
-                    invalidResponseQueries++;
-                }
+                //try
+                //{
+                //    await foreach (var frame in session.MonitorFramesAsync(monitorCts.Token))
+                //    {
+                //        frameCount++;
+                //        uniqueCanIds.Add(frame.CanIdHex);
 
-                AnsiConsole.WriteLine();
-                AnsiConsole.MarkupLine("[green]═══ TEST COMPLETE ═══[/]");
+                //        // Parse and log the frame data
+                //        ParseAndLogCanFrame(frame.CanIdHex, frame.Data.ToArray());
+
+                //        // Display interesting frames
+                //        var description = frame.CanIdHex switch
+                //        {
+                //            "1DB" => "LB_STATUS (Current/Voltage/SOC)",
+                //            "1DC" => "LB_LIMITS (Power limits)",
+                //            "55B" => "LB_SOC (High-res SOC)",
+                //            "5BC" => "LB_GIDS (Capacity/SOH)",
+                //            "5C0" => "LB_TEMPS (Temperatures)",
+                //            "1DA" => "INVERTER (Motor data)",
+                //            "59E" => "QC_CAPACITY",
+                //            _ => null
+                //        };
+
+                //        if (description != null)
+                //        {
+                //            AnsiConsole.MarkupLine($"[grey]  {frame.CanIdHex}: {description} - {frame.Data.Length} bytes[/]");
+                //        }
+                //    }
+
+                //    // Monitoring ended - could be normal timeout, user cancellation, or BUFFER FULL
+                //    Log.Debug("Monitoring loop completed");
+                //}
+                //catch (OperationCanceledException) when (monitorCts.IsCancellationRequested && !ct.IsCancellationRequested)
+                //{
+                //    // Expected - monitoring duration elapsed
+                //    Log.Debug("Monitoring duration elapsed normally");
+                //}
+                //catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                //{
+                //    // User cancelled
+                //    Log.Information("Monitoring cancelled by user");
+                //    AnsiConsole.MarkupLine("[yellow]Monitoring cancelled by user[/]");
+                //}
+                //finally
+                //{
+                //    // Always try to exit monitoring mode cleanly
+                //    Log.Debug("Ensuring monitoring mode is exited");
+                //}
+
+                //// Capture monitoring stats for final summary
+                //monitoringFrameCount = frameCount;
+                //monitoringUniqueCanIds = uniqueCanIds.Count;
+                //monitoringDuration = DateTime.UtcNow - monitorStart;
+
+                //AnsiConsole.MarkupLine($"[green]✓[/] Monitoring complete: {frameCount} frames, {uniqueCanIds.Count} unique CAN IDs");
+                //Log.Information("Monitoring complete - FrameCount={FrameCount}, UniqueCanIds={UniqueCanIds}",
+                //    frameCount, string.Join(", ", uniqueCanIds.OrderBy(id => id)));
+
+                //// Exit monitoring mode
+                //Log.Information("Exiting monitoring mode");
+                //await session.ExitMonitoringModeAsync(ct);
+                //AnsiConsole.MarkupLine("[green]✓[/] Exited monitoring mode");
+
+                //// Pause to let the device settle
+                //AnsiConsole.MarkupLine("[yellow]Pausing 2s to let device settle...[/]");
+                //await Task.Delay(2000, ct);
+
+                //AnsiConsole.WriteLine();
+
+                //// =====================================================================
+                //// PHASE 2: ACTIVE QUERY MODE
+                //// =====================================================================
+                //AnsiConsole.MarkupLine("[yellow]═══ PHASE 2: ACTIVE QUERIES ═══[/]");
+                //Log.Information("Starting active query mode");
+
+                //// Query BMS Group 1
+                //AnsiConsole.MarkupLine("[cyan]Querying BMS Group 1 (2101)...[/]");
+                //Log.Debug("Querying Nissan Leaf BMS Group 1 (2101) - SOC, Voltage, Current, Temps");
+                //var group1Lines = await session.QueryAsync("2101", EcuContext.NissanLeafBms, ct);
+                //Log.Debug("Group 1 query returned {LineCount} lines: {Lines}", group1Lines.Length, string.Join(", ", group1Lines));
+
+                //// Join all response lines for ISO-TP reassembly - the parser handles multi-frame responses
+                //var group1Response = string.Join("\r", group1Lines);
+
+                //if (TryParseBmsGroup01(group1Response, out var group01))
+                //{
+                //    var parts = new List<string>();
+
+                //    if (group01?.VoltageVolts is double voltage)
+                //        parts.Add($"Voltage: {voltage:F1}V");
+
+                //    if (group01?.CurrentAmps is double currentAmps)
+                //    {
+                //        var currentDir = currentAmps > 0 ? "discharging" : (currentAmps < 0 ? "charging" : "idle");
+                //        parts.Add($"Current: {Math.Abs(currentAmps):F1}A ({currentDir})");
+                //    }
+
+                //    if (group01?.SocPercent is double soc)
+                //        parts.Add($"SOC: {soc:F1}%");
+
+                //    if (group01?.CapacityAh is double capacityAh)
+                //        parts.Add($"Capacity: {capacityAh:F2}Ah");
+
+                //    if (group01?.HxPercent is double hx)
+                //        parts.Add($"Health: {hx:F1}%");
+
+                //    AnsiConsole.MarkupLine($"[green]✓[/] BMS Group 1: {string.Join(", ", parts)}");
+                //    successfulQueries++;
+                //}
+                //else
+                //{
+                //    AnsiConsole.MarkupLine("[yellow]⚠[/] BMS Group 1: No valid response");
+                //    invalidResponseQueries++;
+                //}
+
+                //await Task.Delay(500, ct); // Pause between queries
+
+                //// Query BMS Group 2
+                //AnsiConsole.MarkupLine("[cyan]Querying BMS Group 2 (2102)...[/]");
+                //Log.Debug("Querying Nissan Leaf BMS Group 2 (2102)");
+                //var group2Lines = await session.QueryAsync("2102", EcuContext.NissanLeafBms, ct);
+                //Log.Debug("Group 2 query returned {LineCount} lines: {Lines}", group2Lines.Length, string.Join(", ", group2Lines));
+
+                //var group2Response = string.Join("\n", group2Lines);
+                //if (TryParseBmsGroup02(group2Response, out var group02) && group02 != null)
+                //{
+                //    AnsiConsole.MarkupLine($"[green]✓[/] BMS Group 2: {group02.CellCount} cells, " +
+                //        $"Min: {group02.MinVoltageMv}mV, Max: {group02.MaxVoltageMv}mV, " +
+                //        $"Avg: {group02.AvgVoltageMv}mV, Delta: {group02.DeltaVoltageMv}mV");
+                //    successfulQueries++;
+                //}
+                //else
+                //{
+                //    AnsiConsole.MarkupLine("[yellow]⚠[/] BMS Group 2: No valid response");
+                //    invalidResponseQueries++;
+                //}
+
+                //await Task.Delay(500, ct); // Pause between queries
+
+                //// Query VIN from charger
+                //AnsiConsole.MarkupLine("[cyan]Querying VIN from charger (2181)...[/]");
+                //Log.Debug("Querying VIN (2181)");
+                //var vinLines = await session.QueryAsync("2181", EcuContext.NissanLeafCharger, ct);
+                //Log.Debug("VIN query returned {LineCount} lines: {Lines}", vinLines.Length, string.Join(", ", vinLines));
+
+                //var vinResponse = string.Join("\n", vinLines);
+                //if (vinLines.Length > 0 && TryParseVin(vinResponse, out var vin))
+                //{
+                //    AnsiConsole.MarkupLine($"[green]✓[/] VIN: {vin}");
+                //    successfulQueries++;
+                //}
+                //else
+                //{
+                //    AnsiConsole.MarkupLine("[yellow]⚠[/] VIN: No valid response");
+                //    invalidResponseQueries++;
+                //}
+
+                //AnsiConsole.WriteLine();
+                //AnsiConsole.MarkupLine("[green]═══ TEST COMPLETE ═══[/]");
 
                 var totalQueries = successfulQueries + invalidResponseQueries;
                 var successRate = totalQueries > 0 ? (double)successfulQueries / totalQueries * 100 : 0;
 
-                AnsiConsole.MarkupLine($"[cyan]Monitoring:[/] {frameCount} frames from {uniqueCanIds.Count} CAN IDs");
+                //AnsiConsole.MarkupLine($"[cyan]Monitoring:[/] {frameCount} frames from {uniqueCanIds.Count} CAN IDs");
                 AnsiConsole.MarkupLine($"[cyan]Queries:[/] {successfulQueries}/{totalQueries} successful ({successRate:F0}%)");
                 Log.Information("Test complete - MonitorFrames={FrameCount}, QuerySuccess={Success}/{Total}",
-                    frameCount, successfulQueries, totalQueries);
+                    0, successfulQueries, totalQueries);
             }
             finally
             {
@@ -1009,13 +1194,13 @@ namespace ObdTestApp
                             // Battery current (signed 16-bit, 0.5A per bit)
                             var currentRaw = (short)((data[0] << 8) | data[1]);
                             var current = currentRaw * 0.5;
-                            
+
                             // Battery voltage (16-bit, 0.5V per bit)
                             var voltage = ((data[2] << 8) | data[3]) * 0.5;
-                            
+
                             // SOC (Gids - 10-bit from bytes 4-5)
                             var gids = ((data[4] & 0x03) << 8) | data[5];
-                            
+
                             Log.Debug("[CAN 1DB] Battery: {Current:F1}A, {Voltage:F1}V, {Gids} Gids", current, voltage, gids);
                         }
                         break;
