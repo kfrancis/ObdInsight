@@ -1,7 +1,5 @@
 using ObdTestApp.Core.Communication.Elm327;
 using ObdTestApp.Core.Protocols;
-using ObdTestApp.Core.Vehicles;
-using ObdTestApp.Core.Vehicles.Implementations.Nissan.AZE0;
 
 namespace ObdTestApp.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 {
