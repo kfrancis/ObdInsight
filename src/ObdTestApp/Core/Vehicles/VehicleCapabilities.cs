@@ -6,6 +6,14 @@ using System.Threading.Tasks;
 
 namespace ObdTestApp.Core.Vehicles;
 
+public interface IAntilockBrakingSystem : IVehicleCapability
+{
+    /// <summary>
+    /// Gets current ABS status including wheel speeds and vehicle speed.
+    /// </summary>
+    ValueTask<AbsStatus> GetStatusAsync(CancellationToken ct = default);
+}
+
 /// <summary>
 /// Battery Management System interface - generic across all vehicle makes/models.
 /// </summary>
@@ -206,3 +214,49 @@ public readonly record struct BodyControlStatus(
     bool HeadlightsOn,
     bool HazardLightsOn
 );
+
+/// <summary>
+/// ABS (Anti-lock Braking System) status information.
+/// </summary>
+public sealed record AbsStatus
+{
+    /// <summary>Front right wheel speed (km/h)</summary>
+    public double? WheelSpeedFrKmh { get; init; }
+
+    /// <summary>Front left wheel speed (km/h)</summary>
+    public double? WheelSpeedFlKmh { get; init; }
+
+    /// <summary>Rear right wheel speed (km/h)</summary>
+    public double? WheelSpeedRrKmh { get; init; }
+
+    /// <summary>Rear left wheel speed (km/h)</summary>
+    public double? WheelSpeedRlKmh { get; init; }
+
+    /// <summary>Vehicle speed from ABS (km/h)</summary>
+    public double? VehicleSpeedKmh { get; init; }
+
+    /// <summary>Vehicle speed in pulses</summary>
+    public int? VehicleSpeedPulses { get; init; }
+
+    /// <summary>ESP/Traction control disabled flag</summary>
+    public bool? EspDisabled { get; init; }
+
+    /// <summary>12V lead-acid battery voltage (volts)</summary>
+    public double? LeadAcidBatteryVoltage { get; init; }
+
+    /// <summary>Friction brake pressure (raw value)</summary>
+    public int? FrictionBrakePressure { get; init; }
+
+    /// <summary>VDC torque down request 1 (Nm)</summary>
+    public double? VdcTorqueDownRequest1Nm { get; init; }
+
+    /// <summary>VDC torque down request 2 (Nm)</summary>
+    public double? VdcTorqueDownRequest2Nm { get; init; }
+
+    /// <summary>Motor torque request from ABS (Nm)</summary>
+    public double? MotorTorqueRequestNm { get; init; }
+
+    /// <summary>ABS bitmask status byte</summary>
+    public int? BitmaskAbs { get; init; }
+}
+

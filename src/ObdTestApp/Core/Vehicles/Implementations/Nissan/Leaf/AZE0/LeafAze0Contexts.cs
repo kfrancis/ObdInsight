@@ -6,11 +6,39 @@ public static class LeafAze0Contexts
 {
     public static EcuContext Abs => ReqResp("ABS", "740", "760");
 
+    public static EcuContext AbsBroadcast => new()
+    {
+        Name = "ABS Broadcast (0x130, 0x245, 0x284, 0x285, 0x292, 0x354)",
+        TxHeader = "000",            // unused in monitoring mode
+        RxFilter = "000",            // unused in monitoring mode
+        FlowControlHeader = "000",   // unused in monitoring mode
+        CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
+
+        // Monitor all standard CAN frames
+        MonitoringCommand = "AT MA",
+
+        // Accept ABS broadcast frames
+        // 0x130 (20ms) - ABS status bitmask
+        // 0x245 (20ms) - VDC torque control
+        // 0x284 (20ms) - Front wheel speeds
+        // 0x285 (20ms) - Rear wheel speeds
+        // 0x292 (20ms) - Battery voltage and brake pressure
+        // 0x354 (20ms) - Vehicle speed pulses and ESP status
+        CanFilterMask = "000",  // No filtering, accept all
+        CanFilterPattern = "000",
+
+        ExpectedCanIds = ["130", "245", "284", "285", "292", "354"],
+
+        EnableHeaders = true,
+        EnableAutoFormatting = true
+    };
+
+
     public static EcuContext Airbag => ReqResp("AIRBAG", "752", "772");
 
     public static IReadOnlyList<EcuContext> All { get; } =
     [
-        Vcm, Bcm, Abs, LbcBms, InverterMc, Meter, Hvac, Brake, Vsp, Eps, Tcu, MultiAv, IpdmEr, Airbag, Ident, Shift, Consult3Plus
+        Vcm, Bcm, Abs, AbsBroadcast, LbcBms, InverterMc, Meter, Hvac, Brake, Vsp, Eps, Tcu, MultiAv, IpdmEr, Airbag, Ident, Shift, Consult3Plus
     ];
 
     public static EcuContext Avm => new()

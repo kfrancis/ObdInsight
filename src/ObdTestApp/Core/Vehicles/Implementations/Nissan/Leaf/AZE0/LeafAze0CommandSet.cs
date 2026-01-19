@@ -7,6 +7,7 @@ public sealed class LeafAze0CommandSet : VehicleCommandSet
 {
     public LeafAze0CommandSet(IElmSession session)
     {
+        Add<IAntilockBrakingSystem>(new LeafAze0Abs(session, LeafAze0Contexts.AbsBroadcast));
         Add<IBatteryManagementSystem>(new LeafAze0Bms(session, LeafAze0Contexts.LbcBms));
         Add<IBrake>(new LeafAze0Brake(session, LeafAze0Contexts.Brake));
         Add<IHvac>(new LeafAze0Hvac(session, LeafAze0Contexts.HvacBroadcast));
