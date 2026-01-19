@@ -2,8 +2,8 @@ using TUnit.Assertions;
 using TUnit.Assertions.Extensions;
 using TUnit.Core;
 using OdbTestApp.Tests.Fixtures;
-using ObdTestApp.Vehicles;
 using static OdbTestApp.Tests.NissanLeaf.LeafBmsParsingHelpers;
+using ObdTestApp.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 
 namespace OdbTestApp.Tests.NissanLeaf;
 
@@ -175,7 +175,7 @@ public class LeafChargerIntegrationTests(BleSessionFixture bleFixture)
     {
         // Arrange
         var session = bleFixture.Session;
-        var context = LeafAze0Contexts.Charger;
+        var context = LeafAze0Contexts.Ident;
 
         // Act
         var lines = await session.QueryAsync("2181", context, CancellationToken.None);
@@ -198,7 +198,7 @@ public class LeafChargerIntegrationTests(BleSessionFixture bleFixture)
     {
         // Arrange
         var session = bleFixture.Session;
-        var context = LeafAze0Contexts.Charger;
+        var context = LeafAze0Contexts.Ident;
 
         // Act
         var lines = await session.QueryAsync("2181", context, CancellationToken.None);
@@ -216,7 +216,7 @@ public class LeafChargerIntegrationTests(BleSessionFixture bleFixture)
     {
         // Arrange
         var session = bleFixture.Session;
-        var context = LeafAze0Contexts.Charger;
+        var context = LeafAze0Contexts.Ident;
 
         // Act
         var lines = await session.QueryAsync("2181", context, CancellationToken.None);
@@ -238,7 +238,7 @@ public class LeafChargerIntegrationTests(BleSessionFixture bleFixture)
     {
         // Arrange
         var session = bleFixture.Session;
-        var context = LeafAze0Contexts.Charger;
+        var context = LeafAze0Contexts.Ident;
 
         // Act
         var lines = await session.QueryAsync("2181", context, CancellationToken.None);

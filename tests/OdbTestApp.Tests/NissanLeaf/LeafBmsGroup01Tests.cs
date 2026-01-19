@@ -1,4 +1,4 @@
-using ObdTestApp.Vehicles;
+using ObdTestApp.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using OdbTestApp.Tests.Fixtures;
 using static OdbTestApp.Tests.NissanLeaf.LeafBmsParsingHelpers;
 

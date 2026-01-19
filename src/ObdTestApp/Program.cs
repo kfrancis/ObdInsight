@@ -3,7 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using ObdTestApp.Vehicles;
+using ObdTestApp.Core.Application;
+using ObdTestApp.Core.Communication.Bluetooth;
+using ObdTestApp.Core.Communication.Elm327;
+using ObdTestApp.Core.Protocols;
+using ObdTestApp.Core.UI;
+using ObdTestApp.Core.Vehicles;
+using ObdTestApp.Core.Vehicles.Implementations.Nissan.Leaf;
 using Serilog;
 using Spectre.Console;
 
@@ -33,14 +39,6 @@ namespace ObdTestApp
 
         private static async Task Main(string[] args)
         {
-            // Handle --test flag for running unit tests
-            if (args.Contains("--test"))
-            {
-                var passed = LeafBmsParsingTests.RunAllTests();
-                Environment.Exit(passed ? 0 : 1);
-                return;
-            }
-
             // Configure Serilog for file logging - create unique log file per run
             // Use the application's directory (bin\Debug\...\Logs) for easier debugging
             var logDir = Path.Combine(AppContext.BaseDirectory, "Logs");
@@ -147,7 +145,8 @@ namespace ObdTestApp
                 if (selectedDevice == null)
                 {
                     Log.Information("Starting device scan and selection");
-                    selectedDevice = await ScanAndSelectDeviceAsync(preferences, cts.Token);
+                    var scanService = new DeviceScanService(ScanDuration);
+                    selectedDevice = await scanService.ScanAndSelectDeviceAsync(preferences, cts.Token);
                     if (selectedDevice == null)
                     {
                         Log.Information("No device selected by user. Exiting.");
@@ -159,7 +158,8 @@ namespace ObdTestApp
 
                 // Run with automatic retry on failure
                 Log.Information("Starting session with device: {DeviceName} ({Address})", selectedDevice.Name, selectedDevice.Address);
-                await RunWithRetryAsync(selectedDevice, preferences, cts.Token);
+                var retryService = new SessionRetryService();
+                await retryService.RunWithRetryAsync(selectedDevice, preferences, RunElm327SessionAsync, cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -180,255 +180,6 @@ namespace ObdTestApp
                 Log.Information("=== ObdTestApp Exiting ===");
                 await Log.CloseAndFlushAsync();
             }
-        }
-
-        /// <summary>
-        /// Runs the ELM327 session with automatic retry on connection failure
-        /// </summary>
-        private static async Task RunWithRetryAsync(BleDeviceInfo selectedDevice, DevicePreferences preferences, CancellationToken ct)
-        {
-            var failureCount = 0;
-            const int maxFailures = 5;
-
-            while (!ct.IsCancellationRequested && failureCount < maxFailures)
-            {
-                try
-                {
-                    await RunElm327SessionAsync(selectedDevice, ct);
-
-                    // If we get here, session ended normally
-                    break;
-                }
-                catch (IOException ex) when (!ct.IsCancellationRequested)
-                {
-                    failureCount++;
-                    Log.Warning(ex, "Connection failure #{FailureCount}/{MaxFailures} - {Message}", failureCount, maxFailures, ex.Message);
-                    AnsiConsole.MarkupLine($"[red]Connection failure #{failureCount}/{maxFailures}:[/] {ex.Message.EscapeMarkup()}");
-
-                    if (failureCount < maxFailures)
-                    {
-                        var retryDelay = TimeSpan.FromSeconds(Math.Min(30, Math.Pow(2, failureCount)));
-                        Log.Information("Retrying in {RetryDelay} seconds (attempt {NextAttempt})", retryDelay.TotalSeconds, failureCount + 1);
-                        AnsiConsole.MarkupLine($"[yellow]Retrying in {retryDelay.TotalSeconds:F0}s...[/]");
-
-                        await Task.Delay(retryDelay, ct);
-                        Log.Information("Starting retry attempt {Attempt}", failureCount + 1);
-                        AnsiConsole.MarkupLine($"[cyan]Retry attempt {failureCount + 1}...[/]");
-                    }
-                    else
-                    {
-                        Log.Error("Max retry attempts ({MaxFailures}) reached. Prompting for rescan.", maxFailures);
-                        AnsiConsole.MarkupLine($"[red]Max retry attempts ({maxFailures}) reached. Giving up.[/]");
-
-                        // Ask if user wants to rescan
-                        if (AnsiConsole.Confirm("Scan for devices again?", defaultValue: true))
-                        {
-                            Log.Information("User requested rescan");
-                            var newDevice = await ScanAndSelectDeviceAsync(preferences, ct);
-                            if (newDevice != null)
-                            {
-                                Log.Information("New device selected: {DeviceName} ({Address})", newDevice.Name, newDevice.Address);
-                                selectedDevice = newDevice;
-                                failureCount = 0; // Reset counter for new device
-                                continue;
-                            }
-                        }
-                        else
-                        {
-                            Log.Information("User declined rescan");
-                        }
-                    }
-                }
-                catch (Exception ex) when (!ct.IsCancellationRequested)
-                {
-                    Log.Error(ex, "Unexpected error during session: {Message}", ex.Message);
-                    AnsiConsole.MarkupLine($"[red]Unexpected error:[/] {ex.Message.EscapeMarkup()}");
-                    throw;
-                }
-            }
-        }
-
-        private static async Task<BleDeviceInfo?> ScanAndSelectDeviceAsync(
-            DevicePreferences preferences,
-            CancellationToken ct)
-        {
-            using var scanner = new BleScanner();
-
-            while (true)
-            {
-                var devices = await PerformScanAsync(scanner, ct);
-
-                if (devices.Count == 0)
-                {
-                    Log.Warning("No BLE devices found during scan");
-                    if (AnsiConsole.Confirm("No BLE devices found. Rescan?", defaultValue: true))
-                    {
-                        Log.Information("User requested rescan");
-                        continue;
-                    }
-
-                    Log.Information("User declined rescan. Returning null.");
-                    return null;
-                }
-
-                var orderedDevices = devices.Values
-                    .OrderByDescending(d => d.Rssi)
-                    .ToList();
-
-                Log.Information("Found {DeviceCount} BLE devices", orderedDevices.Count);
-                RenderDeviceTable(orderedDevices, preferences);
-
-                var favorite = preferences.GetPreferredDevice(orderedDevices);
-
-                var actions = new List<string>();
-                if (favorite != null)
-                    actions.Add($"Connect to favorite ({favorite.Name})");
-
-                actions.Add("Choose device from list");
-                actions.Add("Rescan");
-                actions.Add("Cancel");
-
-                var action = AnsiConsole.Prompt(
-                    new SelectionPrompt<string>()
-                        .Title("[cyan]Select an action:[/]")
-                        .AddChoices(actions));
-
-                if (action.StartsWith("Connect to favorite", StringComparison.OrdinalIgnoreCase) && favorite != null)
-                {
-                    Log.Information("User selected favorite device: {DeviceName} ({Address})", favorite.Name, favorite.Address);
-                    preferences.RememberDevice(favorite, markAsFavorite: true);
-                    AnsiConsole.MarkupLine($"[green]✓[/] Selected: [cyan]{favorite.Name}[/] ({favorite.Address})");
-                    return favorite;
-                }
-
-                if (action.Equals("Rescan", StringComparison.OrdinalIgnoreCase))
-                {
-                    Log.Information("User requested rescan");
-                    continue;
-                }
-
-                if (action.Equals("Cancel", StringComparison.OrdinalIgnoreCase))
-                {
-                    Log.Information("User cancelled device selection");
-                    return null;
-                }
-
-                var defaultSelection = favorite != null
-                    ? orderedDevices.IndexOf(favorite) + 1
-                    : 1;
-
-                var selection = AnsiConsole.Prompt(
-                    new TextPrompt<int>("[cyan]Enter device number:[/]")
-                        .DefaultValue(defaultSelection)
-                        .Validate(n => n >= 1 && n <= orderedDevices.Count
-                            ? ValidationResult.Success()
-                            : ValidationResult.Error($"Enter a number between 1 and {orderedDevices.Count}")));
-
-                var selectedDevice = orderedDevices[selection - 1];
-
-                var shouldFavorite = preferences.IsFavorite(selectedDevice) ||
-                    AnsiConsole.Confirm($"Mark {selectedDevice.Name} as a favorite?", defaultValue: false);
-
-                Log.Information("User selected device #{Number}: {DeviceName} ({Address}), Favorite={IsFavorite}",
-                    selection, selectedDevice.Name, selectedDevice.Address, shouldFavorite);
-                preferences.RememberDevice(selectedDevice, shouldFavorite);
-
-                AnsiConsole.MarkupLine($"[green]✓[/] Selected: [cyan]{selectedDevice.Name}[/] ({selectedDevice.Address})");
-                return selectedDevice;
-            }
-        }
-
-        private static async Task<Dictionary<string, BleDeviceInfo>> PerformScanAsync(BleScanner scanner, CancellationToken ct)
-        {
-            var devices = new Dictionary<string, BleDeviceInfo>(StringComparer.OrdinalIgnoreCase);
-
-            void OnDevice(object? _, BleDeviceDiscoveredEventArgs args)
-            {
-                devices[args.Device.Address] = args.Device;
-            }
-
-            scanner.DeviceDiscovered += OnDevice;
-
-            try
-            {
-                Log.Information("Starting BLE scan for {Duration} seconds", ScanDuration.TotalSeconds);
-                AnsiConsole.MarkupLine($"[cyan]Scanning for BLE devices ({ScanDuration.TotalSeconds:0}s)...[/]");
-
-                await scanner.StartScanAsync(cancellationToken: ct);
-                try
-                {
-                    await Task.Delay(ScanDuration, ct);
-                }
-                finally
-                {
-                    await scanner.StopScanAsync();
-                }
-
-                Log.Information("BLE scan completed. Found {DeviceCount} devices", devices.Count);
-                AnsiConsole.MarkupLine($"[green]✓[/] Scan complete. Found {devices.Count} device(s).");
-                return devices;
-            }
-            finally
-            {
-                scanner.DeviceDiscovered -= OnDevice;
-            }
-        }
-
-        private static void RenderDeviceTable(IReadOnlyList<BleDeviceInfo> devices, DevicePreferences preferences)
-        {
-            var table = new Table()
-                .Border(TableBorder.Rounded)
-                .AddColumn("#")
-                .AddColumn("Name")
-                .AddColumn("Address")
-                .AddColumn("RSSI")
-                .AddColumn("Tags");
-
-            for (var i = 0; i < devices.Count; i++)
-            {
-                var device = devices[i];
-                var tags = string.Concat(
-                    preferences.IsFavorite(device) ? "[yellow]★[/]" : string.Empty,
-                    preferences.IsSaved(device) ? "[green]✔[/]" : string.Empty);
-
-                if (string.IsNullOrEmpty(tags))
-                    tags = "-";
-
-                table.AddRow(
-                    (i + 1).ToString(),
-                    device.Name.EscapeMarkup(),
-                    $"[cyan]{device.Address}[/]",
-                    $"[{GetRssiColor(device.Rssi)}]{device.Rssi} dBm[/]",
-                    tags);
-            }
-
-            AnsiConsole.WriteLine();
-            AnsiConsole.Write(table);
-            AnsiConsole.MarkupLine($"[grey]Found {devices.Count} devices ([yellow]★[/]=favorite, [green]✔[/]=saved)[/]");
-            AnsiConsole.WriteLine();
-        }
-
-        private static string GetRssiColor(int rssi) => rssi switch
-        {
-            > -50 => "green",
-            > -70 => "yellow",
-            _ => "red"
-        };
-
-        /// <summary>
-        /// Safely writes text to Spectre.Console by escaping markup characters.
-        /// </summary>
-        private static void SafeWrite(string text)
-        {
-            AnsiConsole.Write(text.EscapeMarkup());
-        }
-
-        /// <summary>
-        /// Safely writes a line to Spectre.Console by escaping markup characters.
-        /// </summary>
-        private static void SafeWriteLine(string text)
-        {
-            AnsiConsole.WriteLine(text.EscapeMarkup());
         }
 
         private static async Task RunElm327SessionAsync(BleDeviceInfo selectedDevice, CancellationToken ct)
@@ -485,18 +236,7 @@ namespace ObdTestApp
                 AnsiConsole.MarkupLine("[green]✓[/] Session initialized and protocol locked.");
 
                 // Display connection info
-                var infoPanel = new Panel(new Markup(
-                    $"[cyan]Device:[/] {selectedDevice.Name.EscapeMarkup()}\n" +
-                    $"[cyan]Address:[/] {selectedDevice.Address.EscapeMarkup()}\n" +
-                    $"[cyan]RSSI:[/] {selectedDevice.Rssi} dBm\n" +
-                    $"[cyan]Debug Logging:[/] Enabled\n" +
-                    $"[cyan]Command Timeout:[/] {session.CommandTimeout.TotalSeconds}s\n" +
-                    $"[cyan]Session Start:[/] {sessionStart:HH:mm:ss}"))
-                {
-                    Header = new PanelHeader("[green]Connection Established[/]"),
-                    Border = BoxBorder.Rounded
-                };
-                AnsiConsole.Write(infoPanel);
+                DeviceRenderer.RenderConnectionInfo(selectedDevice, sessionStart, session.CommandTimeout);
 
                 // Configure ELM327 for Nissan Leaf BMS communication
                 // BMS uses addresses: TX=0x79B, RX=0x7BB
@@ -944,26 +684,18 @@ namespace ObdTestApp
             {
                 // Final statistics
                 var totalUptime = DateTime.UtcNow - sessionStart;
-                var totalQueries = successfulQueries + failedQueries + invalidResponseQueries;
-                var finalSuccessRate = totalQueries > 0 ? (double)successfulQueries / totalQueries * 100 : 0;
-
-                AnsiConsole.WriteLine();
-                var statsPanel = new Panel(new Markup(
-                    $"[cyan]Total Uptime:[/] {totalUptime:hh\\:mm\\:ss}\n" +
-                    $"[cyan]Monitoring Frames:[/] {monitoringFrameCount} ({monitoringUniqueCanIds} unique CAN IDs)\n" +
-                    $"[cyan]Monitoring Duration:[/] {monitoringDuration.TotalSeconds:F1}s\n" +
-                    $"[cyan]Successful Queries:[/] {successfulQueries}\n" +
-                    $"[cyan]Invalid Response Queries:[/] {invalidResponseQueries}\n" +
-                    $"[cyan]Failed Queries:[/] {failedQueries}\n" +
-                    $"[cyan]Query Success Rate:[/] {finalSuccessRate:F1}%\n" +
-                    $"[cyan]Queries/Min:[/] {(totalQueries / totalUptime.TotalMinutes):F1}"))
-                {
-                    Header = new PanelHeader("[yellow]Session Statistics[/]"),
-                    Border = BoxBorder.Rounded
-                };
-                AnsiConsole.Write(statsPanel);
+                
+                DeviceRenderer.RenderSessionStats(
+                    totalUptime,
+                    monitoringFrameCount,
+                    monitoringUniqueCanIds,
+                    monitoringDuration,
+                    successfulQueries,
+                    invalidResponseQueries,
+                    failedQueries);
 
                 // Log session summary
+                var totalQueries = successfulQueries + failedQueries + invalidResponseQueries;
                 LogSessionSummary(selectedDevice, sessionStart, totalUptime, successfulQueries, invalidResponseQueries, failedQueries);
             }
         }
@@ -982,7 +714,7 @@ namespace ObdTestApp
             data = null;
             try
             {
-                var bytes = ParseIsoTpResponse(response);
+                var bytes = IsoTpParser.ParseIsoTpResponse(response);
 
                 if (bytes.Count < 2)
                 {
@@ -1107,7 +839,7 @@ namespace ObdTestApp
             data = null;
             try
             {
-                var bytes = ParseIsoTpResponse(response);
+                var bytes = IsoTpParser.ParseIsoTpResponse(response);
 
                 if (bytes.Count < 2)
                 {
@@ -1263,239 +995,6 @@ namespace ObdTestApp
         }
 
         /// <summary>
-        /// Parse ISO-TP response, handling multi-frame messages.
-        /// Handles both spaced and concatenated hex formats from ELM327.
-        /// Also handles frames concatenated together on a single line (e.g., "7BB25...7BB26...").
-        /// </summary>
-        private static List<byte> ParseIsoTpResponse(string response)
-        {
-            var bytes = new List<byte>();
-
-            if (string.IsNullOrWhiteSpace(response))
-                return bytes;
-
-            var cleaned = response
-                .Replace("\r", "\n")
-                .Replace(">", "")
-                .Trim();
-
-            var lines = cleaned.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-
-            // First, split any concatenated frames (e.g., "7BB25...7BB26..." becomes two separate frames)
-            var allFrames = new List<string>();
-            foreach (var line in lines)
-            {
-                var trimmed = line.Trim();
-                if (trimmed.Length < 6) continue;
-
-                // Split concatenated frames by finding CAN ID patterns (3 hex chars followed by frame data)
-                // CAN frames are typically 19-20 hex chars: 3 (CAN ID) + 2 (PCI) + 14 (7 bytes data)
-                var remaining = trimmed;
-                while (remaining.Length >= 6)
-                {
-                    // Check if this starts with a valid CAN ID
-                    if (!IsCanIdPrefixForIsoTp(remaining))
-                    {
-                        break;
-                    }
-
-                    // Find the next CAN ID prefix in the string (if any)
-                    // Start looking after the minimum frame length (CAN ID + at least 2 bytes = 7 chars)
-                    var nextFrameStart = -1;
-                    for (var i = 7; i <= remaining.Length - 6; i++)
-                    {
-                        // Only check positions where a new CAN frame could start
-                        // A CAN ID is followed by the frame type byte (hex nibble 0-2 for SF/FF/CF)
-                        var potentialCanId = remaining.Substring(i, 3);
-                        if (!potentialCanId.All(c => Uri.IsHexDigit(c))) continue;
-                        if (!int.TryParse(potentialCanId, System.Globalization.NumberStyles.HexNumber, null, out var id)) continue;
-
-                        // Must be a valid CAN ID in the expected range
-                        if (!((id >= 0x700 && id <= 0x7FF) || (id >= 0x790 && id <= 0x79F))) continue;
-
-                        // Check if the 4th character is a valid ISO-TP frame type indicator (0, 1, 2, 3 nibble)
-                        if (i + 3 < remaining.Length)
-                        {
-                            var frameTypeChar = remaining[i + 3];
-                            // Valid frame types: 0x (SF), 1x (FF), 2x (CF), 3x (FC)
-                            if (frameTypeChar == '0' || frameTypeChar == '1' || frameTypeChar == '2' || frameTypeChar == '3')
-                            {
-                                nextFrameStart = i;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (nextFrameStart > 0)
-                    {
-                        // Extract first frame and continue with the rest
-                        allFrames.Add(remaining[..nextFrameStart]);
-                        remaining = remaining[nextFrameStart..];
-                    }
-                    else
-                    {
-                        // No more frames, take the whole thing
-                        allFrames.Add(remaining);
-                        break;
-                    }
-                }
-            }
-
-            Log.Debug("ParseIsoTpResponse: Split into {FrameCount} raw frames from {LineCount} lines", allFrames.Count, lines.Length);
-
-            var frameSequence = new List<(int Type, int Seq, byte[] Data, int TotalLen)>();
-            var expectedTotalLength = 0;
-
-            foreach (var frame in allFrames)
-            {
-                if (frame.Length < 6) continue;
-
-                if (!IsCanIdPrefixForIsoTp(frame))
-                    continue;
-
-                var frameHex = frame[3..];
-
-                if (frameHex.Length < 2) continue;
-
-                if (!byte.TryParse(frameHex[..2], System.Globalization.NumberStyles.HexNumber, null, out var frameTypeByte))
-                    continue;
-
-                var frameType = (frameTypeByte & 0xF0) >> 4;
-                var frameInfo = frameTypeByte & 0x0F;
-
-                byte[] frameData;
-
-                switch (frameType)
-                {
-                    case 0: // Single Frame - length in low nibble
-                        var sfLen = frameInfo;
-                        var sfDataHex = frameHex[2..];
-                        frameData = ParseHexString(sfDataHex);
-                        if (frameData.Length > sfLen)
-                            frameData = frameData[..sfLen];
-                        frameSequence.Add((0, 0, frameData, sfLen));
-                        break;
-
-                    case 1: // First Frame - 12-bit length in low nibble + next byte
-                        if (frameHex.Length < 4) continue;
-                        if (!byte.TryParse(frameHex[2..4], System.Globalization.NumberStyles.HexNumber, null, out var lenLowByte))
-                            continue;
-                        expectedTotalLength = (frameInfo << 8) | lenLowByte;
-                        var ffDataHex = frameHex[4..];
-                        frameData = ParseHexString(ffDataHex);
-                        // First frame contains up to 6 bytes of data (7 bytes total - 1 byte PCI - 1 byte length)
-                        frameSequence.Add((1, 0, frameData, expectedTotalLength));
-                        break;
-
-                    case 2: // Consecutive Frame - 4-bit sequence number in low nibble
-                        var seqNum = frameInfo;
-                        var cfDataHex = frameHex[2..];
-                        frameData = ParseHexString(cfDataHex);
-                        // Consecutive frames contain up to 7 bytes of data
-                        frameSequence.Add((2, seqNum, frameData, 0));
-                        break;
-
-                    default:
-                        frameData = ParseHexString(frameHex);
-                        if (frameData.Length > 0)
-                            frameSequence.Add((-1, 0, frameData, 0));
-                        break;
-                }
-            }
-
-            // First, try to find Single Frame or First Frame
-            var firstFrame = frameSequence.FirstOrDefault(f => f.Type == 0 || f.Type == 1);
-            if (firstFrame.Data != null)
-            {
-                bytes.AddRange(firstFrame.Data);
-                expectedTotalLength = firstFrame.TotalLen;
-            }
-
-            // Then add all consecutive frames in order
-            // Handle sequence number wraparound (0-F)
-            var consecutiveFrames = frameSequence
-                .Where(f => f.Type == 2)
-                .ToList();
-
-            // Sort by sequence number, handling wraparound
-            if (consecutiveFrames.Count > 0)
-            {
-                // Simple approach: just add them in order they appear (ELM327 should return them in order)
-                foreach (var cf in consecutiveFrames)
-                {
-                    bytes.AddRange(cf.Data);
-                }
-            }
-
-            // Trim to expected length if we know it
-            if (expectedTotalLength > 0 && bytes.Count > expectedTotalLength)
-            {
-                bytes = bytes.Take(expectedTotalLength).ToList();
-            }
-
-            // Fallback: if no ISO-TP frames found, try parsing as raw hex
-            if (bytes.Count == 0)
-            {
-                foreach (var line in lines)
-                {
-                    var trimmed = line.Trim();
-                    if (trimmed.All(c => Uri.IsHexDigit(c)))
-                    {
-                        bytes.AddRange(ParseHexString(trimmed));
-                    }
-                }
-            }
-
-            Log.Debug("ParseIsoTpResponse: Parsed {ByteCount} bytes from {FrameCount} frames (expected {ExpectedLen})",
-                bytes.Count, frameSequence.Count, expectedTotalLength);
-
-            return bytes;
-        }
-
-        /// <summary>
-        /// Checks if a string starts with a valid CAN ID prefix for ISO-TP frames.
-        /// Accepts both standard OBD range (7xx) and extended Nissan Leaf ECU range (79x).
-        /// </summary>
-        private static bool IsCanIdPrefixForIsoTp(string s)
-        {
-            if (s.Length < 3) return false;
-            var prefix = s[..3];
-            if (!prefix.All(c => Uri.IsHexDigit(c))) return false;
-            if (!int.TryParse(prefix, System.Globalization.NumberStyles.HexNumber, null, out var id)) return false;
-
-            // Accept:
-            // - 0x700-0x7FF: Standard OBD-II response range
-            // - 0x79x: Nissan Leaf charger response (79A)
-            return (id >= 0x700 && id <= 0x7FF) || (id >= 0x790 && id <= 0x79F);
-        }
-
-        private static bool IsCanIdPrefix(string s)
-        {
-            if (s.Length < 3) return false;
-            var prefix = s[..3];
-            return prefix.All(c => Uri.IsHexDigit(c)) &&
-                   int.TryParse(prefix, System.Globalization.NumberStyles.HexNumber, null, out var id) &&
-                   id >= 0x700 && id <= 0x7FF;
-        }
-
-        private static byte[] ParseHexString(string hex)
-        {
-            var result = new List<byte>();
-            for (var i = 0; i + 1 < hex.Length; i += 2)
-            {
-                if (byte.TryParse(hex.Substring(i, 2), System.Globalization.NumberStyles.HexNumber, null, out var b))
-                {
-                    result.Add(b);
-                }
-                else
-                {
-                    break;
-                }
-            }
-            return result.ToArray();
-        }
-
-        /// <summary>
         /// Parse VIN from charger response.
         /// From 2017 Leaf: 79A10156181314E3442\r79A215A304350334843\r79A2233313034303800
         /// Decoded: 61 81 31 4E 34 42 5A 30 43 50 33 48 43 33 31 30 34 30 38 00
@@ -1506,7 +1005,7 @@ namespace ObdTestApp
             vin = null;
             try
             {
-                var bytes = ParseIsoTpResponse(response);
+                var bytes = IsoTpParser.ParseIsoTpResponse(response);
 
                 AnsiConsole.MarkupLine($"[grey]   Parsed {bytes.Count} bytes[/]");
 

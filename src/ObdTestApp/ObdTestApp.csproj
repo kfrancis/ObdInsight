@@ -10,20 +10,15 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-	  <None Remove="Implementation Analysis.pdf" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Content Include="Implementation Analysis.pdf">
-	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	  </Content>
-	</ItemGroup>
-
-	<ItemGroup>
 	  <PackageReference Include="Serilog" Version="4.2.0" />
 	  <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
 	  <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
 	  <PackageReference Include="Spectre.Console" Version="0.54.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\ObdInsight.SourceGeneration\ObdInsight.SourceGeneration.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+      <ProjectReference Include="..\ObdInsight.SourceGeneration\ObdInsight.SourceGeneration.csproj" />
 	</ItemGroup>
 
 </Project>

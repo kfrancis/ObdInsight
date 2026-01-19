@@ -1,4 +1,5 @@
 using ObdTestApp;
+using ObdTestApp.Core.Communication.Elm327;
 using TUnit.Core.Interfaces;
 
 namespace OdbTestApp.Tests.Fixtures;
