@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using ObdInsight.SourceGeneration;
+using ObdInsight.SourceGeneration.Attributes;
 /// <summary>
 /// Base helper for testing source generators with proper compilation setup
 /// </summary>
@@ -76,6 +77,23 @@ public static class GeneratorTestHelper
     {
         var compilation = CreateCompilation(source);
         var generator = new CanSignalGenerator();
+
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
+            compilation,
+            out var outputCompilation,
+            out var diagnostics);
+
+        return driver.GetRunResult();
+    }
+
+    /// <summary>
+    /// Runs a specific generator type and returns the generated sources
+    /// </summary>
+    public static GeneratorDriverRunResult RunGenerator<TGenerator>(string source) where TGenerator : IIncrementalGenerator, new()
+    {
+        var compilation = CreateCompilation(source);
+        var generator = new TGenerator();
 
         var driver = CSharpGeneratorDriver.Create(generator);
         driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(

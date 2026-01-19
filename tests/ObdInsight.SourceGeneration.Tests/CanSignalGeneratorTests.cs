@@ -9,7 +9,7 @@ namespace ObdInsight.SourceGeneration.Tests
         public async Task CompilationSucceedsWithGeneratedCode()
         {
             var source = """
-            using ObdInsight.SourceGeneration;
+            using ObdInsight.SourceGeneration.Attributes;
 
             namespace TestNamespace
             {
@@ -43,7 +43,7 @@ namespace ObdInsight.SourceGeneration.Tests
         public async Task GeneratesBoolSignal()
         {
             var source = """
-            using ObdInsight.SourceGeneration;
+            using ObdInsight.SourceGeneration.Attributes;
 
             namespace TestNamespace
             {
@@ -72,7 +72,7 @@ namespace ObdInsight.SourceGeneration.Tests
         public async Task GeneratesDoubleSignal()
         {
             var source = """
-            using ObdInsight.SourceGeneration;
+            using ObdInsight.SourceGeneration.Attributes;
 
             namespace TestNamespace
             {
@@ -94,7 +94,7 @@ namespace ObdInsight.SourceGeneration.Tests
         public async Task GeneratesMultipleSignals()
         {
             var source = """
-            using ObdInsight.SourceGeneration;
+            using ObdInsight.SourceGeneration.Attributes;
 
             namespace TestNamespace
             {
@@ -133,7 +133,7 @@ namespace ObdInsight.SourceGeneration.Tests
         public async Task GeneratesSignalWithFactorAndOffset()
         {
             var source = """
-            using ObdInsight.SourceGeneration;
+            using ObdInsight.SourceGeneration.Attributes;
 
             namespace TestNamespace
             {
@@ -155,7 +155,7 @@ namespace ObdInsight.SourceGeneration.Tests
         public async Task GeneratesSignalWithFactorOnly()
         {
             var source = """
-            using ObdInsight.SourceGeneration;
+            using ObdInsight.SourceGeneration.Attributes;
 
             namespace TestNamespace
             {
@@ -176,7 +176,7 @@ namespace ObdInsight.SourceGeneration.Tests
         public async Task GeneratesSignalWithOffsetOnly()
         {
             var source = """
-            using ObdInsight.SourceGeneration;
+            using ObdInsight.SourceGeneration.Attributes;
 
             namespace TestNamespace
             {
@@ -197,7 +197,7 @@ namespace ObdInsight.SourceGeneration.Tests
         public async Task GeneratesSignedIntSignal()
         {
             var source = """
-            using ObdInsight.SourceGeneration;
+            using ObdInsight.SourceGeneration.Attributes;
 
             namespace TestNamespace
             {
@@ -219,7 +219,7 @@ namespace ObdInsight.SourceGeneration.Tests
         public async Task GeneratesUnsignedIntSignal()
         {
             var source = """
-            using ObdInsight.SourceGeneration;
+            using ObdInsight.SourceGeneration.Attributes;
 
             namespace TestNamespace
             {
@@ -240,7 +240,7 @@ namespace ObdInsight.SourceGeneration.Tests
         public async Task HandlesNestedNamespace()
         {
             var source = """
-            using ObdInsight.SourceGeneration;
+            using ObdInsight.SourceGeneration.Attributes;
 
             namespace Vehicles.Nissan.Leaf
             {
@@ -265,7 +265,7 @@ namespace ObdInsight.SourceGeneration.Tests
         public async Task IgnoresNonPartialClass()
         {
             var source = """
-            using ObdInsight.SourceGeneration;
+            using ObdInsight.SourceGeneration.Attributes;
 
             namespace TestNamespace
             {
@@ -288,7 +288,7 @@ namespace ObdInsight.SourceGeneration.Tests
         public async Task NoErrorsForValidFrame()
         {
             var source = """
-            using ObdInsight.SourceGeneration;
+            using ObdInsight.SourceGeneration.Attributes;
 
             namespace TestNamespace
             {

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
@@ -8,6 +8,18 @@
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
 	</PropertyGroup>
+
+	<ItemGroup>
+	  <Compile Remove="Core\Vehicles\Implementations\Nissan\Leaf\AZE0\LiveDriveViewModel.cs" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="OdbTestApp.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Include="Core\Vehicles\Implementations\Nissan\Leaf\AZE0\LiveDriveViewModel.cs" />
+	</ItemGroup>
 
 	<ItemGroup>
 	  <PackageReference Include="Serilog" Version="4.2.0" />

@@ -123,7 +123,7 @@ namespace ObdInsight.SourceGeneration
 
             // Find [CanFrame] attribute
             var canFrameAttr = classSymbol.GetAttributes()
-                .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == "ObdInsight.SourceGeneration.CanFrameAttribute");
+                .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == "ObdInsight.SourceGeneration.Attributes.CanFrameAttribute");
 
             if (canFrameAttr is null)
                 return null;
@@ -150,7 +150,7 @@ namespace ObdInsight.SourceGeneration
                     continue;
 
                 var signalAttr = member.GetAttributes()
-                    .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == "ObdInsight.SourceGeneration.CanSignalAttribute");
+                    .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == "ObdInsight.SourceGeneration.Attributes.CanSignalAttribute");
 
                 if (signalAttr is null)
                     continue;

@@ -1,6 +1,6 @@
-using static OdbTestApp.Tests.NissanLeaf.LeafBmsParsingHelpers;
+using static OdbTestApp.Tests.NissanLeaf.AZE0.Unit.LeafBmsParsingHelpers;
 
-namespace OdbTestApp.Tests.NissanLeaf;
+namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
 /// Unit tests for Nissan Leaf ISO-TP frame parsing.

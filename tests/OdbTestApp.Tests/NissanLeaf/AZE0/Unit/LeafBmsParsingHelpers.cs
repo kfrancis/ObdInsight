@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace OdbTestApp.Tests.NissanLeaf;
+namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
 /// Shared parsing utilities for Nissan Leaf BMS data.

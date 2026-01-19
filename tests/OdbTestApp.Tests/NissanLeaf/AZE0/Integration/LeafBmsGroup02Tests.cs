@@ -1,8 +1,8 @@
 using ObdTestApp.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using OdbTestApp.Tests.Fixtures;
-using static OdbTestApp.Tests.NissanLeaf.LeafBmsParsingHelpers;
+using static OdbTestApp.Tests.NissanLeaf.AZE0.Unit.LeafBmsParsingHelpers;
 
-namespace OdbTestApp.Tests.NissanLeaf;
+namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
 
 /// <summary>
 /// Integration tests for Nissan Leaf BMS Group 02 (cell voltages) using a real BLE connection.
