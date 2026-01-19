@@ -1,75 +1,11 @@
 using System.Collections.Concurrent;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
+using ObdTestApp.Core.Communication.Bluetooth;
 
-namespace ObdTestApp.Core.Communication.Bluetooth;
+namespace ObdTestApp.Communication.Bluetooth;
 
-/// <summary>
-/// Information about a discovered BLE device.
-/// </summary>
-/// <param name="Name">Device display name</param>
-/// <param name="Address">Device MAC address or identifier</param>
-/// <param name="Rssi">Signal strength in dBm</param>
-/// <param name="AdvertisedServices">Service UUIDs advertised by the device</param>
-/// <param name="ManufacturerData">Optional manufacturer-specific data</param>
-public record BleDeviceInfo(
-    string Name,
-    string Address,
-    int Rssi,
-    IReadOnlyList<Guid> AdvertisedServices,
-    IReadOnlyDictionary<string, byte[]>? ManufacturerData = null
-);
-
-/// <summary>
-/// Filter criteria for BLE device scanning.
-/// </summary>
-/// <param name="ServiceUuids">Only discover devices advertising these services</param>
-/// <param name="DeviceNames">Only discover devices with names containing these strings</param>
-/// <param name="DeviceAddresses">Only discover devices with these addresses</param>
-/// <param name="MinRssi">Minimum signal strength to report</param>
-public record BleScanFilter(
-    IReadOnlyList<Guid>? ServiceUuids = null,
-    IReadOnlyList<string>? DeviceNames = null,
-    IReadOnlyList<string>? DeviceAddresses = null,
-    int? MinRssi = null
-);
-
-/// <summary>
-/// Event args for device discovery events.
-/// </summary>
-public class BleDeviceDiscoveredEventArgs : EventArgs
-{
-    /// <summary>
-    /// Creates a new device discovery event
-    /// </summary>
-    public BleDeviceDiscoveredEventArgs(BleDeviceInfo device) => Device = device;
-
-    /// <summary>
-    /// The discovered device
-    /// </summary>
-    public BleDeviceInfo Device { get; }
-}
-
-/// <summary>
-/// Event args for scan state change events.
-/// </summary>
-public class BleScanStateChangedEventArgs : EventArgs
-{
-    /// <summary>
-    /// Creates a new scan state change event
-    /// </summary>
-    public BleScanStateChangedEventArgs(bool isScanning) => IsScanning = isScanning;
-
-    /// <summary>
-    /// Whether scanning is currently active
-    /// </summary>
-    public bool IsScanning { get; }
-}
-
-/// <summary>
-/// Windows BLE scanner using WinRT advertisement watcher.
-/// </summary>
-public sealed class BleScanner : IDisposable
+public sealed class BleScanner : IBleScanner
 {
     private readonly ConcurrentDictionary<string, BleDeviceInfo> _discoveredDevices = new();
     private readonly BluetoothLEAdvertisementWatcher _watcher;
@@ -103,7 +39,6 @@ public sealed class BleScanner : IDisposable
         _currentFilter = filter;
         _discoveredDevices.Clear();
 
-        // Configure service filter if specified
         if (filter?.ServiceUuids?.Count > 0)
         {
             _watcher.AdvertisementFilter.Advertisement.ServiceUuids.Clear();
@@ -118,7 +53,7 @@ public sealed class BleScanner : IDisposable
         return Task.CompletedTask;
     }
 
-    public Task StopScanAsync()
+    public Task StopScanAsync(CancellationToken ct = default)
     {
         if (_watcher.Status == BluetoothLEAdvertisementWatcherStatus.Started)
         {
@@ -126,6 +61,9 @@ public sealed class BleScanner : IDisposable
         }
         return Task.CompletedTask;
     }
+
+    public IReadOnlyList<BleDeviceInfo> GetDiscoveredDevices() => _discoveredDevices.Values.ToList();
+    public void ClearDiscoveredDevices() => _discoveredDevices.Clear();
 
     private static string FormatMacAddress(ulong address)
     {
@@ -139,24 +77,20 @@ public sealed class BleScanner : IDisposable
         {
             var address = FormatMacAddress(args.BluetoothAddress);
 
-            // Apply address filter
             if (_currentFilter?.DeviceAddresses?.Count > 0 &&
                 !_currentFilter.DeviceAddresses.Any(a => a.Equals(address, StringComparison.OrdinalIgnoreCase)))
             {
                 return;
             }
 
-            // Apply RSSI filter
             if (_currentFilter?.MinRssi.HasValue == true && args.RawSignalStrengthInDBm < _currentFilter.MinRssi.Value)
             {
                 return;
             }
 
-            // Try to get device name (may need to connect briefly)
             var name = args.Advertisement.LocalName;
             if (string.IsNullOrEmpty(name))
             {
-                // Try to get name from device
                 try
                 {
                     using var device = await BluetoothLEDevice.FromBluetoothAddressAsync(args.BluetoothAddress);
@@ -168,17 +102,14 @@ public sealed class BleScanner : IDisposable
                 }
             }
 
-            // Apply name filter
             if (_currentFilter?.DeviceNames?.Count > 0 &&
                 !_currentFilter.DeviceNames.Any(n => name.Contains(n, StringComparison.OrdinalIgnoreCase)))
             {
                 return;
             }
 
-            // Extract advertised service UUIDs
             var serviceUuids = args.Advertisement.ServiceUuids.ToList();
 
-            // Extract manufacturer data
             var manufacturerData = new Dictionary<string, byte[]>();
             foreach (var data in args.Advertisement.ManufacturerData)
             {
@@ -197,7 +128,6 @@ public sealed class BleScanner : IDisposable
                 ManufacturerData: manufacturerData
             );
 
-            // Only raise event if this is a new device or info changed
             if (_discoveredDevices.TryAdd(address, deviceInfo) ||
                 _discoveredDevices.TryGetValue(address, out var existing) && existing.Rssi != deviceInfo.Rssi)
             {

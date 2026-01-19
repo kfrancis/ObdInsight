@@ -10,15 +10,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-	  <Compile Remove="Core\Vehicles\Implementations\Nissan\Leaf\AZE0\LiveDriveViewModel.cs" />
-	</ItemGroup>
-
-	<ItemGroup>
 		<InternalsVisibleTo Include="OdbTestApp.Tests" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <None Include="Core\Vehicles\Implementations\Nissan\Leaf\AZE0\LiveDriveViewModel.cs" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -31,6 +23,7 @@
 	<ItemGroup>
 	  <ProjectReference Include="..\ObdInsight.SourceGeneration\ObdInsight.SourceGeneration.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
       <ProjectReference Include="..\ObdInsight.SourceGeneration\ObdInsight.SourceGeneration.csproj" />
+	  <ProjectReference Include="..\ObdTestApp.Core\ObdTestApp.Core.csproj" />
 	</ItemGroup>
 
 </Project>

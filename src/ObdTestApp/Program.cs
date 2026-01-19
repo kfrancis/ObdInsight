@@ -1,10 +1,11 @@
-using ObdTestApp.Core.Application;
-using ObdTestApp.Core.Communication.Bluetooth;
+using ObdTestApp.Application;
+using ObdTestApp.Communication.Bluetooth;
 using ObdTestApp.Core.Communication.Elm327;
 using ObdTestApp.Core.Protocols;
-using ObdTestApp.Core.UI;
+using ObdTestApp.UI;
 using ObdTestApp.Core.Vehicles;
 using ObdTestApp.Core.Vehicles.Implementations.Nissan.Leaf;
+using ObdTestApp.Core.Communication.Bluetooth;
 using Serilog;
 using Spectre.Console;
 

@@ -87,7 +87,7 @@ public class LeafChargerVinParsingTests
         var frames = ParseIsoTpFrames(s_goldenVinLines);
 
         // Assert
-        await Assert.That(frames).Count().IsEqualTo(3);
+        await Assert.That(frames).Count().IsEqualTo(4);
     }
 
     [Test]

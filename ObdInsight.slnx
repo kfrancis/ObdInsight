@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/newarch/">
     <Project Path="src/ObdInsight.SourceGeneration/ObdInsight.SourceGeneration.csproj" Id="31a510ba-88f2-4d38-b601-005c0acfd9aa" />
+    <Project Path="src/ObdTestApp.Core/ObdTestApp.Core.csproj" Id="45187bc7-b144-426b-b4ad-af4e4ad1bac6" />
     <Project Path="src/ObdTestApp/ObdTestApp.csproj" Id="36c169ba-2379-4f56-b741-6cc9277e9c44" />
     <Project Path="tests/ObdInsight.SourceGeneration.Tests/ObdInsight.SourceGeneration.Tests.csproj" />
     <Project Path="tests/OdbTestApp.Tests/OdbTestApp.Tests.csproj" />
