@@ -1,7 +1,6 @@
 using ObdTestApp.Core.Communication.Elm327;
 using ObdTestApp.Core.Protocols;
 using ObdTestApp.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
-using CanFrameRouter = ObdTestApp.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames.CanFrameRouter;
 
 namespace ObdTestApp.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities;
 

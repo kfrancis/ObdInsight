@@ -63,3 +63,222 @@ public partial class VcmFrame_510_AZE0
         MinValue = 0, MaxValue = 31)]
     public partial int PowerConsumptionAux { get; init; }
 }
+
+/// <summary>
+/// VCM shifter relay frame for Nissan Leaf AZE0 platform (0x174)
+/// Transmitted on CAR-CAN bus
+/// </summary>
+/// <remarks>
+/// VCM relays shifter position data from E-Shift on EV-CAN to instrument panel and VSP.
+/// Most signals are unknown/undecoded.
+/// </remarks>
+[CanFrame(0x174, Description = "VCM shifter relay data (CAR-CAN)")]
+public partial class VcmFrame_174_AZE0
+{
+    [CanSignal(24, 8,
+        Description = "Shifter position relay",
+        MinValue = 0, MaxValue = 255)]
+    public partial int ShifterPosition { get; init; }
+
+    //[CanSignal(0, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 0")]
+    //public partial int Unknown0 { get; init; }
+
+    //[CanSignal(8, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 1")]
+    //public partial int Unknown1 { get; init; }
+
+    //[CanSignal(16, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 2")]
+    //public partial int Unknown2 { get; init; }
+
+    //[CanSignal(32, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 4")]
+    //public partial int Unknown4 { get; init; }
+
+    //[CanSignal(40, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 5")]
+    //public partial int Unknown5 { get; init; }
+
+    //[CanSignal(48, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 6")]
+    //public partial int Unknown6 { get; init; }
+
+    //[CanSignal(56, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 7")]
+    //public partial int Unknown7 { get; init; }
+}
+
+/// <summary>
+/// VCM motor RPM relay frame for Nissan Leaf AZE0 platform (0x176)
+/// Transmitted on CAR-CAN bus
+/// </summary>
+/// <remarks>
+/// VCM relays motor RPM data from inverter message on EV-CAN to instrument cluster.
+/// Contains transmission input/output revolutions and ASCD (cruise control) speed request.
+/// </remarks>
+[CanFrame(0x176, Description = "VCM motor RPM relay (CAR-CAN, 7 bytes)")]
+public partial class VcmFrame_176_AZE0
+{
+    [CanSignal(39, 8, Unit = "km/h",
+        Description = "ASCD (cruise control) speed request",
+        MinValue = 0, MaxValue = 250)]
+    public partial int AscdSpeedRequest { get; init; }
+
+    [CanSignal(48, 8,
+        Description = "CRC checksum",
+        MinValue = 0, MaxValue = 255)]
+    public partial int Crc { get; init; }
+
+    [CanSignal(7, 16, Unit = "rpm",
+        Description = "Transmission output revolutions (absolute)",
+        MinValue = 0, MaxValue = 11000)]
+    public partial int TmOutputRevsAbs { get; init; }
+
+    [CanSignal(23, 16, Unit = "rpm",
+        Description = "Transmission input revolutions (absolute)",
+        MinValue = 0, MaxValue = 11000)]
+    public partial int TmInputRevsAbs { get; init; }
+
+    //[CanSignal(40, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 6")]
+    //public partial int Unknown6 { get; init; }
+}
+
+/// <summary>
+/// VCM motor current and throttle frame for Nissan Leaf AZE0 platform (0x180)
+/// Transmitted on CAR-CAN bus
+/// </summary>
+/// <remarks>
+/// Contains motor current measurements and throttle position.
+/// Motor current signals appear to be signed 12-bit values.
+/// </remarks>
+[CanFrame(0x180, Description = "VCM motor current and throttle (CAR-CAN)")]
+public partial class VcmFrame_180_AZE0
+{
+    [CanSignal(23, 12, IsSigned = true,
+        Description = "Motor current (amperes)",
+        MinValue = -2048, MaxValue = 2047)]
+    public partial int MotorAmp { get; init; }
+
+    [CanSignal(27, 12, IsSigned = true,
+        Description = "Alternative motor current measurement (amperes)",
+        MinValue = -2048, MaxValue = 2047)]
+    public partial int MotorAmpAlternative { get; init; }
+
+    [CanSignal(40, 8, Factor = 0.5, Unit = "%",
+        Description = "Throttle position",
+        MinValue = 0, MaxValue = 100)]
+    public partial double ThrottlePosition { get; init; }
+
+    //[CanSignal(0, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 0")]
+    //public partial int Unknown0 { get; init; }
+
+    //[CanSignal(8, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 1")]
+    //public partial int Unknown1 { get; init; }
+
+    //[CanSignal(48, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 5")]
+    //public partial int Unknown5 { get; init; }
+
+    //[CanSignal(56, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 6")]
+    //public partial int Unknown6 { get; init; }
+}
+
+/// <summary>
+/// VCM motor power data frame for Nissan Leaf AZE0 platform (0x260)
+/// Transmitted on CAR-CAN bus
+/// </summary>
+/// <remarks>
+/// Contains motor power consumption and available power limits.
+/// Power values include both drive and regeneration modes.
+/// </remarks>
+[CanFrame(0x260, Description = "VCM motor power data (CAR-CAN, 4 bytes)")]
+public partial class VcmFrame_260_AZE0
+{
+    [CanSignal(6, 7, Unit = "kW",
+        Description = "Available motor power",
+        MinValue = 0, MaxValue = 90)]
+    public partial int AvailableMotorPower { get; init; }
+
+    [CanSignal(14, 7, Unit = "kW",
+        Description = "Maximum motor regeneration power",
+        MinValue = 0, MaxValue = 50)]
+    public partial int MotorRegenerationPowerMax { get; init; }
+
+    [CanSignal(23, 12, Factor = 0.05, Offset = -100.0, Unit = "kW",
+        Description = "Motor power consumption (negative for regen)",
+        MinValue = -100, MaxValue = 90)]
+    public partial double PowerConsumptMotor { get; init; }
+}
+
+/// <summary>
+/// VCM dashboard shifter position frame for Nissan Leaf AZE0 platform (0x421)
+/// Transmitted on CAR-CAN bus
+/// </summary>
+/// <remarks>
+/// VCM relays shifter position to instrument panel and VSP for dashboard display.
+/// Single byte frame.
+/// </remarks>
+[CanFrame(0x421, Description = "VCM dashboard shifter position (CAR-CAN, 1 byte)")]
+public partial class VcmFrame_421_AZE0
+{
+    [CanSignal(7, 5,
+        Description = "Dashboard shifter position display",
+        MinValue = 0, MaxValue = 31)]
+    public partial int DashShifterPosition { get; init; }
+}
+
+/// <summary>
+/// VCM dashboard indicator lights frame for Nissan Leaf AZE0 platform (0x50D)
+/// Transmitted on CAR-CAN bus
+/// </summary>
+/// <remarks>
+/// VCM relays indicator light status to eyebrow display and A/V unit.
+/// Contains READY lamp, charge lamp, and EV system warning light signals.
+/// </remarks>
+[CanFrame(0x50D, Description = "VCM dashboard indicator lights (CAR-CAN)")]
+public partial class VcmFrame_50D_AZE0
+{
+    [CanSignal(47, 2,
+        Description = "Charge lamp signal (0-3 scale)",
+        MinValue = 0, MaxValue = 3)]
+    public partial int ChargeLampSignal { get; init; }
+
+    [CanSignal(45, 2,
+        Description = "EV system warning light (0-3 scale)",
+        MinValue = 0, MaxValue = 3)]
+    public partial int EvSystemWarningLight { get; init; }
+
+    [CanSignal(23, 2,
+        Description = "READY lamp signal (0-3 scale)",
+        MinValue = 0, MaxValue = 3)]
+    public partial int ReadyLampSignal { get; init; }
+
+    //[CanSignal(0, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 0")]
+    //public partial int Unknown0 { get; init; }
+
+    //[CanSignal(8, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 1")]
+    //public partial int Unknown1 { get; init; }
+
+    //[CanSignal(24, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 3")]
+    //public partial int Unknown3 { get; init; }
+
+    //[CanSignal(32, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 4")]
+    //public partial int Unknown4 { get; init; }
+
+    //[CanSignal(48, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 6")]
+    //public partial int Unknown6 { get; init; }
+
+    //[CanSignal(56, 8, IncludeInGeneration = false,
+    //    Description = "Unknown signal 7")]
+    //public partial int Unknown7 { get; init; }
+}

@@ -18,10 +18,10 @@ public partial class AbsFrame_130_AZE0
         MinValue = 0, MaxValue = 255)]
     public partial int BitmaskAbs { get; init; }
 
-    [CanSignal(16, 8,
-        Description = "Unknown ABS byte 2",
-        MinValue = 0, MaxValue = 255)]
-    public partial int Unknown2 { get; init; }
+    //[CanSignal(16, 8,
+    //    Description = "Unknown ABS byte 2",
+    //    MinValue = 0, MaxValue = 255)]
+    //public partial int Unknown2 { get; init; }
 }
 
 /// <summary>

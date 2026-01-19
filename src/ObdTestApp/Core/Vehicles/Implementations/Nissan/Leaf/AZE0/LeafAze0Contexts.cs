@@ -273,9 +273,9 @@ public static class LeafAze0Contexts
         // 0x180 (8 bytes) - Motor current and throttle
         // 0x260 (4 bytes) - Motor power consumption
         // 0x421 (1 byte) - Dashboard shifter position
-        // 0x50A (8 bytes) - AC status relay
         // 0x50D (8 bytes) - Dashboard indicator lights
         // 0x510 (8 bytes) - Power consumption and climate data
+        // Note: 0x50A appears on both EV-CAN and CAR-CAN with same structure
         CanFilterMask = "000",  // No filtering, accept all
         CanFilterPattern = "000",
 
