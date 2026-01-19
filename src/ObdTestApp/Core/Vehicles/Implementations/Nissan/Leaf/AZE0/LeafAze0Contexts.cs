@@ -38,7 +38,7 @@ public static class LeafAze0Contexts
 
     public static IReadOnlyList<EcuContext> All { get; } =
     [
-        Vcm, Bcm, Abs, AbsBroadcast, LbcBms, InverterMc, Meter, Hvac, Brake, Vsp, Eps, Tcu, MultiAv, IpdmEr, Airbag, Ident, Shift, Consult3Plus
+        Vcm, Bcm, BcmBroadcast, Abs, AbsBroadcast, LbcBms, InverterMc, Meter, Hvac, Brake, Vsp, Eps, Tcu, MultiAv, IpdmEr, Airbag, Ident, Shift, Consult3Plus
     ];
 
     public static EcuContext Avm => new()
@@ -54,6 +54,30 @@ public static class LeafAze0Contexts
     };
 
     public static EcuContext Bcm => ReqResp("BCM", "745", "765");
+
+    public static EcuContext BcmBroadcast => new()
+    {
+        Name = "BCM Broadcast (0x60D, 0x625)",
+        TxHeader = "000",            // unused in monitoring mode
+        RxFilter = "000",            // unused in monitoring mode
+        FlowControlHeader = "000",   // unused in monitoring mode
+        CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
+
+        // Monitor all standard CAN frames
+        MonitoringCommand = "AT MA",
+
+        // Accept BCM broadcast frames
+        // 0x60D (20ms) - Main BCM status (doors, locks, lights)
+        // 0x625 (20ms) - Headlight/foglight status
+        CanFilterMask = "000",  // No filtering, accept all
+        CanFilterPattern = "000",
+
+        ExpectedCanIds = ["60D", "625"],
+
+        EnableHeaders = true,
+        EnableAutoFormatting = true
+    };
+
 
     public static EcuContext Brake => ReqResp("BRAKE", "70E", "70F");
 

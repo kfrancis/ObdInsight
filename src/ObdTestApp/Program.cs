@@ -318,7 +318,7 @@ namespace ObdTestApp
                     var ahrReadings = new List<double>();
                     var successCount = 0;
 
-                    for (int i = 1; i <= RequiredReads; i++)
+                    for (var i = 1; i <= RequiredReads; i++)
                     {
                         try
                         {
