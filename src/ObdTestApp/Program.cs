@@ -374,36 +374,67 @@ namespace ObdTestApp
                 AnsiConsole.WriteLine();
                 AnsiConsole.MarkupLine("[yellow]Waking up ECUs and configuring BMS...[/]");
 
-                // Try sending to VCM wakeup address
-                Log.Information("Sending VCM wakeup (679)");
-                await framer.SendAndReadFrameAsync("ATSH679", session.CommandTimeout, ct);
-                var vcmWakeupResponse = await framer.SendAndReadFrameAsync("00", session.CommandTimeout, ct);
+                // Multi-tier wakeup strategy for Nissan Leaf
+                bool wakeupSucceeded = false;
 
-                // Try battery heater spoof
-                Log.Information("Sending battery heater spoof (5C0)");
-                await framer.SendAndReadFrameAsync("ATSH5C0", session.CommandTimeout, ct);
-                var battHeaterWakeupResponse = await framer.SendAndReadFrameAsync("00000000", session.CommandTimeout, ct);
+                // Tier 1: Send to VCM wakeup address (0x679)
+                Log.Information("Wakeup Tier 1: Sending VCM wakeup (679)");
+                try
+                {
+                    await framer.SendAndReadFrameAsync("ATSH679", session.CommandTimeout, ct);
+                    var vcmWakeupResponse = await framer.SendAndReadFrameAsync("00", session.CommandTimeout, ct);
+                    if (!vcmWakeupResponse.Contains("NO DATA", StringComparison.OrdinalIgnoreCase) && vcmWakeupResponse.Length > 3)
+                    {
+                        Log.Information("Tier 1 VCM wakeup succeeded: {Response}", vcmWakeupResponse.Substring(0, Math.Min(50, vcmWakeupResponse.Length)));
+                        wakeupSucceeded = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Debug("Tier 1 VCM wakeup attempt failed: {Message}", ex.Message);
+                }
 
-                // CRITICAL: First wake up the ECUs by sending to broadcast address
-                // This helps when ECUs are sleeping (car OFF but accessory on)
-                Log.Information("Sending wakeup to broadcast address (7DF)");
+                // Tier 2: Try battery heater wakeup (0x5C0)
+                if (!wakeupSucceeded)
+                {
+                    Log.Information("Wakeup Tier 2: Sending battery heater wakeup (5C0)");
+                    try
+                    {
+                        await framer.SendAndReadFrameAsync("ATSH5C0", session.CommandTimeout, ct);
+                        var battHeaterWakeupResponse = await framer.SendAndReadFrameAsync("00000000", session.CommandTimeout, ct);
+                        if (!battHeaterWakeupResponse.Contains("NO DATA", StringComparison.OrdinalIgnoreCase) && battHeaterWakeupResponse.Length > 3)
+                        {
+                            Log.Information("Tier 2 battery heater wakeup succeeded: {Response}", battHeaterWakeupResponse.Substring(0, Math.Min(50, battHeaterWakeupResponse.Length)));
+                            wakeupSucceeded = true;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Debug("Tier 2 battery heater wakeup attempt failed: {Message}", ex.Message);
+                    }
+                }
+
+                // Tier 3: Broadcast wakeup (0x7DF)
+                Log.Information("Wakeup Tier 3: Sending broadcast wakeup (7DF)");
                 await framer.SendAndReadFrameAsync("ATSH7DF", session.CommandTimeout, ct);
                 var wakeupResponse = await framer.SendAndReadFrameAsync("0100", session.CommandTimeout, ct);
 
                 if (wakeupResponse.Contains("NO DATA", StringComparison.OrdinalIgnoreCase))
                 {
-                    Log.Warning("Wakeup query returned NO DATA - ECUs may be sleeping");
+                    Log.Warning("All wakeup attempts returned NO DATA - ECUs may be sleeping");
                     AnsiConsole.MarkupLine("[red]⚠[/] [yellow]Wakeup query returned NO DATA - ECUs appear to be sleeping![/]");
                     AnsiConsole.MarkupLine("[yellow]  → Make sure car is in READY mode or charging[/]");
                     AnsiConsole.WriteLine();
                 }
                 else
                 {
-                    Log.Information("Wakeup query succeeded - ECUs responding");
+                    Log.Information("Broadcast wakeup query succeeded - ECUs responding");
                     AnsiConsole.MarkupLine("[green]✓[/] ECUs responded to wakeup");
+                    wakeupSucceeded = true;
                 }
 
-                await Task.Delay(200, ct); // Wait for ECUs to wake up
+                // Additional delay to ensure ECUs are fully awake
+                await Task.Delay(500, ct);
 
                 Log.Information("ECU wakeup complete");
                 AnsiConsole.MarkupLine("[green]✓[/] ECU wakeup complete");
@@ -669,30 +700,39 @@ namespace ObdTestApp
                             var motorStatus = await motor.GetStatusAsync(ct);
                             var parts = new List<string>();
 
-                            if (motorStatus.InputVoltageV is double voltage)
-                                parts.Add($"V: {voltage:F1}V");
-                            if (motorStatus.EffectiveTorqueNm is double torque)
-                                parts.Add($"Torque: {torque:F1}Nm");
-                            if (motorStatus.OutputRevolutionRpm is int rpm)
-                                parts.Add($"RPM: {rpm}");
-                            if (motorStatus.MotorTempC is double temp)
-                                parts.Add($"Motor: {temp:F1}°C");
-                            if (motorStatus.IgbtTempC is double igbtTemp)
-                                parts.Add($"IGBT: {igbtTemp:F1}°C");
-                            if (motorStatus.PowerWatts is double power)
-                                parts.Add($"Power: {power / 1000:F2}kW");
-
-                            if (parts.Count > 0)
+                            if (motorStatus is null)
                             {
-                                AnsiConsole.MarkupLine($"[green]✓[/] Motor: {string.Join(", ", parts)}");
-                                Log.Information("Motor status: {Status}", string.Join(", ", parts));
-                                successfulQueries++;
+                                AnsiConsole.MarkupLine("[yellow]⚠[/] Motor: No response from ECU");
+                                Log.Warning("Motor status returned null");
+                                invalidResponseQueries++;
                             }
                             else
                             {
-                                AnsiConsole.MarkupLine("[yellow]⚠[/] Motor: No data available");
-                                Log.Warning("Motor status returned no data");
-                                invalidResponseQueries++;
+                                if (motorStatus.InputVoltageV is double voltage)
+                                    parts.Add($"V: {voltage:F1}V");
+                                if (motorStatus.EffectiveTorqueNm is double torque)
+                                    parts.Add($"Torque: {torque:F1}Nm");
+                                if (motorStatus.OutputRevolutionRpm is int rpm)
+                                    parts.Add($"RPM: {rpm}");
+                                if (motorStatus.MotorTempC is double temp)
+                                    parts.Add($"Motor: {temp:F1}°C");
+                                if (motorStatus.IgbtTempC is double igbtTemp)
+                                    parts.Add($"IGBT: {igbtTemp:F1}°C");
+                                if (motorStatus.PowerWatts is double power)
+                                    parts.Add($"Power: {power / 1000:F2}kW");
+
+                                if (parts.Count > 0)
+                                {
+                                    AnsiConsole.MarkupLine($"[green]✓[/] Motor: {string.Join(", ", parts)}");
+                                    Log.Information("Motor status: {Status}", string.Join(", ", parts));
+                                    successfulQueries++;
+                                }
+                                else
+                                {
+                                    AnsiConsole.MarkupLine("[yellow]⚠[/] Motor: No data available");
+                                    Log.Warning("Motor status returned no data");
+                                    invalidResponseQueries++;
+                                }
                             }
                         }
                         catch (Exception ex)
@@ -772,26 +812,35 @@ namespace ObdTestApp
                             var vcmStatus = await vcm.GetStatusAsync(ct);
                             var parts = new List<string>();
 
-                            if (vcmStatus.ClimateControlActive is bool climateActive)
-                                parts.Add($"Climate: {(climateActive ? "ON" : "OFF")}");
-                            if (vcmStatus.ClimateControlPowerKw is double climatePower)
-                                parts.Add($"Climate Power: {climatePower:F2}kW");
-                            if (vcmStatus.OutsideAmbientTempC is double outsideTemp)
-                                parts.Add($"Outside: {outsideTemp:F1}°C");
-                            if (vcmStatus.EcoIndicator is int eco)
-                                parts.Add($"Eco: {eco}/15");
-
-                            if (parts.Count > 0)
+                            if (vcmStatus is null)
                             {
-                                AnsiConsole.MarkupLine($"[green]✓[/] VCM: {string.Join(", ", parts)}");
-                                Log.Information("VCM status: {Status}", string.Join(", ", parts));
-                                successfulQueries++;
+                                AnsiConsole.MarkupLine("[yellow]⚠[/] VCM: No response from ECU");
+                                Log.Warning("VCM status returned null");
+                                invalidResponseQueries++;
                             }
                             else
                             {
-                                AnsiConsole.MarkupLine("[yellow]⚠[/] VCM: No data available");
-                                Log.Warning("VCM status returned no data");
-                                invalidResponseQueries++;
+                                if (vcmStatus.ClimateControlActive is bool climateActive)
+                                    parts.Add($"Climate: {(climateActive ? "ON" : "OFF")}");
+                                if (vcmStatus.ClimateControlPowerKw is double climatePower)
+                                    parts.Add($"Climate Power: {climatePower:F2}kW");
+                                if (vcmStatus.OutsideAmbientTempC is double outsideTemp)
+                                    parts.Add($"Outside: {outsideTemp:F1}°C");
+                                if (vcmStatus.EcoIndicator is int eco)
+                                    parts.Add($"Eco: {eco}/15");
+
+                                if (parts.Count > 0)
+                                {
+                                    AnsiConsole.MarkupLine($"[green]✓[/] VCM: {string.Join(", ", parts)}");
+                                    Log.Information("VCM status: {Status}", string.Join(", ", parts));
+                                    successfulQueries++;
+                                }
+                                else
+                                {
+                                    AnsiConsole.MarkupLine("[yellow]⚠[/] VCM: No data available");
+                                    Log.Warning("VCM status returned no data");
+                                    invalidResponseQueries++;
+                                }
                             }
 
                             // Also query gear position
@@ -834,30 +883,39 @@ namespace ObdTestApp
                             var absStatus = await abs.GetStatusAsync(ct);
                             var parts = new List<string>();
 
-                            if (absStatus.VehicleSpeedKmh is double speed)
-                                parts.Add($"Speed: {speed:F1}km/h");
-                            if (absStatus.WheelSpeedFlKmh is double fl)
-                                parts.Add($"FL: {fl:F1}");
-                            if (absStatus.WheelSpeedFrKmh is double fr)
-                                parts.Add($"FR: {fr:F1}");
-                            if (absStatus.WheelSpeedRlKmh is double rl)
-                                parts.Add($"RL: {rl:F1}");
-                            if (absStatus.WheelSpeedRrKmh is double rr)
-                                parts.Add($"RR: {rr:F1}");
-                            if (absStatus.LeadAcidBatteryVoltage is double battV)
-                                parts.Add($"12V Batt: {battV:F1}V");
-
-                            if (parts.Count > 0)
+                            if (absStatus is null)
                             {
-                                AnsiConsole.MarkupLine($"[green]✓[/] ABS: {string.Join(", ", parts)}");
-                                Log.Information("ABS status: {Status}", string.Join(", ", parts));
-                                successfulQueries++;
+                                AnsiConsole.MarkupLine("[yellow]⚠[/] ABS: No response from ECU");
+                                Log.Warning("ABS status returned null");
+                                invalidResponseQueries++;
                             }
                             else
                             {
-                                AnsiConsole.MarkupLine("[yellow]⚠[/] ABS: No data available");
-                                Log.Warning("ABS status returned no data");
-                                invalidResponseQueries++;
+                                if (absStatus.VehicleSpeedKmh is double speed)
+                                    parts.Add($"Speed: {speed:F1}km/h");
+                                if (absStatus.WheelSpeedFlKmh is double fl)
+                                    parts.Add($"FL: {fl:F1}");
+                                if (absStatus.WheelSpeedFrKmh is double fr)
+                                    parts.Add($"FR: {fr:F1}");
+                                if (absStatus.WheelSpeedRlKmh is double rl)
+                                    parts.Add($"RL: {rl:F1}");
+                                if (absStatus.WheelSpeedRrKmh is double rr)
+                                    parts.Add($"RR: {rr:F1}");
+                                if (absStatus.LeadAcidBatteryVoltage is double battV)
+                                    parts.Add($"12V Batt: {battV:F1}V");
+
+                                if (parts.Count > 0)
+                                {
+                                    AnsiConsole.MarkupLine($"[green]✓[/] ABS: {string.Join(", ", parts)}");
+                                    Log.Information("ABS status: {Status}", string.Join(", ", parts));
+                                    successfulQueries++;
+                                }
+                                else
+                                {
+                                    AnsiConsole.MarkupLine("[yellow]⚠[/] ABS: No data available");
+                                    Log.Warning("ABS status returned no data");
+                                    invalidResponseQueries++;
+                                }
                             }
                         }
                         catch (Exception ex)
@@ -1039,9 +1097,12 @@ namespace ObdTestApp
         /// </summary>
         private static bool TryParseVin(string? response, out string? vin)
         {
-            ArgumentNullException.ThrowIfNull(response);
-
             vin = null;
+
+            if (string.IsNullOrEmpty(response))
+            {
+                return false;
+            }
             try
             {
                 var bytes = IsoTpParser.ParseIsoTpResponse(response);
