@@ -4,7 +4,8 @@
       "Bash(dotnet build:*)",
       "Bash(dotnet run:*)",
       "Bash(dir:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(ls:*)"
     ]
   }
 }

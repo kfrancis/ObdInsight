@@ -142,7 +142,7 @@ public static class LeafAze0Contexts
         EnableAutoFormatting = true
     };
 
-    public static EcuContext Ident => ReqResp("IDENT", "792", "793");
+    public static EcuContext Ident => ReqResp("IDENT (Charger)", "797", "79A");
 
     public static EcuContext InverterMc => ReqResp("INVERTER/MC", "784", "78C");
 

@@ -6,6 +6,7 @@ using ObdTestApp.Core.Vehicles;
 using ObdTestApp.Core.Communication.Bluetooth;
 using Serilog;
 using Spectre.Console;
+using ObdTestApp.Core.Vehicles.Implementations.Nissan.Leaf;
 
 namespace ObdTestApp
 {
@@ -252,32 +253,36 @@ namespace ObdTestApp
                     Log.Information("Device selected: {DeviceName} ({Address})", selectedDevice.Name, selectedDevice.Address);
                 }
 
-                // Select vehicle profile
-                Log.Information("Prompting user to select vehicle");
-                var vehicleSelector = new VehicleSelector();
-                var vehicleProfile = vehicleSelector.SelectVehicle();
+                //// Select vehicle profile
+                //Log.Information("Prompting user to select vehicle");
+                //var vehicleSelector = new VehicleSelector();
+                //var vehicleProfile = vehicleSelector.SelectVehicle();
 
-                if (vehicleProfile == null)
-                {
-                    Log.Information("No vehicle profile selected by user. Exiting.");
-                    AnsiConsole.MarkupLine("[yellow]No vehicle selected. Exiting.[/]");
-                    return;
-                }
+                //if (vehicleProfile == null)
+                //{
+                //    Log.Information("No vehicle profile selected by user. Exiting.");
+                //    AnsiConsole.MarkupLine("[yellow]No vehicle selected. Exiting.[/]");
+                //    return;
+                //}
 
-                // Select vehicle variant
-                Log.Information("Prompting user to select vehicle variant for {Make} {Model}", vehicleProfile.Make, vehicleProfile.Model);
-                var vehicleVariant = vehicleSelector.SelectVariant(vehicleProfile);
+                //// Select vehicle variant
+                //Log.Information("Prompting user to select vehicle variant for {Make} {Model}", vehicleProfile.Make, vehicleProfile.Model);
+                //var vehicleVariant = vehicleSelector.SelectVariant(vehicleProfile);
 
-                if (vehicleVariant == null)
-                {
-                    Log.Information("No vehicle variant selected by user. Exiting.");
-                    AnsiConsole.MarkupLine("[yellow]No variant selected. Exiting.[/]");
-                    return;
-                }
+                //if (vehicleVariant == null)
+                //{
+                //    Log.Information("No vehicle variant selected by user. Exiting.");
+                //    AnsiConsole.MarkupLine("[yellow]No variant selected. Exiting.[/]");
+                //    return;
+                //}
+
+                var vehicleProfile = new NissanLeaf();
+                var vehicleVariantId = vehicleProfile.DetectVariantFromVin("1N4AZ0CP7HC308656");
+                var vehicleVariant = vehicleProfile.Variants.FirstOrDefault(v => v.Id == vehicleVariantId);
 
                 // Run with automatic retry on failure
                 Log.Information("Starting session with device: {DeviceName} ({Address}), vehicle: {Make} {Model}, variant: {Variant}",
-                    selectedDevice.Name, selectedDevice.Address, vehicleProfile.Make, vehicleProfile.Model, vehicleVariant.DisplayName);
+                    selectedDevice.Name, selectedDevice.Address, vehicleProfile.Make, vehicleProfile.Model, "Leaf");
                 var retryService = new SessionRetryService();
                 await retryService.RunWithRetryAsync(selectedDevice, preferences, RunElm327SessionAsync, vehicleProfile, vehicleVariant, cts.Token);
             }
@@ -651,6 +656,8 @@ namespace ObdTestApp
                             "AZE0-2-2016-2017");
                     }
 
+
+
                     // ===========================================
                     // 2. Vehicle Identification (VIN)
                     // ===========================================
@@ -662,7 +669,16 @@ namespace ObdTestApp
                         {
                             var vinResponse = await vi.GetVinAsync(ct);
 
-                            if (TryParseVin(vinResponse, out var vin))
+                            // Newer `IVehicleIdentification` implementations return the VIN directly.
+                            // Keep the raw-ISO-TP parsing path as a fallback for older implementations.
+                            if (!string.IsNullOrWhiteSpace(vinResponse) && vinResponse.Length == 17)
+                            {
+                                AnsiConsole.MarkupLine($"[green]✓[/] VIN: {vinResponse}");
+                                Log.Information("VIN retrieved: {Vin}", vinResponse);
+                                DecodeVin(vinResponse);
+                                successfulQueries++;
+                            }
+                            else if (TryParseVin(vinResponse, out var vin))
                             {
                                 AnsiConsole.MarkupLine($"[green]✓[/] VIN: {vin}");
                                 Log.Information("VIN retrieved: {Vin}", vin);
@@ -1134,20 +1150,33 @@ namespace ObdTestApp
 
                 if (vinStart >= 0)
                 {
-                    // Extract up to 17 characters for VIN
-                    var vinBytes = bytes.Skip(vinStart).Take(17).ToArray();
+                    // Some adapters/frames include spurious bytes in the VIN stream.
+                    // VINs are restricted to 0-9 and A-Z (excluding I/O/Q), so extract exactly 17 valid VIN chars.
+                    var vinBytes = bytes.Skip(vinStart);
+                    Span<char> vinChars = stackalloc char[17];
+                    var vinLen = 0;
 
-                    // Convert to ASCII, filtering out non-printable
-                    var vinChars = vinBytes
-                        .Where(b => b >= 0x20 && b < 0x7F)
-                        .Select(b => (char)b)
-                        .ToArray();
-
-                    var candidateVin = new string(vinChars).Trim('\0', ' ');
-
-                    if (candidateVin.Length >= 10)
+                    foreach (var b in vinBytes)
                     {
-                        vin = candidateVin;
+                        if (b == 0x00)
+                            break;
+
+                        if (b >= (byte)'0' && b <= (byte)'9')
+                        {
+                            vinChars[vinLen++] = (char)b;
+                        }
+                        else if (b >= (byte)'A' && b <= (byte)'Z' && b != (byte)'I' && b != (byte)'O' && b != (byte)'Q')
+                        {
+                            vinChars[vinLen++] = (char)b;
+                        }
+
+                        if (vinLen == vinChars.Length)
+                            break;
+                    }
+
+                    if (vinLen == vinChars.Length)
+                    {
+                        vin = new string(vinChars);
                         AnsiConsole.MarkupLine($"   [green]VIN: {vin}[/]");
                         DecodeVin(vin);
                         return true;

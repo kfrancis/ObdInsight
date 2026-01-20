@@ -158,7 +158,10 @@ public class UdsGenerator : IIncrementalGenerator
         if (pid.Variants.Count > 0)
         {
             sb.AppendLine("        var data = payload.AsSpan(2);");
-            sb.AppendLine("        var variant = data.Length switch");
+            sb.AppendLine("        string? variant = null;");
+            sb.AppendLine();
+            sb.AppendLine("        // Try exact match first");
+            sb.AppendLine("        variant = data.Length switch");
             sb.AppendLine("        {");
             foreach (var variant in pid.Variants)
             {
@@ -166,6 +169,23 @@ public class UdsGenerator : IIncrementalGenerator
             }
             sb.AppendLine("            _ => null");
             sb.AppendLine("        };");
+            sb.AppendLine();
+            sb.AppendLine("        // If no exact match, find closest variant within tolerance (±5 bytes)");
+            if (pid.Variants.Count > 0)
+            {
+                var minLen = pid.Variants.Min(v => v.Length);
+                var maxLen = pid.Variants.Max(v => v.Length);
+                sb.AppendLine($"        if (variant == null && data.Length >= {minLen - 5})");
+                sb.AppendLine("        {");
+                sb.AppendLine("            int bestDistance = int.MaxValue;");
+                sb.AppendLine("            string? bestVariant = null;");
+                foreach (var v in pid.Variants)
+                {
+                    sb.AppendLine($"            if (System.Math.Abs({v.Length} - data.Length) < bestDistance) {{ bestDistance = System.Math.Abs({v.Length} - data.Length); bestVariant = \"{v.Model}\"; }}");
+                }
+                sb.AppendLine("            variant = bestVariant;");
+                sb.AppendLine("        }");
+            }
             sb.AppendLine();
         }
         else

@@ -12,12 +12,23 @@ partial class VariantDiagnostics
         if (payload.Length < 2 || payload[0] != 0x61 || payload[1] != 0x01)
             return null;
         var data = payload.AsSpan(2);
-        var variant = data.Length switch
+        string? variant = null;
+        // Try exact match first
+        variant = data.Length switch
         {
             39 => "24kWh",
             49 => "40kWh",
             _ => null
         };
+        // If no exact match, find closest variant within tolerance (±5 bytes)
+        if (variant == null && data.Length >= 34)
+        {
+            int bestDistance = int.MaxValue;
+            string? bestVariant = null;
+            if (System.Math.Abs(39 - data.Length) < bestDistance) { bestDistance = System.Math.Abs(39 - data.Length); bestVariant = "24kWh"; }
+            if (System.Math.Abs(49 - data.Length) < bestDistance) { bestDistance = System.Math.Abs(49 - data.Length); bestVariant = "40kWh"; }
+            variant = bestVariant;
+        }
         var response = new StatusResponse();
         if (variant == "24kWh")
         {

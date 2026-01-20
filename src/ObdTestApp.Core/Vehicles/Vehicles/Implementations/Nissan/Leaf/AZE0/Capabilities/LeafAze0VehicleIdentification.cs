@@ -61,33 +61,36 @@ namespace ObdTestApp.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 
             // VIN data starts at byte 2, typically 17 ASCII characters
             var vinBytes = payload.AsSpan(2);
-            var chars = new List<char>();
+            Span<char> vinChars = stackalloc char[17];
+            var vinLen = 0;
 
             foreach (var b in vinBytes)
             {
-                // Stop at null terminator
                 if (b == 0x00)
                     break;
 
-                // Skip 'H' characters (appear as placeholders in captured data)
-                if (b == 'H')
-                    continue;
-
-                // Convert to ASCII
-                if (b >= 0x20 && b <= 0x7E) // Printable ASCII range
+                // Captured data sometimes contains spurious non-ASCII bytes (e.g., 0xE3).
+                // VINs are restricted to 0-9 and A-Z (excluding I/O/Q), so filter to that set.
+                if (b >= (byte)'0' && b <= (byte)'9')
                 {
-                    chars.Add((char)b);
+                    vinChars[vinLen++] = (char)b;
                 }
+                else if (b >= (byte)'A' && b <= (byte)'Z' && b != (byte)'I' && b != (byte)'O' && b != (byte)'Q')
+                {
+                    vinChars[vinLen++] = (char)b;
+                }
+
+                if (vinLen == vinChars.Length)
+                    break;
             }
 
-            // VIN should be exactly 17 characters
-            if (chars.Count != 17)
+            if (vinLen != vinChars.Length)
             {
-                Log($"[VehicleID VIN] Invalid length: {chars.Count} (expected 17)");
+                Log($"[VehicleID VIN] Invalid length: {vinLen} (expected 17)");
                 return null;
             }
 
-            var vin = new string([.. chars]);
+            var vin = new string(vinChars);
             Log($"[VehicleID VIN] Parsed: {vin}");
             return vin;
         }

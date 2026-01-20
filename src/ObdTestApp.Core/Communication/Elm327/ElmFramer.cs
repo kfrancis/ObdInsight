@@ -42,8 +42,9 @@ namespace ObdTestApp.Core.Communication.Elm327
         /// <summary>
         /// Time to wait for more data after receiving some data before considering the response complete.
         /// This handles cases where the ELM327 doesn't send the > prompt after multi-frame responses.
+        /// Set higher for multi-frame ISO-TP responses which may have inter-frame delays.
         /// </summary>
-        public TimeSpan DataIdleTimeout { get; set; } = TimeSpan.FromMilliseconds(500);
+        public TimeSpan DataIdleTimeout { get; set; } = TimeSpan.FromMilliseconds(1500);
 
         public async ValueTask<string> SendAndReadFrameAsync(
             string command,
