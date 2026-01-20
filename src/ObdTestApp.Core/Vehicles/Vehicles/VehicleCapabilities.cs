@@ -299,5 +299,11 @@ public sealed record VcmStatus
 
     /// <summary>Charge mode (0-3)</summary>
     public int? ChargeMode { get; init; }
+
+    /// <summary>Motor current (amperes) - from frame 0x180</summary>
+    public int? MotorCurrentAmps { get; init; }
+
+    /// <summary>Throttle position (0-100%) - from frame 0x180</summary>
+    public double? ThrottlePositionPercent { get; init; }
 }
 

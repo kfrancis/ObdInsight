@@ -22,19 +22,20 @@ internal sealed class LeafAze0VcmCarCan
     }
 
     /// <summary>
-    /// Gets comprehensive VCM status by monitoring frame 0x510 on CAR-CAN.
-    /// Frame 0x510 contains power consumption, climate control status, and ambient temperature.
-    /// This frame is transmitted at approximately 100ms intervals.
+    /// Gets comprehensive VCM status by monitoring frames on CAR-CAN.
+    /// Prioritizes frame 0x510 (power consumption, climate, ambient temp) but falls back to
+    /// frame 0x180 (motor current, throttle) which broadcasts even when stationary.
     /// </summary>
     public async ValueTask<VcmStatus> GetStatusAsync(CancellationToken ct = default)
     {
-        var timeout = TimeSpan.FromMilliseconds(300); // 100ms frame rate, allow extra time
+        var timeout = TimeSpan.FromMilliseconds(300); // Allow time to collect frames
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeout);
 
         await _session.EnterMonitoringModeAsync(_context, ct);
 
         VcmFrame_510_AZE0? frame510 = null;
+        VcmFrame_180_AZE0? frame180 = null;
 
         try
         {
@@ -43,42 +44,56 @@ internal sealed class LeafAze0VcmCarCan
                 if (frame.Data.Length != 8)
                     continue;
 
-                // Use generated router for type-safe frame parsing
+                // Try to parse both frames - 0x510 (primary) and 0x180 (fallback)
                 if (CanFrameRouter.TryParseVcmFrame_510_AZE0(frame.CanId, frame.Data.Span, out var parsed510))
                 {
                     frame510 = parsed510;
-                    break; // Got what we need
+                    break; // Got the primary frame, we're done
+                }
+                else if (CanFrameRouter.TryParseVcmFrame_180_AZE0(frame.CanId, frame.Data.Span, out var parsed180))
+                {
+                    frame180 = parsed180;
+                    // Don't break - keep looking for 0x510 which has more data
                 }
             }
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            // Timeout - no frame received
+            // Timeout - use whatever frames we collected
         }
         finally
         {
             await _session.ExitMonitoringModeAsync(ct);
         }
 
-        // If we didn't receive the frame, return empty status
-        if (frame510 == null)
+        // Prefer frame 0x510 if available, otherwise use 0x180
+        if (frame510 != null)
         {
-            return new VcmStatus();
+            return new VcmStatus
+            {
+                ClimateControlActive = frame510.ClimateControlActive,
+                ClimateControlPowerKw = frame510.ClimateControlPowerConsumption,
+                OutsideAmbientTempC = frame510.OutsideAmbientTemperature,
+                IntegratedMotorPowerConsumption = frame510.IntegratedPowerConsumptionMotor,
+                IntegratedAcPowerConsumption = frame510.IntegratedPowerConsumptionAc,
+                IntegratedAuxPowerConsumption = frame510.IntegratedPowerConsumptionAux,
+                PowerConsumptionAux = frame510.PowerConsumptionAux,
+                EcoIndicator = frame510.EcoIndicator,
+                EcoTree = frame510.EcoTree,
+                ChargeMode = frame510.ChargeMode
+            };
+        }
+        else if (frame180 != null)
+        {
+            // Frame 0x180 has limited data (motor current, throttle) but better than nothing
+            return new VcmStatus
+            {
+                MotorCurrentAmps = frame180.MotorAmp,
+                ThrottlePositionPercent = frame180.ThrottlePosition
+            };
         }
 
-        // Map frame data to VcmStatus
-        return new VcmStatus
-        {
-            ClimateControlActive = frame510.ClimateControlActive,
-            ClimateControlPowerKw = frame510.ClimateControlPowerConsumption,
-            OutsideAmbientTempC = frame510.OutsideAmbientTemperature,
-            IntegratedMotorPowerConsumption = frame510.IntegratedPowerConsumptionMotor,
-            IntegratedAcPowerConsumption = frame510.IntegratedPowerConsumptionAc,
-            IntegratedAuxPowerConsumption = frame510.IntegratedPowerConsumptionAux,
-            PowerConsumptionAux = frame510.PowerConsumptionAux,
-            EcoIndicator = frame510.EcoIndicator,
-            EcoTree = frame510.EcoTree,
-            ChargeMode = frame510.ChargeMode
-        };
+        // No data available
+        return new VcmStatus();
     }
 }

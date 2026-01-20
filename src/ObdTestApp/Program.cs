@@ -349,14 +349,14 @@ namespace ObdTestApp
 
                 var framer = new ElmFramer(transport)
                 {
-                    //EnableDebugLogging = true
+                    EnableDebugLogging = true
                 };
 
                 var session = new ElmSession(framer)
                 {
                     CommandTimeout = TimeSpan.FromSeconds(5),
                     MaxConsecutiveFailures = 3,
-                    //EnableDebugLogging = true
+                    EnableDebugLogging = true
                 };
 
                 Log.Information("Initializing ELM327 session (Timeout={CommandTimeout}s, MaxFailures={MaxFailures})",
@@ -453,8 +453,9 @@ namespace ObdTestApp
                     return;
                 }
 
-                AnsiConsole.MarkupLine($"[cyan]Testing {vehicleProfile.Make} {vehicleProfile.Model} data collection (monitoring + queries)...[/]");
-                AnsiConsole.MarkupLine("[grey]Phase 1: Passive monitoring, Phase 2: Active queries[/]");
+                AnsiConsole.MarkupLine($"[cyan]Testing {vehicleProfile.Make} {vehicleProfile.Model} data collection...[/]");
+                AnsiConsole.MarkupLine("[grey]Note: Only testing capabilities that work when vehicle is stationary in READY mode[/]");
+                AnsiConsole.MarkupLine("[grey]Skipped: Motor (requires accelerator), Charger (requires charging), VCM/ABS (require motion)[/]");
                 AnsiConsole.WriteLine();
 
                 Log.Information("Starting data collection test for {Make} {Model}", vehicleProfile.Make, vehicleProfile.Model);
@@ -705,116 +706,22 @@ namespace ObdTestApp
                     }
 
                     // ===========================================
-                    // 3. Motor Controller (Inverter/Motor)
+                    // 3. Motor Controller (Inverter/Motor) - SKIPPED
                     // ===========================================
+                    // NOTE: Motor controller frames (0x1DA, 0x55A) only broadcast when accelerator is pressed
+                    // or motor is actively running. Skipping this test when vehicle is stationary.
                     AnsiConsole.WriteLine();
-                    AnsiConsole.MarkupLine("[cyan]Querying Motor Controller status...[/]");
-                    if (commands.TryGet<IMotorController>(out var motor))
-                    {
-                        try
-                        {
-                            var motorStatus = await motor.GetStatusAsync(ct);
-                            var parts = new List<string>();
-
-                            if (motorStatus is null)
-                            {
-                                AnsiConsole.MarkupLine("[yellow]⚠[/] Motor: No response from ECU");
-                                Log.Warning("Motor status returned null");
-                                invalidResponseQueries++;
-                            }
-                            else
-                            {
-                                if (motorStatus.InputVoltageV is double voltage)
-                                    parts.Add($"V: {voltage:F1}V");
-                                if (motorStatus.EffectiveTorqueNm is double torque)
-                                    parts.Add($"Torque: {torque:F1}Nm");
-                                if (motorStatus.OutputRevolutionRpm is int rpm)
-                                    parts.Add($"RPM: {rpm}");
-                                if (motorStatus.MotorTempC is double temp)
-                                    parts.Add($"Motor: {temp:F1}°C");
-                                if (motorStatus.IgbtTempC is double igbtTemp)
-                                    parts.Add($"IGBT: {igbtTemp:F1}°C");
-                                if (motorStatus.PowerWatts is double power)
-                                    parts.Add($"Power: {power / 1000:F2}kW");
-
-                                if (parts.Count > 0)
-                                {
-                                    AnsiConsole.MarkupLine($"[green]✓[/] Motor: {string.Join(", ", parts)}");
-                                    Log.Information("Motor status: {Status}", string.Join(", ", parts));
-                                    successfulQueries++;
-                                }
-                                else
-                                {
-                                    AnsiConsole.MarkupLine("[yellow]⚠[/] Motor: No data available");
-                                    Log.Warning("Motor status returned no data");
-                                    invalidResponseQueries++;
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            AnsiConsole.MarkupLine($"[red]✗[/] Motor query failed: {ex.Message}");
-                            Log.Warning(ex, "Motor status query failed: {Message}", ex.Message);
-                            failedQueries++;
-                        }
-                    }
-                    else
-                    {
-                        AnsiConsole.MarkupLine("[yellow]⚠[/] Motor Controller not available");
-                        Log.Warning("Motor Controller capability not available");
-                    }
+                    AnsiConsole.MarkupLine("[grey]Skipping Motor Controller (requires accelerator/motor running)...[/]");
+                    Log.Information("Motor Controller test skipped - requires vehicle in motion");
 
                     // ===========================================
-                    // 4. Onboard Charger
+                    // 4. Onboard Charger - SKIPPED
                     // ===========================================
+                    // NOTE: Charger frames (0x390, 0x393) only broadcast when vehicle is charging.
+                    // Skipping this test when not plugged in.
                     AnsiConsole.WriteLine();
-                    AnsiConsole.MarkupLine("[cyan]Querying Onboard Charger status...[/]");
-                    if (commands.TryGet<IOnboardCharger>(out var charger))
-                    {
-                        try
-                        {
-                            var chargingStatus = await charger.GetChargingStatusAsync(ct);
-
-                            if (chargingStatus != null)
-                            {
-                                var parts = new List<string>
-                                {
-                                    $"Plugged: {(chargingStatus.IsPluggedIn ? "Yes" : "No")}",
-                                    $"Charging: {(chargingStatus.IsCharging ? "Yes" : "No")}"
-                            };
-
-                                if (chargingStatus.ChargePowerKw is double power)
-                                    parts.Add($"Power: {power:F2}kW");
-                                if (chargingStatus.ChargerVoltage is double voltage)
-                                    parts.Add($"V: {voltage:F1}V");
-                                if (chargingStatus.ChargerCurrent is double current)
-                                    parts.Add($"I: {current:F1}A");
-                                if (chargingStatus.EstimatedTimeToFull is TimeSpan eta)
-                                    parts.Add($"ETA: {eta:hh\\:mm}");
-
-                                AnsiConsole.MarkupLine($"[green]✓[/] Charger: {string.Join(", ", parts)}");
-                                Log.Information("Charger status: {Status}", string.Join(", ", parts));
-                                successfulQueries++;
-                            }
-                            else
-                            {
-                                AnsiConsole.MarkupLine("[yellow]⚠[/] Charger: No data available");
-                                Log.Warning("Charger status returned null");
-                                invalidResponseQueries++;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            AnsiConsole.MarkupLine($"[red]✗[/] Charger query failed: {ex.Message}");
-                            Log.Warning(ex, "Charger status query failed: {Message}", ex.Message);
-                            failedQueries++;
-                        }
-                    }
-                    else
-                    {
-                        AnsiConsole.MarkupLine("[yellow]⚠[/] Onboard Charger not available");
-                        Log.Warning("Onboard Charger capability not available");
-                    }
+                    AnsiConsole.MarkupLine("[grey]Skipping Onboard Charger (requires active charging)...[/]");
+                    Log.Information("Onboard Charger test skipped - requires vehicle charging");
 
                     // ===========================================
                     // 5. Vehicle Control Module (VCM)
@@ -844,6 +751,10 @@ namespace ObdTestApp
                                     parts.Add($"Outside: {outsideTemp:F1}°C");
                                 if (vcmStatus.EcoIndicator is int eco)
                                     parts.Add($"Eco: {eco}/15");
+                                if (vcmStatus.MotorCurrentAmps is int motorAmps)
+                                    parts.Add($"Motor: {motorAmps}A");
+                                if (vcmStatus.ThrottlePositionPercent is double throttle)
+                                    parts.Add($"Throttle: {throttle:F1}%");
 
                                 if (parts.Count > 0)
                                 {
@@ -888,64 +799,13 @@ namespace ObdTestApp
                     }
 
                     // ===========================================
-                    // 6. ABS (Anti-lock Braking System)
+                    // 6. ABS (Anti-lock Braking System) - SKIPPED
                     // ===========================================
+                    // NOTE: ABS frames (0x130, 0x245, 0x284, 0x285, 0x292, 0x354) only broadcast
+                    // when wheels are moving or ABS is active. Skipping when stationary.
                     AnsiConsole.WriteLine();
-                    AnsiConsole.MarkupLine("[cyan]Querying ABS status...[/]");
-                    if (commands.TryGet<IAntilockBrakingSystem>(out var abs))
-                    {
-                        try
-                        {
-                            var absStatus = await abs.GetStatusAsync(ct);
-                            var parts = new List<string>();
-
-                            if (absStatus is null)
-                            {
-                                AnsiConsole.MarkupLine("[yellow]⚠[/] ABS: No response from ECU");
-                                Log.Warning("ABS status returned null");
-                                invalidResponseQueries++;
-                            }
-                            else
-                            {
-                                if (absStatus.VehicleSpeedKmh is double speed)
-                                    parts.Add($"Speed: {speed:F1}km/h");
-                                if (absStatus.WheelSpeedFlKmh is double fl)
-                                    parts.Add($"FL: {fl:F1}");
-                                if (absStatus.WheelSpeedFrKmh is double fr)
-                                    parts.Add($"FR: {fr:F1}");
-                                if (absStatus.WheelSpeedRlKmh is double rl)
-                                    parts.Add($"RL: {rl:F1}");
-                                if (absStatus.WheelSpeedRrKmh is double rr)
-                                    parts.Add($"RR: {rr:F1}");
-                                if (absStatus.LeadAcidBatteryVoltage is double battV)
-                                    parts.Add($"12V Batt: {battV:F1}V");
-
-                                if (parts.Count > 0)
-                                {
-                                    AnsiConsole.MarkupLine($"[green]✓[/] ABS: {string.Join(", ", parts)}");
-                                    Log.Information("ABS status: {Status}", string.Join(", ", parts));
-                                    successfulQueries++;
-                                }
-                                else
-                                {
-                                    AnsiConsole.MarkupLine("[yellow]⚠[/] ABS: No data available");
-                                    Log.Warning("ABS status returned no data");
-                                    invalidResponseQueries++;
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            AnsiConsole.MarkupLine($"[red]✗[/] ABS query failed: {ex.Message}");
-                            Log.Warning(ex, "ABS status query failed: {Message}", ex.Message);
-                            failedQueries++;
-                        }
-                    }
-                    else
-                    {
-                        AnsiConsole.MarkupLine("[yellow]⚠[/] ABS not available");
-                        Log.Warning("ABS capability not available");
-                    }
+                    AnsiConsole.MarkupLine("[grey]Skipping ABS (requires wheel movement)...[/]");
+                    Log.Information("ABS test skipped - requires wheels moving or ABS active");
 
                     // ===========================================
                     // 7. Brake System

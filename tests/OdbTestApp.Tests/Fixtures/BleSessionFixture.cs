@@ -56,7 +56,10 @@ public class BleSessionFixture : IAsyncInitializer, IAsyncDisposable
 
             await _transport.OpenAsync(CancellationToken.None);
 
-            _framer = new ElmFramer(_transport);
+            _framer = new ElmFramer(_transport)
+            {
+                EnableDebugLogging = true
+            };
             _session = new ElmSession(_framer)
             {
                 EnableDebugLogging = true,

@@ -29,7 +29,7 @@ namespace ObdTestApp.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         /// </summary>
         public async ValueTask<MotorStatus> GetStatusAsync(CancellationToken ct = default)
         {
-            var timeout = TimeSpan.FromMilliseconds(250); // Should catch both frames
+            var timeout = TimeSpan.FromMilliseconds(300); // Should catch both frames
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(timeout);
 
@@ -42,22 +42,30 @@ namespace ObdTestApp.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
             {
                 await foreach (var frame in _session.MonitorFramesAsync(timeoutCts.Token))
                 {
+                    // Log received frame
+                    Log($"[MotorController] Received frame: ID=0x{frame.CanId:X3}, Data={BitConverter.ToString(frame.Data.ToArray())}");
+
                     if (frame.Data.Length != 8)
                         continue;
 
                     // Use generated router for type-safe frame parsing
                     if (CanFrameRouter.TryParseInvMcFrame_1DA_AZE0(frame.CanId, frame.Data.Span, out var parsed1DA))
                     {
+                        Log("[MotorController] Parsed INVmc 0x1DA frame");
                         frame1DA = parsed1DA;
                     }
                     else if (CanFrameRouter.TryParseInvMcFrame_55A_AZE0(frame.CanId, frame.Data.Span, out var parsed55A))
                     {
+                        Log("[MotorController] Parsed INVmc 0x55A frame");
                         frame55A = parsed55A;
                     }
 
                     // Exit early if we have both frames
                     if (frame1DA != null && frame55A != null)
+                    {
+                        Log("[MotorController] Received all required INVmc frames");
                         break;
+                    }
                 }
             }
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)

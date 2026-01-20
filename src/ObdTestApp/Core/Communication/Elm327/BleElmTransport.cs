@@ -1,39 +1,36 @@
 using Serilog;
-using System;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
-using Windows.Devices.Enumeration;
 using Windows.Storage.Streams;
 
 namespace ObdTestApp.Core.Communication.Elm327
 {
     public sealed class BleElmTransport : IElmTransport
     {
-        private static readonly Guid SerialServiceUuid = new("0000fff0-0000-1000-8000-00805f9b34fb");
-        private static readonly Guid WriteCharacteristicUuid = new("0000fff2-0000-1000-8000-00805f9b34fb");
-        private static readonly Guid NotifyCharacteristicUuid = new("0000fff1-0000-1000-8000-00805f9b34fb");
-
+        private static readonly Guid s_notifyCharacteristicUuid = new("0000fff1-0000-1000-8000-00805f9b34fb");
+        private static readonly Guid s_serialServiceUuid = new("0000fff0-0000-1000-8000-00805f9b34fb");
+        private static readonly Guid s_writeCharacteristicUuid = new("0000fff2-0000-1000-8000-00805f9b34fb");
         private readonly SemaphoreSlim _bufferLock = new(1, 1);
         private readonly string _deviceId;
         private readonly Queue<byte> _receiveBuffer = new();
         private BluetoothLEDevice? _device;
         private bool _isOpen;
-        private GattCharacteristic? _writeCharacteristic;
         private GattCharacteristic? _notifyCharacteristic;
         private GattDeviceService? _serialService;
-
-        public bool EnableDebugLogging { get; set; }
+        private GattCharacteristic? _writeCharacteristic;
 
         public BleElmTransport(string deviceId)
         {
             _deviceId = deviceId ?? throw new ArgumentNullException(nameof(deviceId));
         }
 
+        public bool EnableDebugLogging { get; set; }
         public bool IsOpen => _isOpen;
 
-        public async ValueTask DisposeAsync()
+        public static ulong MAC802DOT3(string macAddress)
         {
-            await CleanupAsync();
+            var hex = macAddress.Replace(":", "");
+            return Convert.ToUInt64(hex, 16);
         }
 
         public void ClearBuffer()
@@ -41,6 +38,11 @@ namespace ObdTestApp.Core.Communication.Elm327
             _bufferLock.Wait();
             try { _receiveBuffer.Clear(); }
             finally { _bufferLock.Release(); }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await CleanupAsync();
         }
 
         public ValueTask FlushAsync(CancellationToken ct) => ValueTask.CompletedTask;
@@ -53,49 +55,73 @@ namespace ObdTestApp.Core.Communication.Elm327
             if (_device == null)
                 throw new IOException("BLE device not found");
 
-            var result = await _device.GetGattServicesForUuidAsync(SerialServiceUuid).AsTask(ct);
+            var result = await _device.GetGattServicesForUuidAsync(s_serialServiceUuid).AsTask(ct);
             if (result.Status != GattCommunicationStatus.Success || result.Services.Count == 0)
                 throw new IOException("Serial service not found");
 
             _serialService = result.Services[0];
 
-            _writeCharacteristic = await FindCharacteristicAsync(_serialService, WriteCharacteristicUuid, ct);
-            _notifyCharacteristic = await FindCharacteristicAsync(_serialService, NotifyCharacteristicUuid, ct);
+            _writeCharacteristic = await FindCharacteristicAsync(_serialService, s_writeCharacteristicUuid, ct);
+            _notifyCharacteristic = await FindCharacteristicAsync(_serialService, s_notifyCharacteristicUuid, ct);
             if (_writeCharacteristic == null || _notifyCharacteristic == null)
                 throw new IOException("Required characteristics not found");
 
-            var status = await _notifyCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
-            if (status != GattCommunicationStatus.Success)
-                throw new IOException("Failed to enable notifications");
+            // Verify characteristic supports notifications
+            var props = _notifyCharacteristic.CharacteristicProperties;
+            if (!props.HasFlag(GattCharacteristicProperties.Notify) && !props.HasFlag(GattCharacteristicProperties.Indicate))
+                throw new IOException("Characteristic doesn't support notifications");
 
+            // Subscribe to value changes before enabling notifications
             _notifyCharacteristic.ValueChanged += OnNotifyValueChanged;
+
+            // Enable notifications with retry logic - Windows BLE stack can be flaky on first attempt
+            var notificationsEnabled = false;
+            Exception? lastException = null;
+
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    var cccdValue = props.HasFlag(GattCharacteristicProperties.Indicate)
+                        ? GattClientCharacteristicConfigurationDescriptorValue.Indicate
+                        : GattClientCharacteristicConfigurationDescriptorValue.Notify;
+
+                    var status = await _notifyCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(cccdValue);
+
+                    if (status == GattCommunicationStatus.Success)
+                    {
+                        if (EnableDebugLogging)
+                            Log.Debug("Notifications enabled successfully on attempt {Attempt}", attempt + 1);
+
+                        notificationsEnabled = true;
+                        break;
+                    }
+
+                    if (EnableDebugLogging)
+                        Log.Warning("CCCD write attempt {Attempt} returned {Status}", attempt + 1, status);
+
+                    lastException = new IOException($"CCCD write returned {status}");
+                }
+                catch (Exception ex)
+                {
+                    if (EnableDebugLogging)
+                        Log.Warning(ex, "CCCD write attempt {Attempt} threw exception", attempt + 1);
+
+                    lastException = ex;
+                }
+
+                // Wait before retry (exponential backoff: 100ms, 200ms, 400ms)
+                if (attempt < 2)
+                    await Task.Delay(100 * (1 << attempt), ct);
+            }
+
+            if (!notificationsEnabled)
+            {
+                _notifyCharacteristic.ValueChanged -= OnNotifyValueChanged;
+                throw new IOException("Failed to enable notifications after 3 attempts", lastException);
+            }
+
             _isOpen = true;
-        }
-
-        private static async Task<GattCharacteristic?> FindCharacteristicAsync(GattDeviceService service, Guid uuid, CancellationToken ct)
-        {
-            var characteristics = await service.GetCharacteristicsForUuidAsync(uuid).AsTask(ct);
-            return characteristics.Status == GattCommunicationStatus.Success && characteristics.Characteristics.Count > 0
-                ? characteristics.Characteristics[0]
-                : null;
-        }
-
-        private void OnNotifyValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
-        {
-            var reader = DataReader.FromBuffer(args.CharacteristicValue);
-            var bytes = new byte[reader.UnconsumedBufferLength];
-            reader.ReadBytes(bytes);
-
-            _bufferLock.Wait();
-            try
-            {
-                foreach (var b in bytes)
-                    _receiveBuffer.Enqueue(b);
-            }
-            finally
-            {
-                _bufferLock.Release();
-            }
         }
 
         public async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct)
@@ -108,11 +134,11 @@ namespace ObdTestApp.Core.Communication.Elm327
                 await Task.Delay(10, ct);
             }
 
-            _bufferLock.Wait();
+            _bufferLock.Wait(ct);
             try
             {
                 var count = Math.Min(buffer.Length, _receiveBuffer.Count);
-                for (int i = 0; i < count; i++)
+                for (var i = 0; i < count; i++)
                     buffer.Span[i] = _receiveBuffer.Dequeue();
                 return count;
             }
@@ -132,6 +158,14 @@ namespace ObdTestApp.Core.Communication.Elm327
             var status = await _writeCharacteristic.WriteValueAsync(writer.DetachBuffer(), GattWriteOption.WriteWithoutResponse);
             if (status != GattCommunicationStatus.Success)
                 throw new IOException("Write failed");
+        }
+
+        private static async Task<GattCharacteristic?> FindCharacteristicAsync(GattDeviceService service, Guid uuid, CancellationToken ct)
+        {
+            var characteristics = await service.GetCharacteristicsForUuidAsync(uuid).AsTask(ct);
+            return characteristics.Status == GattCommunicationStatus.Success && characteristics.Characteristics.Count > 0
+                ? characteristics.Characteristics[0]
+                : null;
         }
 
         private async Task CleanupAsync()
@@ -159,10 +193,22 @@ namespace ObdTestApp.Core.Communication.Elm327
             }
         }
 
-        public static ulong MAC802DOT3(string macAddress)
+        private void OnNotifyValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
         {
-            var hex = macAddress.Replace(":", "");
-            return Convert.ToUInt64(hex, 16);
+            var reader = DataReader.FromBuffer(args.CharacteristicValue);
+            var bytes = new byte[reader.UnconsumedBufferLength];
+            reader.ReadBytes(bytes);
+
+            _bufferLock.Wait();
+            try
+            {
+                foreach (var b in bytes)
+                    _receiveBuffer.Enqueue(b);
+            }
+            finally
+            {
+                _bufferLock.Release();
+            }
         }
     }
 }

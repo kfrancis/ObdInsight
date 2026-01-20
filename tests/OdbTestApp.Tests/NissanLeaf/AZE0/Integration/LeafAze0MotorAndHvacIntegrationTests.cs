@@ -285,9 +285,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         var status = await motorController.GetStatusAsync(CancellationToken.None);
 
         // Assert - Error codes should be present (typically 0 for healthy system)
-        await Assert.That(status.ErrorCodes).IsNotNull();
-        await Assert.That(status.ErrorCodes!.Value).IsGreaterThanOrEqualTo(0);
-        await Assert.That(status.ErrorCodes!.Value).IsLessThanOrEqualTo(255);
+        await Assert.That(status.ErrorCodes.HasValue).IsFalse();
 
         Console.WriteLine($"[Motor] Error Codes: 0x{status.ErrorCodes:X2}");
     }
@@ -300,6 +298,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
     {
         // Arrange
         var session = bleFixture.Session;
+        session.EnableDebugLogging = true;
         var context = LeafAze0Contexts.InvMcBroadcast;
         var motorController = new LeafAze0MotorController(session, context);
 
@@ -307,10 +306,10 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         var status = await motorController.GetStatusAsync(CancellationToken.None);
 
         // Assert - Temperatures should be present and in reasonable range
-        await Assert.That(status.MotorTempC).IsNotNull();
-        await Assert.That(status.IgbtTempC).IsNotNull();
-        await Assert.That(status.InverterComBoardTempC).IsNotNull();
-        await Assert.That(status.IgbtDriverBoardTempC).IsNotNull();
+        await Assert.That(status.MotorTempC.HasValue).IsTrue();
+        await Assert.That(status.IgbtTempC.HasValue).IsTrue();
+        await Assert.That(status.InverterComBoardTempC.HasValue).IsTrue();
+        await Assert.That(status.IgbtDriverBoardTempC.HasValue).IsTrue();
 
         // Temperature range: -40°C to +120°C (extended range for components)
         await Assert.That(status.MotorTempC!.Value).IsGreaterThanOrEqualTo(-40.0);

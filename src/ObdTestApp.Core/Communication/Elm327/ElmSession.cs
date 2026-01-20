@@ -184,14 +184,13 @@ namespace ObdTestApp.Core.Communication.Elm327
                 await _framer.SendAndReadFrameAsync($"AT CAF{(context.EnableAutoFormatting ? "1" : "0")}", CommandTimeout, ct);
 
                 // Set CAN headers
-                await _framer.SendAndReadFrameAsync($"AT SH {context.TxHeader}", CommandTimeout, ct);
-                await _framer.SendAndReadFrameAsync($"AT CRA {context.RxFilter}", CommandTimeout, ct);
+                if (!string.IsNullOrEmpty(context.TxHeader) && context.TxHeader != "000") await _framer.SendAndReadFrameAsync($"AT SH {context.TxHeader}", CommandTimeout, ct);
+                if (!string.IsNullOrEmpty(context.RxFilter) && context.RxFilter != "000") await _framer.SendAndReadFrameAsync($"AT CRA {context.RxFilter}", CommandTimeout, ct);
 
                 // Configure ISO-TP flow control
-                await _framer.SendAndReadFrameAsync($"AT FC SH {context.FlowControlHeader}", CommandTimeout, ct);
-                await _framer.SendAndReadFrameAsync($"AT FC SD {context.FlowControlData}", CommandTimeout, ct);
-                await _framer.SendAndReadFrameAsync($"AT FC SM {context.FlowControlMode}", CommandTimeout, ct);
-
+                if (!string.IsNullOrEmpty(context.FlowControlHeader)) await _framer.SendAndReadFrameAsync($"AT FC SH {context.FlowControlHeader}", CommandTimeout, ct);
+                if (!string.IsNullOrEmpty(context.FlowControlData)) await _framer.SendAndReadFrameAsync($"AT FC SD {context.FlowControlData}", CommandTimeout, ct);
+                if (!string.IsNullOrEmpty(context.FlowControlMode)) await _framer.SendAndReadFrameAsync($"AT FC SM {context.FlowControlMode}", CommandTimeout, ct);
 
                 _activeContext = context;
                 Log($"ECU context '{context.Name}' configured successfully");
@@ -567,9 +566,9 @@ namespace ObdTestApp.Core.Communication.Elm327
                 }
                 else
                 {
-                    // No filter specified - accept all frames (may cause BUFFER FULL on busy CAN buses)
-                    Log("No CAN filter specified - using AT AR (accept all frames)");
-                    await _framer.SendAndReadFrameAsync("ATAR", CommandTimeout, ct);
+                    //// No filter specified - accept all frames (may cause BUFFER FULL on busy CAN buses)
+                    Log("No CAN filter specified (accept all frames)");
+                    await _framer.SendAndReadFrameAsync("AT AR", CommandTimeout, ct);
                 }
 
                 // Enter monitoring mode
@@ -577,6 +576,7 @@ namespace ObdTestApp.Core.Communication.Elm327
                 {
                     Log($"Sending monitoring command: {context.MonitoringCommand}");
                     // Note: Monitoring mode doesn't return "OK" - it starts streaming immediately
+                    //await _framer.SendAndReadFrameAsync(context.MonitoringCommand, CommandTimeout, ct);
                     await _framer.WriteAsync(context.MonitoringCommand + "\r", ct);
                     await Task.Delay(100, ct); // Give ELM327 time to enter monitoring mode
                 }
@@ -757,6 +757,14 @@ namespace ObdTestApp.Core.Communication.Elm327
 
                 if (hasData && rawData != null)
                 {
+                    // Some ELM327 adapters emit an initial error line after starting monitoring (e.g. "TA ERROR").
+                    // This is not a CAN frame and should not be treated as a failure.
+                    if (rawData.Contains("TA ERROR", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Log($"Monitoring transient adapter error (ignored): {rawData.Trim()}");
+                        continue;
+                    }
+
                     // Check for ELM327 error conditions that terminate monitoring
                     if (rawData.Contains("BUFFER FULL", StringComparison.OrdinalIgnoreCase))
                     {
@@ -792,6 +800,11 @@ namespace ObdTestApp.Core.Communication.Elm327
                     // Example with CAF0: "1DB 10 14 61 01 00 00 00"
                     if (TryParseMonitoringFrame(rawData, out var frame))
                     {
+                        // Some adapters occasionally output lines that look like a CAN ID but contain no data.
+                        // Treat these as noise rather than real frames to avoid confusing downstream parsers.
+                        if (frame.Data.Length == 0)
+                            continue;
+
                         yield return frame;
                     }
                     else if (!rawData.StartsWith('<') &&
@@ -849,13 +862,6 @@ namespace ObdTestApp.Core.Communication.Elm327
             // If we got more than 8 bytes, something is wrong - reject the frame
             if (dataBytes.Count > 8)
                 return false;
-
-            // Accept frames with 0 data bytes - they're valid (e.g., RTR frames or incomplete reads)
-            // But log a warning if we see too many of these
-            if (dataBytes.Count == 0)
-            {
-                Log($"Warning: Received CAN ID {canId:X3} with no data bytes - may be fragment or RTR frame");
-            }
 
             frame = new RawCanFrame(canId, new ReadOnlyMemory<byte>([.. dataBytes]));
             return true;

@@ -9,9 +9,9 @@ public static class LeafAze0Contexts
     public static EcuContext AbsBroadcast => new()
     {
         Name = "ABS Broadcast (0x130, 0x245, 0x284, 0x285, 0x292, 0x354)",
-        TxHeader = "000",            // unused in monitoring mode
-        RxFilter = "000",            // unused in monitoring mode
-        FlowControlHeader = "000",   // unused in monitoring mode
+        TxHeader = "",            // unused in monitoring mode
+        RxFilter = "",            // unused in monitoring mode
+        FlowControlHeader = "",   // unused in monitoring mode
         CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
 
         // Monitor all standard CAN frames
@@ -24,8 +24,8 @@ public static class LeafAze0Contexts
         // 0x285 (20ms) - Rear wheel speeds
         // 0x292 (20ms) - Battery voltage and brake pressure
         // 0x354 (20ms) - Vehicle speed pulses and ESP status
-        CanFilterMask = "000",  // No filtering, accept all
-        CanFilterPattern = "000",
+        CanFilterMask = "",  // No filtering, accept all
+        CanFilterPattern = "",
 
         ExpectedCanIds = ["130", "245", "284", "285", "292", "354"],
 
@@ -57,9 +57,9 @@ public static class LeafAze0Contexts
     public static EcuContext BcmBroadcast => new()
     {
         Name = "BCM Broadcast (0x60D, 0x625)",
-        TxHeader = "000",            // unused in monitoring mode
-        RxFilter = "000",            // unused in monitoring mode
-        FlowControlHeader = "000",   // unused in monitoring mode
+        TxHeader = "",            // unused in monitoring mode
+        RxFilter = "",            // unused in monitoring mode
+        FlowControlHeader = "",   // unused in monitoring mode
         CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
 
         // Monitor all standard CAN frames
@@ -68,8 +68,8 @@ public static class LeafAze0Contexts
         // Accept BCM broadcast frames
         // 0x60D (20ms) - Main BCM status (doors, locks, lights)
         // 0x625 (20ms) - Headlight/foglight status
-        CanFilterMask = "000",  // No filtering, accept all
-        CanFilterPattern = "000",
+        CanFilterMask = "",  // No filtering, accept all
+        CanFilterPattern = "",
 
         ExpectedCanIds = ["60D", "625"],
 
@@ -82,9 +82,9 @@ public static class LeafAze0Contexts
     public static EcuContext BrakeBroadcast => new()
     {
         Name = "BRAKE Broadcast (0x1CA)",
-        TxHeader = "000",            // unused in monitoring mode
-        RxFilter = "000",            // unused in monitoring mode
-        FlowControlHeader = "000",   // unused in monitoring mode
+        TxHeader = "",            // unused in monitoring mode
+        RxFilter = "",            // unused in monitoring mode
+        FlowControlHeader = "",   // unused in monitoring mode
         CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
 
         // Monitor all standard CAN frames
@@ -92,8 +92,8 @@ public static class LeafAze0Contexts
 
         // Accept Brake broadcast frame
         // 0x1CA (20ms) - Brake pressure and regen braking
-        CanFilterMask = "000",  // No filtering, accept all
-        CanFilterPattern = "000",
+        CanFilterMask = "",  // No filtering, accept all
+        CanFilterPattern = "",
 
         ExpectedCanIds = ["1CA"],
 
@@ -123,9 +123,9 @@ public static class LeafAze0Contexts
     public static EcuContext HvacBroadcast => new()
     {
         Name = "HVAC Broadcast (0x54A-0x54F)",
-        TxHeader = "000",            // unused in monitoring mode
-        RxFilter = "000",            // unused in monitoring mode
-        FlowControlHeader = "000",   // unused in monitoring mode
+        TxHeader = "",            // unused in monitoring mode
+        RxFilter = "",            // unused in monitoring mode
+        FlowControlHeader = "",   // unused in monitoring mode
         CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
 
         // Use monitor all + filter, or a monitor receiver variant if you prefer.
@@ -149,24 +149,25 @@ public static class LeafAze0Contexts
     public static EcuContext InvMcBroadcast => new()
     {
         Name = "INVmc Broadcast (0x1DA, 0x55A)",
-        TxHeader = "000",            // unused in monitoring mode
-        RxFilter = "000",            // unused in monitoring mode
-        FlowControlHeader = "000",   // unused in monitoring mode
+        TxHeader = "",            // unused in monitoring mode
+        RxFilter = "",            // unused in monitoring mode
+        FlowControlHeader = "",   // unused in monitoring mode
         CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
 
         // Monitor all standard CAN frames
         MonitoringCommand = "AT MA",
 
+        CanFilterMask = "7FF",
+        CanFilterPattern = "1DA",
+
         // Accept Inverter/Motor Controller broadcast frames
         // 0x1DA (10ms) - motor status
         // 0x55A (100ms) - temperature
-        CanFilterMask = "000",  // No filtering, accept all
-        CanFilterPattern = "000",
-
+        // ExpectedCanIds is used to configure AT CRA filters for each ID
         ExpectedCanIds = ["1DA", "55A"],
 
         EnableHeaders = true,
-        EnableAutoFormatting = true
+        EnableAutoFormatting = false  // CAF0 required for proper frame parsing
     };
 
     public static EcuContext IpdmEr => ReqResp("IPDM E/R", "74D", "76D");
@@ -180,9 +181,9 @@ public static class LeafAze0Contexts
     public static EcuContext ObcPdBroadcast => new()
     {
         Name = "OBCpd Broadcast (0x390, 0x393)",
-        TxHeader = "000",            // unused in monitoring mode
-        RxFilter = "000",            // unused in monitoring mode
-        FlowControlHeader = "000",   // unused in monitoring mode
+        TxHeader = "",            // unused in monitoring mode
+        RxFilter = "",            // unused in monitoring mode
+        FlowControlHeader = "",   // unused in monitoring mode
         CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
 
         // Monitor all standard CAN frames
@@ -204,9 +205,9 @@ public static class LeafAze0Contexts
     public static EcuContext SteeringBroadcast => new()
     {
         Name = "STEERING Broadcast (0x002, 0x300)",
-        TxHeader = "000",            // unused in monitoring mode
-        RxFilter = "000",            // unused in monitoring mode
-        FlowControlHeader = "000",   // unused in monitoring mode
+        TxHeader = "",            // unused in monitoring mode
+        RxFilter = "",            // unused in monitoring mode
+        FlowControlHeader = "",   // unused in monitoring mode
         CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
 
         // Monitor all standard CAN frames
@@ -215,8 +216,8 @@ public static class LeafAze0Contexts
         // Accept Steering broadcast frames
         // 0x002 (10ms) - Steering angle sensor
         // 0x300 (20ms) - Steering wheel force
-        CanFilterMask = "000",  // No filtering, accept all
-        CanFilterPattern = "000",
+        CanFilterMask = "",  // No filtering, accept all
+        CanFilterPattern = "",
 
         ExpectedCanIds = ["002", "300"],
 
@@ -234,9 +235,9 @@ public static class LeafAze0Contexts
     public static EcuContext VcmEvCanBroadcast => new()
     {
         Name = "VCM EV-CAN Broadcast (0x11A, 0x1D4, 0x1F2, 0x284, 0x5A9)",
-        TxHeader = "000",            // unused in monitoring mode
-        RxFilter = "000",            // unused in monitoring mode
-        FlowControlHeader = "000",   // unused in monitoring mode
+        TxHeader = "",            // unused in monitoring mode
+        RxFilter = "",            // unused in monitoring mode
+        FlowControlHeader = "",   // unused in monitoring mode
         CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
 
         // Monitor all standard CAN frames
@@ -244,8 +245,8 @@ public static class LeafAze0Contexts
 
         // Accept VCM broadcast frames on EV-CAN (0x11A, 0x1D4, 0x1F2, 0x284, 0x5A9, 0x50A-0x50C, 0x5B9, 0x603)
         // Using a broader filter to catch all VCM frames
-        CanFilterMask = "000",  // No filtering, accept all
-        CanFilterPattern = "000",
+        CanFilterMask = "",  // No filtering, accept all
+        CanFilterPattern = "",
 
         ExpectedCanIds = ["11A", "1D4", "1F2", "284", "5A9", "50A", "50B", "50C", "5B9", "603"],
 
@@ -259,9 +260,9 @@ public static class LeafAze0Contexts
     public static EcuContext VcmCarCanBroadcast => new()
     {
         Name = "VCM CAR-CAN Broadcast (0x174, 0x176, 0x180, 0x260, 0x421, 0x50A, 0x50D, 0x510)",
-        TxHeader = "000",            // unused in monitoring mode
-        RxFilter = "000",            // unused in monitoring mode
-        FlowControlHeader = "000",   // unused in monitoring mode
+        TxHeader = "",            // unused in monitoring mode
+        RxFilter = "",            // unused in monitoring mode
+        FlowControlHeader = "",   // unused in monitoring mode
         CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
 
         // Monitor all standard CAN frames
@@ -276,8 +277,8 @@ public static class LeafAze0Contexts
         // 0x50D (8 bytes) - Dashboard indicator lights
         // 0x510 (8 bytes) - Power consumption and climate data
         // Note: 0x50A appears on both EV-CAN and CAR-CAN with same structure
-        CanFilterMask = "000",  // No filtering, accept all
-        CanFilterPattern = "000",
+        CanFilterMask = "",  // No filtering, accept all
+        CanFilterPattern = "",
 
         ExpectedCanIds = ["174", "176", "180", "260", "421", "50A", "50D", "510"],
 
