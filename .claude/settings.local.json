@@ -4,7 +4,11 @@
       "Bash(find:*)",
       "Bash(dotnet build:*)",
       "Bash(cat:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(dotnet run:*)",
+      "Bash(git checkout:*)",
+      "Bash(dotnet test:*)",
+      "Bash(tee:*)"
     ]
   }
 }

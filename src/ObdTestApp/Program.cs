@@ -335,7 +335,7 @@ namespace ObdTestApp
             await using var transport = new BleElmTransport(selectedDevice.Address);
 
             // Enable debug logging
-            //transport.EnableDebugLogging = true;
+            transport.EnableDebugLogging = true;
 
             try
             {

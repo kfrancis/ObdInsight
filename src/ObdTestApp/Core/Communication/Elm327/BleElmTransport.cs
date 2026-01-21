@@ -51,15 +51,100 @@ namespace ObdTestApp.Core.Communication.Elm327
         {
             if (_isOpen) return;
 
+            if (EnableDebugLogging)
+                Log.Debug("Connecting to BLE device {DeviceId}...", _deviceId);
+
             _device = await BluetoothLEDevice.FromBluetoothAddressAsync(MAC802DOT3(_deviceId)).AsTask(ct);
             if (_device == null)
                 throw new IOException("BLE device not found");
 
+            if (EnableDebugLogging)
+                Log.Debug("BLE device found. Name: {Name}, ConnectionStatus: {Status}",
+                    _device.Name ?? "Unknown", _device.ConnectionStatus);
+
+            // Check connection status and wait for connection with exponential backoff
+            if (_device.ConnectionStatus != BluetoothConnectionStatus.Connected)
+            {
+                if (EnableDebugLogging)
+                    Log.Warning("Device not connected (status: {Status}), waiting for connection...",
+                        _device.ConnectionStatus);
+
+                // Subscribe to connection status changes
+                var connectionTcs = new TaskCompletionSource<bool>();
+                void OnConnectionStatusChanged(BluetoothLEDevice sender, object args)
+                {
+                    if (sender.ConnectionStatus == BluetoothConnectionStatus.Connected)
+                    {
+                        if (EnableDebugLogging)
+                            Log.Debug("Device connected via status change event");
+                        connectionTcs.TrySetResult(true);
+                    }
+                }
+
+                _device.ConnectionStatusChanged += OnConnectionStatusChanged;
+
+                try
+                {
+                    // Try to trigger connection by requesting GATT services (forces Windows to connect)
+                    if (EnableDebugLogging)
+                        Log.Debug("Requesting GATT services to trigger connection...");
+
+                    var servicesResult = await _device.GetGattServicesAsync(BluetoothCacheMode.Uncached).AsTask(ct);
+
+                    if (servicesResult.Status == GattCommunicationStatus.Success &&
+                        _device.ConnectionStatus == BluetoothConnectionStatus.Connected)
+                    {
+                        if (EnableDebugLogging)
+                            Log.Debug("Connection established via GetGattServicesAsync");
+                    }
+                    else
+                    {
+                        // Wait up to 5 seconds for connection with polling
+                        for (int i = 0; i < 10; i++)
+                        {
+                            if (_device.ConnectionStatus == BluetoothConnectionStatus.Connected)
+                                break;
+
+                            if (EnableDebugLogging && i == 0)
+                                Log.Debug("Waiting for device to connect... (attempt {Attempt}/10)", i + 1);
+
+                            await Task.Delay(500, ct);
+                        }
+                    }
+
+                    // Final check
+                    if (_device.ConnectionStatus != BluetoothConnectionStatus.Connected)
+                    {
+                        _device.ConnectionStatusChanged -= OnConnectionStatusChanged;
+                        throw new IOException(
+                            $"Device not reachable. Status: {_device.ConnectionStatus}\n" +
+                            "Troubleshooting:\n" +
+                            "  1. Ensure device is powered on and in range\n" +
+                            "  2. Check Windows Bluetooth is enabled\n" +
+                            "  3. Try: Restart-Service bthserv (PowerShell as Admin)\n" +
+                            "  4. Pair device in Windows Settings if not already paired");
+                    }
+
+                    if (EnableDebugLogging)
+                        Log.Debug("Device connection established successfully");
+                }
+                finally
+                {
+                    _device.ConnectionStatusChanged -= OnConnectionStatusChanged;
+                }
+            }
+
+            if (EnableDebugLogging)
+                Log.Debug("Retrieving GATT services...");
+
             var result = await _device.GetGattServicesForUuidAsync(s_serialServiceUuid).AsTask(ct);
             if (result.Status != GattCommunicationStatus.Success || result.Services.Count == 0)
-                throw new IOException("Serial service not found");
+                throw new IOException($"Serial service not found. Status: {result.Status}");
 
             _serialService = result.Services[0];
+
+            if (EnableDebugLogging)
+                Log.Debug("Service found. Session Status: {SessionStatus}", _serialService.Session?.SessionStatus);
 
             _writeCharacteristic = await FindCharacteristicAsync(_serialService, s_writeCharacteristicUuid, ct);
             _notifyCharacteristic = await FindCharacteristicAsync(_serialService, s_notifyCharacteristicUuid, ct);
@@ -71,8 +156,16 @@ namespace ObdTestApp.Core.Communication.Elm327
             if (!props.HasFlag(GattCharacteristicProperties.Notify) && !props.HasFlag(GattCharacteristicProperties.Indicate))
                 throw new IOException("Characteristic doesn't support notifications");
 
+            if (EnableDebugLogging)
+                Log.Debug("Characteristic properties: {Props}", props);
+
             // Subscribe to value changes before enabling notifications
             _notifyCharacteristic.ValueChanged += OnNotifyValueChanged;
+
+            // Allow more time for the BLE session to fully establish
+            if (EnableDebugLogging)
+                Log.Debug("Waiting for BLE session to stabilize...");
+            await Task.Delay(500, ct);
 
             // Enable notifications with retry logic - Windows BLE stack can be flaky on first attempt
             var notificationsEnabled = false;
@@ -86,19 +179,34 @@ namespace ObdTestApp.Core.Communication.Elm327
                         ? GattClientCharacteristicConfigurationDescriptorValue.Indicate
                         : GattClientCharacteristicConfigurationDescriptorValue.Notify;
 
+                    if (EnableDebugLogging)
+                        Log.Debug("Attempt {Attempt}: Writing CCCD ({CccdValue}) to characteristic...",
+                            attempt + 1, cccdValue);
+
                     var status = await _notifyCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(cccdValue);
 
                     if (status == GattCommunicationStatus.Success)
                     {
                         if (EnableDebugLogging)
-                            Log.Debug("Notifications enabled successfully on attempt {Attempt}", attempt + 1);
+                            Log.Debug("✓ Notifications enabled successfully on attempt {Attempt}", attempt + 1);
 
                         notificationsEnabled = true;
                         break;
                     }
 
                     if (EnableDebugLogging)
-                        Log.Warning("CCCD write attempt {Attempt} returned {Status}", attempt + 1, status);
+                        Log.Warning("CCCD write attempt {Attempt} returned {Status}. Device connection: {ConnStatus}, Session: {SessionStatus}",
+                            attempt + 1, status, _device.ConnectionStatus, _serialService.Session?.SessionStatus);
+
+                    // If unreachable, provide helpful diagnostic info
+                    if (status == GattCommunicationStatus.Unreachable)
+                    {
+                        Log.Error("Device unreachable. Troubleshooting steps:\n" +
+                                 "  1. Check if device is powered on and in range\n" +
+                                 "  2. Restart Windows Bluetooth service: Restart-Service bthserv\n" +
+                                 "  3. Remove device from Windows Bluetooth settings and re-pair\n" +
+                                 "  4. Reboot Windows if issue persists");
+                    }
 
                     lastException = new IOException($"CCCD write returned {status}");
                 }
@@ -110,9 +218,14 @@ namespace ObdTestApp.Core.Communication.Elm327
                     lastException = ex;
                 }
 
-                // Wait before retry (exponential backoff: 100ms, 200ms, 400ms)
+                // Wait before retry (exponential backoff: 200ms, 400ms)
                 if (attempt < 2)
-                    await Task.Delay(100 * (1 << attempt), ct);
+                {
+                    var delayMs = 200 * (1 << attempt);
+                    if (EnableDebugLogging)
+                        Log.Debug("Waiting {DelayMs}ms before retry...", delayMs);
+                    await Task.Delay(delayMs, ct);
+                }
             }
 
             if (!notificationsEnabled)

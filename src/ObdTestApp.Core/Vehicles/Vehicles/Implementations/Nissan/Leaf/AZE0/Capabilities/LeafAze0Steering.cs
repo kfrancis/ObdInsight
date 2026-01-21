@@ -18,8 +18,10 @@ internal sealed class LeafAze0Steering : ISteering
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _context = context ?? throw new ArgumentNullException(nameof(context));
-        if (_context.CommunicationMode != EcuCommunicationMode.PassiveMonitoring)
-            throw new ArgumentException("Steering status requires PassiveMonitoring context for broadcast frames.", nameof(context));
+        if (_context.CommunicationMode != EcuCommunicationMode.PassiveMonitoring &&
+            _context.CommunicationMode != EcuCommunicationMode.ActiveMonitoring &&
+            _context.CommunicationMode != EcuCommunicationMode.FilteredMonitoring)
+            throw new ArgumentException("Steering status requires monitoring mode context for broadcast frames.", nameof(context));
     }
 
     /// <summary>
@@ -32,6 +34,16 @@ internal sealed class LeafAze0Steering : ISteering
         var timeout = TimeSpan.FromMilliseconds(300); // 10ms frame rate for 0x002, collect for 300ms
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeout);
+
+        // If context requires session activation, do it first
+        if (_context.RequiresSessionActivation)
+        {
+            var sessionActivated = await _session.ActivateSessionAsync(_context, ct);
+            if (!sessionActivated)
+            {
+                // Session activation failed - continue anyway as data may still be available
+            }
+        }
 
         await _session.EnterMonitoringModeAsync(_context, ct);
 

@@ -282,6 +282,9 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         var context = LeafAze0Contexts.SteeringBroadcast;
         var steering = new LeafAze0Steering(session, context);
 
+        // Note: LeafAze0Steering now handles session activation internally if RequiresSessionActivation is set
+        // The context SteeringBroadcast now uses ActiveMonitoring with session activation
+
         // Act
         var status = await steering.GetStatusAsync(CancellationToken.None);
 

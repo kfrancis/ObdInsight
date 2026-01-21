@@ -12,6 +12,7 @@ namespace ObdTestApp.Core.Communication.Elm327
         int MaxConsecutiveFailures { get; set; }
         TimeSpan ProtocolDetectionTimeout { get; set; }
 
+        ValueTask<bool> ActivateSessionAsync(EcuContext context, CancellationToken ct);
         ValueTask EnterMonitoringModeAsync(EcuContext context, CancellationToken ct);
         ValueTask ExitMonitoringModeAsync(CancellationToken ct);
         ValueTask InitializeAndLockAsync(CancellationToken ct);
@@ -164,35 +165,22 @@ namespace ObdTestApp.Core.Communication.Elm327
             ArgumentNullException.ThrowIfNull(context);
 
             // Enforce that monitoring contexts must use EnterMonitoringModeAsync
-            if (context.CommunicationMode == EcuCommunicationMode.PassiveMonitoring)
-                throw new InvalidOperationException($"Use EnterMonitoringModeAsync() for passive monitoring contexts.");
+            if (context.CommunicationMode == EcuCommunicationMode.PassiveMonitoring ||
+                context.CommunicationMode == EcuCommunicationMode.ActiveMonitoring ||
+                context.CommunicationMode == EcuCommunicationMode.FilteredMonitoring)
+                throw new InvalidOperationException($"Use EnterMonitoringModeAsync() for monitoring contexts.");
 
             await _gate.WaitAsync(ct);
             try
             {
-                // Skip reconfiguration if already active
-                if (_activeContext?.Name == context.Name)
-                {
-                    Log($"ECU context '{context.Name}' already active - skipping reconfiguration");
-                    return;
-                }
+                // Always reset state before reconfiguring (even if same context name)
+                // This prevents filter pollution from previous operations
+                await ResetAdapterStateAsync(ct);
 
                 Log($"Configuring ECU context: {context.Name}");
 
-                // Configure headers and formatting
-                await _framer.SendAndReadFrameAsync($"AT H{(context.EnableHeaders ? "1" : "0")}", CommandTimeout, ct);
-                await _framer.SendAndReadFrameAsync($"AT CAF{(context.EnableAutoFormatting ? "1" : "0")}", CommandTimeout, ct);
+                await ConfigureEcuContextInternalAsync(context, ct);
 
-                // Set CAN headers
-                if (!string.IsNullOrEmpty(context.TxHeader) && context.TxHeader != "000") await _framer.SendAndReadFrameAsync($"AT SH {context.TxHeader}", CommandTimeout, ct);
-                if (!string.IsNullOrEmpty(context.RxFilter) && context.RxFilter != "000") await _framer.SendAndReadFrameAsync($"AT CRA {context.RxFilter}", CommandTimeout, ct);
-
-                // Configure ISO-TP flow control
-                if (!string.IsNullOrEmpty(context.FlowControlHeader)) await _framer.SendAndReadFrameAsync($"AT FC SH {context.FlowControlHeader}", CommandTimeout, ct);
-                if (!string.IsNullOrEmpty(context.FlowControlData)) await _framer.SendAndReadFrameAsync($"AT FC SD {context.FlowControlData}", CommandTimeout, ct);
-                if (!string.IsNullOrEmpty(context.FlowControlMode)) await _framer.SendAndReadFrameAsync($"AT FC SM {context.FlowControlMode}", CommandTimeout, ct);
-
-                _activeContext = context;
                 Log($"ECU context '{context.Name}' configured successfully");
             }
             finally { _gate.Release(); }
@@ -222,8 +210,126 @@ namespace ObdTestApp.Core.Communication.Elm327
             return await QueryAsync(obdCommand, ct);
         }
 
+        /// <summary>
+        /// Activates a diagnostic session with the specified ECU.
+        /// Required for some ECUs before they will respond to queries or broadcast data.
+        /// </summary>
+        /// <param name="context">The ECU context with session configuration.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>True if session was activated (or no activation required), false if activation failed.</returns>
+        public async ValueTask<bool> ActivateSessionAsync(EcuContext context, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(context.SessionActivationCommand))
+            {
+                Log($"No session activation required for {context.Name}");
+                return true;
+            }
+
+            await _gate.WaitAsync(ct);
+            try
+            {
+                Log($"Activating session for {context.Name}: {context.SessionActivationCommand}");
+
+                // Ensure ECU context is configured
+                if (_activeContext?.Name != context.Name)
+                {
+                    await ResetAdapterStateAsync(ct);
+                    await ConfigureEcuContextInternalAsync(context, ct);
+                }
+
+                // Send session activation command
+                var response = await SendAndNormalizeAsync(context.SessionActivationCommand, ct);
+
+                // Interpret response
+                // Positive response: 50 xx (session activated)
+                // Negative response: 7F 10 xx (still useful as proof-of-life)
+                // No response: May be expected for suppress-positive-response (0x81)
+
+                var hasPositiveResponse = response.Any(line =>
+                    line.Contains("50", StringComparison.OrdinalIgnoreCase));
+                var hasNegativeResponse = response.Any(line =>
+                    line.Contains("7F", StringComparison.OrdinalIgnoreCase));
+                var isSuppressPositive = context.SessionActivationCommand.EndsWith("81", StringComparison.OrdinalIgnoreCase) ||
+                                          context.SessionActivationCommand.EndsWith("C0", StringComparison.OrdinalIgnoreCase);
+
+                if (hasPositiveResponse)
+                {
+                    Log($"Session activated successfully for {context.Name}");
+                    return true;
+                }
+                else if (hasNegativeResponse)
+                {
+                    // Negative response still indicates ECU is alive and communicating
+                    Log($"Session activation received negative response for {context.Name} (ECU is responsive)");
+                    return true;
+                }
+                else if (isSuppressPositive && !response.Any(ElmParsing.LooksLikeAdapterError))
+                {
+                    // Suppress-positive-response bit set - no response is expected
+                    Log($"Session activation sent (suppress-positive-response) for {context.Name}");
+                    return true;
+                }
+                else
+                {
+                    Log($"Session activation failed for {context.Name}: {string.Join(", ", response)}");
+                    return false;
+                }
+            }
+            finally { _gate.Release(); }
+        }
+
+        /// <summary>
+        /// Internal method to configure ECU context without acquiring gate (caller must hold gate).
+        /// </summary>
+        private async ValueTask ConfigureEcuContextInternalAsync(EcuContext context, CancellationToken ct)
+        {
+            // Configure headers and formatting
+            await _framer.SendAndReadFrameAsync($"AT H{(context.EnableHeaders ? "1" : "0")}", CommandTimeout, ct);
+            await _framer.SendAndReadFrameAsync($"AT CAF{(context.EnableAutoFormatting ? "1" : "0")}", CommandTimeout, ct);
+
+            // Set CAN headers
+            if (!string.IsNullOrEmpty(context.TxHeader) && context.TxHeader != "000")
+                await _framer.SendAndReadFrameAsync($"AT SH {context.TxHeader}", CommandTimeout, ct);
+            if (!string.IsNullOrEmpty(context.RxFilter) && context.RxFilter != "000")
+                await _framer.SendAndReadFrameAsync($"AT CRA {context.RxFilter}", CommandTimeout, ct);
+
+            // Configure ISO-TP flow control
+            if (!string.IsNullOrEmpty(context.FlowControlHeader))
+                await _framer.SendAndReadFrameAsync($"AT FC SH {context.FlowControlHeader}", CommandTimeout, ct);
+            if (!string.IsNullOrEmpty(context.FlowControlData))
+                await _framer.SendAndReadFrameAsync($"AT FC SD {context.FlowControlData}", CommandTimeout, ct);
+            if (!string.IsNullOrEmpty(context.FlowControlMode))
+                await _framer.SendAndReadFrameAsync($"AT FC SM {context.FlowControlMode}", CommandTimeout, ct);
+
+            // Set adapter timeout if specified
+            if (context.AdapterTimeoutUnits > 0)
+                await _framer.SendAndReadFrameAsync($"AT ST {context.AdapterTimeoutUnits:X2}", CommandTimeout, ct);
+
+            _activeContext = context;
+            Log($"ECU context '{context.Name}' configured");
+        }
+
         private static bool IsValid(string[] lines)
         => lines.Length > 0 && !lines.Any(ElmParsing.LooksLikeAdapterError);
+
+        /// <summary>
+        /// Resets ELM327 filter and addressing state to known baseline.
+        /// Must be called before reconfiguring for a different ECU.
+        /// </summary>
+        private async ValueTask ResetAdapterStateAsync(CancellationToken ct)
+        {
+            Log("Resetting adapter state (ATAR, ATCEA, ATAR)");
+
+            // Clear any receive address filter
+            await _framer.SendAndReadFrameAsync("AT AR", CommandTimeout, ct);
+
+            // Disable extended addressing (baseline for 11-bit ISO-TP)
+            await _framer.SendAndReadFrameAsync("AT CEA", CommandTimeout, ct);
+
+            // Reset address-related filtering state
+            // Note: Some adapters use ATAR differently - this clears CRA filters
+            await _framer.SendAndReadFrameAsync("AT AR", CommandTimeout, ct);
+        }
 
         private async ValueTask BaselineInitAsync(CancellationToken ct)
         {
@@ -231,8 +337,21 @@ namespace ObdTestApp.Core.Communication.Elm327
             Log("Baseline init: AT Z (reset)");
             await _framer.SendAndReadFrameAsync("AT Z", CommandTimeout, ct);
 
-            Log("Baseline init: AT D (restore defaults)");
-            await _framer.SendAndReadFrameAsync("AT D", CommandTimeout, ct);
+            // CRITICAL: Wait after reset for adapter to be ready
+            // Many adapters (especially cheap clones) need time after ATZ before accepting commands
+            Log("Waiting 500ms for adapter to stabilize after reset...");
+            await Task.Delay(500, ct);
+
+            // AT D (restore defaults) - some cheap clones don't support this, so make it optional
+            Log("Baseline init: AT D (restore defaults) - optional");
+            try
+            {
+                await _framer.SendAndReadFrameAsync("AT D", TimeSpan.FromSeconds(2), ct);
+            }
+            catch (Exception ex)
+            {
+                Log($"AT D command failed (adapter may not support it): {ex.Message}");
+            }
 
             Log("Baseline init: AT E0 (echo off)");
             await _framer.SendAndReadFrameAsync("AT E0", CommandTimeout, ct);
@@ -536,8 +655,10 @@ namespace ObdTestApp.Core.Communication.Elm327
         {
             ArgumentNullException.ThrowIfNull(context);
 
-            if (context.CommunicationMode != EcuCommunicationMode.PassiveMonitoring)
-                throw new InvalidOperationException($"ECU context '{context.Name}' does not support passive monitoring.");
+            if (context.CommunicationMode != EcuCommunicationMode.PassiveMonitoring &&
+                context.CommunicationMode != EcuCommunicationMode.ActiveMonitoring &&
+                context.CommunicationMode != EcuCommunicationMode.FilteredMonitoring)
+                throw new InvalidOperationException($"ECU context '{context.Name}' does not support monitoring modes.");
 
             await _gate.WaitAsync(ct);
             try
@@ -549,6 +670,9 @@ namespace ObdTestApp.Core.Communication.Elm327
                 }
 
                 Log($"Entering monitoring mode: {context.Name}");
+
+                // CRITICAL: Reset adapter state before monitoring configuration
+                await ResetAdapterStateAsync(ct);
 
                 // Configure headers/formatting
                 await _framer.SendAndReadFrameAsync($"AT H{(context.EnableHeaders ? "1" : "0")}", CommandTimeout, ct);

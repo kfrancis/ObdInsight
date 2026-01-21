@@ -102,6 +102,43 @@ public sealed class EcuContext
     /// </summary>
     public string? CanFilterPattern { get; init; }
 
+    /// <summary>
+    /// Timeout value for ATST command in units of 4ms.
+    /// Default 32 = 128ms. Working app uses aggressive values like 8 = 32ms for probing.
+    /// </summary>
+    public int AdapterTimeoutUnits { get; init; } = 32;
+
+    /// <summary>
+    /// Session activation command (e.g., "10C0" for Nissan OEM session, "1081" for default+suppress).
+    /// Sent before diagnostic queries or monitoring if module requires session activation.
+    /// </summary>
+    /// <remarks>
+    /// Common values:
+    /// - "1001" = Default session
+    /// - "1081" = Default session with suppress-positive-response bit
+    /// - "10C0" = Nissan OEM-specific session
+    /// - "1003" = Extended diagnostic session
+    /// </remarks>
+    public string? SessionActivationCommand { get; init; }
+
+    /// <summary>
+    /// Keep-alive command to prevent module sleep during extended monitoring.
+    /// Typically a TesterPresent command ("3E00" or "3E80").
+    /// </summary>
+    public string? KeepAliveCommand { get; init; }
+
+    /// <summary>
+    /// Keep-alive interval in milliseconds. Default 2000ms (2 seconds).
+    /// Most ECUs require keep-alive within 5 seconds to prevent sleep.
+    /// </summary>
+    public int KeepAliveIntervalMs { get; init; } = 2000;
+
+    /// <summary>
+    /// Whether this ECU requires session activation before data is available.
+    /// If true, session will be activated before monitoring or first query.
+    /// </summary>
+    public bool RequiresSessionActivation { get; init; }
+
 
     /// <summary>
     /// Nissan Leaf BMS (Battery Management System) - Mode 21 queries.

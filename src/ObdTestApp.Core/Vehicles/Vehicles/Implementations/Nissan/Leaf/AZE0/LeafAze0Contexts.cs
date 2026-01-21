@@ -202,27 +202,31 @@ public static class LeafAze0Contexts
 
     public static EcuContext Shift => ReqResp("SHIFT", "79D", "7BD");
 
+    /// <summary>
+    /// Steering broadcast frames - MAY REQUIRE SESSION ACTIVATION.
+    /// Frames 0x002 (10ms) and 0x300 (20ms) may only appear when steering ECU is awake.
+    /// </summary>
     public static EcuContext SteeringBroadcast => new()
     {
         Name = "STEERING Broadcast (0x002, 0x300)",
-        TxHeader = "",            // unused in monitoring mode
-        RxFilter = "",            // unused in monitoring mode
-        FlowControlHeader = "",   // unused in monitoring mode
-        CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
+        TxHeader = "742",             // EPS ECU TX address for session activation
+        RxFilter = "",                // Clear for monitoring
+        FlowControlHeader = "742",
+        CommunicationMode = EcuCommunicationMode.ActiveMonitoring,
 
-        // Monitor all standard CAN frames
+        // Session activation to wake EPS module
+        SessionActivationCommand = "1081",  // Default session with suppress-positive-response
+        RequiresSessionActivation = true,
+
+        // Keep-alive to prevent sleep during monitoring
+        KeepAliveCommand = "3E80",    // TesterPresent with suppress-positive-response
+        KeepAliveIntervalMs = 2000,
+
         MonitoringCommand = "AT MA",
-
-        // Accept Steering broadcast frames
-        // 0x002 (10ms) - Steering angle sensor
-        // 0x300 (20ms) - Steering wheel force
-        CanFilterMask = "",  // No filtering, accept all
-        CanFilterPattern = "",
-
         ExpectedCanIds = ["002", "300"],
 
         EnableHeaders = true,
-        EnableAutoFormatting = true
+        EnableAutoFormatting = false  // CAF0 required for proper frame parsing
     };
 
     public static EcuContext Tcu => ReqResp("TCU", "746", "783");
