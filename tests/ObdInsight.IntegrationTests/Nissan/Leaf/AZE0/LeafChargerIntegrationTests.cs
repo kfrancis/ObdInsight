@@ -1,6 +1,6 @@
 using OdbTestApp.Tests.Fixtures;
-using static OdbTestApp.Tests.NissanLeaf.AZE0.Unit.LeafBmsParsingHelpers;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
+using static ObdInsight.Tests.Base.BmsParsingHelpers;
 
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
 

@@ -1,12 +1,12 @@
 using System.Globalization;
 
-namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
+namespace ObdInsight.Tests.Base;
 
 /// <summary>
 /// Shared parsing utilities for Nissan Leaf BMS data.
 /// These methods are extracted from LeafAze0Bms for testing.
 /// </summary>
-public static class LeafBmsParsingHelpers
+public static class BmsParsingHelpers
 {
     /// <summary>
     /// Golden sample from actual Nissan Leaf AZE0 BMS Group 01 response.

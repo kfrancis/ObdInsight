@@ -1,7 +1,7 @@
 using TUnit.Assertions;
 using TUnit.Assertions.Extensions;
 using TUnit.Core;
-using static OdbTestApp.Tests.NissanLeaf.AZE0.Unit.LeafBmsParsingHelpers;
+using static ObdInsight.Tests.Base.BmsParsingHelpers;
 
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 

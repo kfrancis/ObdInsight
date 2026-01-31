@@ -27,7 +27,9 @@
     <Project Path="src/ObdInsight/ObdInsight.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/ObdInsight.IntegrationTests/ObdInsight.IntegrationTests.csproj" Id="1ba1ea61-402b-4cd0-8a1e-5c0fb02037f8" />
     <Project Path="tests/ObdInsight.SourceGeneration.Tests/ObdInsight.SourceGeneration.Tests.csproj" />
+    <Project Path="tests/ObdInsight.Tests.Base/ObdInsight.Tests.Base.csproj" Id="290f2336-73dc-4781-963f-7c3f9471b098" />
     <Project Path="tests/ObdInsight.Tests/ObdInsight.Tests.csproj" />
   </Folder>
 </Solution>

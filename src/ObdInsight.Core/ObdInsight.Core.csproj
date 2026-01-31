@@ -9,6 +9,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="ObdInsight.Tests" />
     <InternalsVisibleTo Include="ObdInsight" />
+    <InternalsVisibleTo Include="ObdInsight.IntegrationTests" />
   </ItemGroup>
 
   <ItemGroup>
