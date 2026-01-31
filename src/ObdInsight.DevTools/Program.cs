@@ -1,4 +1,4 @@
-﻿using ObdInsight.Core.Transports.Ble;
+
 using ObdInsight.DevTools.Commands;
 using Spectre.Console;
 
@@ -44,16 +44,16 @@ internal class Program
             var recentDevices = session.DeviceHistory.GetOrderedDevices().Take(5).ToList();
             if (recentDevices.Count > 0)
             {
-                choices.Add("── Quick Connect ──");
+                choices.Add("-- Quick Connect --");
                 foreach (var device in recentDevices)
                 {
-                    var star = device.IsFavorite ? "★ " : "";
+                    var star = device.IsFavorite ? "? " : "";
                     choices.Add($"Connect to {star}{device.Name}");
                 }
             }
 
             // Device selection section
-            choices.Add("── Device Selection ──");
+            choices.Add("-- Device Selection --");
             choices.Add("Scan for BLE devices");
             choices.Add("Set device address manually");
             if (!string.IsNullOrEmpty(session.DeviceAddress))
@@ -68,7 +68,7 @@ internal class Program
             // Connection section (only if device selected)
             if (!string.IsNullOrEmpty(session.DeviceAddress))
             {
-                choices.Add("── Connection ──");
+                choices.Add("-- Connection --");
                 if (!session.IsConnected)
                 {
                     choices.Add("Connect to device");
@@ -82,7 +82,7 @@ internal class Program
             // Diagnostics section (only if device selected)
             if (!string.IsNullOrEmpty(session.DeviceAddress))
             {
-                choices.Add("── Diagnostics ──");
+                choices.Add("-- Diagnostics --");
                 choices.Add("OBD command console");
                 choices.Add("Vehicle detection mode");
                 choices.Add("Nissan Leaf diagnostics (OVMS-style)");
@@ -91,7 +91,7 @@ internal class Program
             }
 
             // Tools section
-            choices.Add("── Tools ──");
+            choices.Add("-- Tools --");
             if (!string.IsNullOrEmpty(session.DeviceAddress))
             {
                 choices.Add("Record OBD session");
@@ -101,7 +101,7 @@ internal class Program
             choices.Add("Show BLE profiles");
 
             // Exit
-            choices.Add("──────────");
+            choices.Add("----------");
             choices.Add("Exit");
 
             var choice = AnsiConsole.Prompt(
@@ -112,7 +112,7 @@ internal class Program
                     .PageSize(25));
 
             // Skip separator lines
-            if (choice.StartsWith("──"))
+            if (choice.StartsWith("--"))
             {
                 continue;
             }
@@ -124,7 +124,7 @@ internal class Program
                 // Handle quick connect options
                 if (choice.StartsWith("Connect to "))
                 {
-                    var deviceName = choice["Connect to ".Length..].TrimStart('★', ' ');
+                    var deviceName = choice["Connect to ".Length..].TrimStart('?', ' ');
                     var device = recentDevices.FirstOrDefault(d => 
                         d.Name == deviceName || choice.Contains(d.Name));
                     
@@ -255,7 +255,7 @@ internal class Program
                     device.ProfileName ?? "[grey]default[/]",
                     device.LastUsed.ToLocalTime().ToString("g"),
                     device.UseCount.ToString(),
-                    device.IsFavorite ? "[yellow]★[/]" : "[grey]-[/]"
+                    device.IsFavorite ? "[yellow]?[/]" : "[grey]-[/]"
                 );
                 index++;
             }
@@ -281,7 +281,7 @@ internal class Program
                     session.DeviceHistory.SetFavorite(favDevice.Address, !favDevice.IsFavorite);
                     AnsiConsole.MarkupLine(favDevice.IsFavorite 
                         ? $"[grey]Removed {favDevice.Name} from favorites[/]" 
-                        : $"[yellow]★[/] Added {favDevice.Name} to favorites");
+                        : $"[yellow]?[/] Added {favDevice.Name} to favorites");
                     break;
 
                 case "Remove device":

@@ -1,4 +1,4 @@
-using ObdInsight.Core.Transports.Ble;
+using ObdInsight.Core.Communication.Bluetooth;
 using Spectre.Console;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;

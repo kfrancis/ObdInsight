@@ -1,4 +1,4 @@
-using ObdInsight.Core.Transports.Ble;
+using ObdInsight.Core.Communication.Bluetooth;
 using System.Collections.Concurrent;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
@@ -30,6 +30,16 @@ public sealed class WindowsBleScanner : IBleScanner
 
     public bool IsScanning => _watcher.Status == BluetoothLEAdvertisementWatcherStatus.Started;
 
+    public IReadOnlyList<BleDeviceInfo> GetDiscoveredDevices()
+    {
+        return _discoveredDevices.Values.ToList();
+    }
+
+    public void ClearDiscoveredDevices()
+    {
+        _discoveredDevices.Clear();
+    }
+
     public void Dispose()
     {
         StopScanAsync().GetAwaiter().GetResult();
@@ -57,7 +67,7 @@ public sealed class WindowsBleScanner : IBleScanner
         return Task.CompletedTask;
     }
 
-    public Task StopScanAsync()
+    public Task StopScanAsync(CancellationToken cancellationToken = default)
     {
         if (_watcher.Status == BluetoothLEAdvertisementWatcherStatus.Started)
         {

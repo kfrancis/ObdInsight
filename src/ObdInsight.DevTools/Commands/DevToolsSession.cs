@@ -1,7 +1,4 @@
-
-using ObdInsight.Core.Adapters;
-using ObdInsight.Core.Transports.Ble;
-using ObdInsight.Drivers.Adapters.Elm327;
+using ObdInsight.Core.Communication.Elm327;
 using Spectre.Console;
 
 namespace ObdInsight.DevTools.Commands;

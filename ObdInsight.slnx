@@ -19,10 +19,10 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/ObdInsight.Core/ObdInsight.Core.csproj" />
-    <Project Path="src/ObdInsight.DevTools/ObdInsight.DevTools.csproj" Id="c764fe8b-9a9f-4720-8bd1-4e8023ed8334">
-      <Build Solution="Debug|*" Project="false" />
+    <Project Path="src/ObdInsight.DevTools/ObdInsight.DevTools.csproj" Id="c764fe8b-9a9f-4720-8bd1-4e8023ed8334" />
+    <Project Path="src/ObdInsight.Maui/ObdInsight.Maui.csproj">
+      <Deploy Solution="Debug|*" />
     </Project>
-    <Project Path="src/ObdInsight.Maui/ObdInsight.Maui.csproj" />
     <Project Path="src/ObdInsight.SourceGeneration/ObdInsight.SourceGeneration.csproj" Id="31a510ba-88f2-4d38-b601-005c0acfd9aa" />
     <Project Path="src/ObdInsight/ObdInsight.csproj" />
   </Folder>

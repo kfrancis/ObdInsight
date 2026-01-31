@@ -1,4 +1,4 @@
-using ObdInsight.Core.Transports.Ble;
+using ObdInsight.Core.Communication.Bluetooth;
 
 namespace ObdInsight.DevTools;
 
@@ -6,14 +6,14 @@ namespace ObdInsight.DevTools;
 /// Windows-specific BLE transport factory.
 /// This implementation can be swapped with MAUI-specific providers later.
 /// </summary>
-public class WindowsBleTransportFactory : IBleTransportFactory
+public class WindowsBleTransportFactory
 {
     public IBleScanner CreateScanner()
     {
         return new WindowsBleScanner();
     }
 
-    public IBleTransport CreateTransport(BleDeviceProfile profile)
+    public WindowsBleTransport CreateTransport(BleDeviceProfile profile)
     {
         return new WindowsBleTransport(profile);
     }

@@ -1,4 +1,3 @@
-using ObdInsight.Core.Transports.Ble;
 using System.Buffers;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
@@ -43,6 +42,16 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
     /// Enable verbose debug logging to console (useful for troubleshooting connectivity issues).
     /// </summary>
     public bool EnableDebugLogging { get; set; }
+
+    /// <summary>
+    /// Event raised when data is sent to the device.
+    /// </summary>
+    public event EventHandler<string>? DataSent;
+
+    /// <summary>
+    /// Event raised when data is received from the device.
+    /// </summary>
+    public event EventHandler<string>? DataReceived;
 
     public WindowsBleTransport(BleDeviceProfile profile) : base(profile)
     {
@@ -394,7 +403,7 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
         base.Dispose();
     }
 
-    public async ValueTask DisposeAsync()
+    public new async ValueTask DisposeAsync()
     {
         await DisconnectAsync();
         _writeGate.Dispose();
@@ -446,6 +455,9 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
             // Log what we're sending
             var dataStr = Encoding.ASCII.GetString(data).Replace("\r", "\\r").Replace("\n", "\\n");
             Log($"Writing {data.Length} bytes: '{dataStr}' (hex: {BitConverter.ToString(data)})");
+
+            // Raise DataSent event
+            DataSent?.Invoke(this, dataStr);
 
             // Use WriteValueWithResultAsync for richer error information
             GattWriteResult? result = null;
@@ -674,6 +686,9 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
             var text = Encoding.ASCII.GetString(rentedArray, 0, length);
             var escaped = text.Replace("\r", "\\r").Replace("\n", "\\n");
             Log($"RX notification #{_notificationsReceived}: {length} bytes: '{escaped}'");
+
+            // Raise DataReceived event
+            DataReceived?.Invoke(this, text);
 
             // Create a copy for the base class (it may hold onto it)
             var data = new byte[length];

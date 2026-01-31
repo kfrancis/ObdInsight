@@ -1,4 +1,4 @@
-﻿using ObdInsight.Core.Transports.Ble;
+
 using Spectre.Console;
 
 namespace ObdInsight.DevTools.Commands;
@@ -136,20 +136,20 @@ public static class LeafBatteryHealthCommand
             [cyan]What we measure:[/]
 
             [green]1. BMS-Reported Health (Overall)[/]
-               • SoH% - BMS estimate of remaining capacity vs new
-               • AHr  - Usable charge capacity in Amp-hours
+               � SoH% - BMS estimate of remaining capacity vs new
+               � AHr  - Usable charge capacity in Amp-hours
 
             [green]2. Cell Health (Imbalance Detection)[/]
-               • Cell voltage spread at rest (ΔV_rest)
-               • Cell voltage spread under load (ΔV_load) (optional)
-               • Identification of weakest cell pairs
+               � Cell voltage spread at rest (?V_rest)
+               � Cell voltage spread under load (?V_load) (optional)
+               � Identification of weakest cell pairs
 
             [green]3. Temperature Check[/]
-               • Battery module temperatures
+               � Battery module temperatures
 
             [yellow]Vehicle Requirements:[/]
-            • Car should be in READY mode for best results
-            • For load test: be prepared to accelerate briefly
+            � Car should be in READY mode for best results
+            � For load test: be prepared to accelerate briefly
             """)
             .Header("[cyan]Assessment Overview[/]")
             .Border(BoxBorder.Rounded));
@@ -252,7 +252,7 @@ public static class LeafBatteryHealthCommand
             if (healthData != null)
                 DisplayHealthDataSummary(healthData, packType);
             else
-                AnsiConsole.MarkupLine("[yellow]⚠ Could not retrieve BMS health data[/]");
+                AnsiConsole.MarkupLine("[yellow]? Could not retrieve BMS health data[/]");
 
             AnsiConsole.WriteLine();
 
@@ -269,7 +269,7 @@ public static class LeafBatteryHealthCommand
             if (cellsAtRest != null && cellsAtRest.CellCount > 0)
                 DisplayCellVoltageSummary(cellsAtRest, "Rest");
             else
-                AnsiConsole.MarkupLine("[yellow]⚠ Could not retrieve cell voltages[/]");
+                AnsiConsole.MarkupLine("[yellow]? Could not retrieve cell voltages[/]");
 
             AnsiConsole.WriteLine();
 
@@ -284,7 +284,7 @@ public static class LeafBatteryHealthCommand
             if (temperatures != null && temperatures.ModuleTemps.Count > 0)
                 DisplayTemperatureSummary(temperatures);
             else
-                AnsiConsole.MarkupLine("[yellow]⚠ Could not retrieve temperature data[/]");
+                AnsiConsole.MarkupLine("[yellow]? Could not retrieve temperature data[/]");
 
             AnsiConsole.WriteLine();
 
@@ -427,7 +427,7 @@ public static class LeafBatteryHealthCommand
         }
         else
         {
-            AnsiConsole.MarkupLine($"[yellow]   ⚠ Group 01 response too short ({g01Bytes.Count} bytes, need 23+)[/]");
+            AnsiConsole.MarkupLine($"[yellow]   ? Group 01 response too short ({g01Bytes.Count} bytes, need 23+)[/]");
         }
 
         // Query Group 61 - SOH data (shorter response, should work reliably)
@@ -455,7 +455,7 @@ public static class LeafBatteryHealthCommand
                 AnsiConsole.MarkupLine($"[grey]   Calculated SOH: {sohBms:F1}%[/]");
                 
                 // If we have SOH but no AHr from Group 01, derive AHr from SOH
-                // For 30kWh pack: 79 Ah new × SOH% = current capacity
+                // For 30kWh pack: 79 Ah new � SOH% = current capacity
                 if (!ahrCurrent.HasValue && ahrNew.HasValue && sohBms > 0)
                 {
                     ahrCurrent = ahrNew.Value * (sohBms.Value / 100.0);
@@ -583,7 +583,7 @@ public static class LeafBatteryHealthCommand
         table.AddRow("Minimum", $"[cyan]{snapshot.MinVoltage:F3}V[/] (Cell {snapshot.WeakestCellIndex + 1})");
         table.AddRow("Maximum", $"[cyan]{snapshot.MaxVoltage:F3}V[/] (Cell {snapshot.StrongestCellIndex + 1})");
         table.AddRow("Average", $"[cyan]{snapshot.AvgVoltage:F3}V[/]");
-        table.AddRow($"[bold]ΔV ({condition})[/]", $"[{deltaColor}]{snapshot.DeltaV * 1000:F0}mV[/] - {balanceStatus}");
+        table.AddRow($"[bold]?V ({condition})[/]", $"[{deltaColor}]{snapshot.DeltaV * 1000:F0}mV[/] - {balanceStatus}");
         table.AddRow("Pack Total", $"[yellow]{snapshot.CellVoltages.Sum():F1}V[/]");
 
         AnsiConsole.Write(table);
@@ -604,10 +604,10 @@ public static class LeafBatteryHealthCommand
             .AddColumn("Value");
 
         table.AddRow("Sensors", $"{temps.ModuleTemps.Count}");
-        table.AddRow("Min", $"{temps.MinTemp}°C");
-        table.AddRow("Max", $"{temps.MaxTemp}°C");
-        table.AddRow("Average", $"[{avgColor}]{temps.AvgTemp:F1}°C[/]");
-        table.AddRow("Spread", $"{temps.TempSpread}°C");
+        table.AddRow("Min", $"{temps.MinTemp}�C");
+        table.AddRow("Max", $"{temps.MaxTemp}�C");
+        table.AddRow("Average", $"[{avgColor}]{temps.AvgTemp:F1}�C[/]");
+        table.AddRow("Spread", $"{temps.TempSpread}�C");
         table.AddRow("Status", tempStatus);
 
         AnsiConsole.Write(table);
@@ -626,7 +626,7 @@ public static class LeafBatteryHealthCommand
         var table = new Table()
             .Border(TableBorder.Rounded)
             .AddColumn("Condition")
-            .AddColumn("ΔV")
+            .AddColumn("?V")
             .AddColumn("Weakest Cell");
 
         table.AddRow("At Rest", $"{deltaRestMv:F0}mV", $"Cell {rest.WeakestCellIndex + 1}");
@@ -637,24 +637,24 @@ public static class LeafBatteryHealthCommand
 
         if (rest.WeakestCellIndex == load.WeakestCellIndex)
         {
-            AnsiConsole.MarkupLine($"[yellow]⚠ Cell {rest.WeakestCellIndex + 1} is consistently the weakest[/]");
+            AnsiConsole.MarkupLine($"[yellow]? Cell {rest.WeakestCellIndex + 1} is consistently the weakest[/]");
             AnsiConsole.MarkupLine("[grey]   This cell pair may be the limiting factor for your pack.[/]");
         }
 
         if (deltaIncrease > 30)
         {
-            AnsiConsole.MarkupLine($"[yellow]⚠ Significant voltage spread increase under load (+{deltaIncrease:F0}mV)[/]");
+            AnsiConsole.MarkupLine($"[yellow]? Significant voltage spread increase under load (+{deltaIncrease:F0}mV)[/]");
             AnsiConsole.MarkupLine("[grey]   This suggests elevated internal resistance in some cells.[/]");
         }
         else if (deltaIncrease > 10)
         {
-            AnsiConsole.MarkupLine($"[green]✓ Normal voltage spread increase under load (+{deltaIncrease:F0}mV)[/]");
+            AnsiConsole.MarkupLine($"[green]? Normal voltage spread increase under load (+{deltaIncrease:F0}mV)[/]");
         }
     }
 
     private static void DisplayFinalAssessment(BatteryHealthAssessment assessment)
     {
-        AnsiConsole.Write(new Rule("[green]═══ FINAL ASSESSMENT ═══[/]").RuleStyle("green"));
+        AnsiConsole.Write(new Rule("[green]--- FINAL ASSESSMENT ---[/]").RuleStyle("green"));
         AnsiConsole.WriteLine();
 
         var ratingColor = assessment.OverallRating is "Excellent" or "Very Good" ? "green" : (assessment.OverallRating is "Good" or "Fair" ? "yellow" : "red");
@@ -693,9 +693,9 @@ public static class LeafBatteryHealthCommand
         var cellGrid = new Grid().AddColumn().AddColumn().AddColumn();
         cellGrid.AddRow(
             new Panel(assessment.CellsAtRest != null ? $"[bold]{assessment.CellsAtRest.DeltaV * 1000:F0}mV[/]" : "[grey]N/A[/]")
-                .Header("[cyan]ΔV (Rest)[/]").Border(BoxBorder.Rounded),
+                .Header("[cyan]?V (Rest)[/]").Border(BoxBorder.Rounded),
             new Panel(assessment.CellsUnderLoad != null ? $"[bold]{assessment.CellsUnderLoad.DeltaV * 1000:F0}mV[/]" : "[grey]Not tested[/]")
-                .Header("[cyan]ΔV (Load)[/]").Border(BoxBorder.Rounded),
+                .Header("[cyan]?V (Load)[/]").Border(BoxBorder.Rounded),
             new Panel($"[{balanceColor}]{assessment.CellBalanceRating}[/]")
                 .Header("[cyan]Balance[/]").Border(BoxBorder.Rounded));
         AnsiConsole.Write(cellGrid);
@@ -709,22 +709,22 @@ public static class LeafBatteryHealthCommand
         var recommendations = new List<string>();
 
         if (assessment.HealthData?.SohBmsPercent < 70)
-            recommendations.Add("• Battery has moderate to significant degradation. Consider range expectations.");
+            recommendations.Add("� Battery has moderate to significant degradation. Consider range expectations.");
 
         if (assessment.CellsAtRest?.DeltaV > 0.050)
-            recommendations.Add("• Cell imbalance detected. A full charge to 100% may help with balancing.");
+            recommendations.Add("� Cell imbalance detected. A full charge to 100% may help with balancing.");
 
         if (assessment.CellsAtRest != null && assessment.CellsUnderLoad != null &&
             assessment.CellsAtRest.WeakestCellIndex == assessment.CellsUnderLoad.WeakestCellIndex)
-            recommendations.Add($"• Cell pair #{assessment.CellsAtRest.WeakestCellIndex + 1} is consistently weak and may limit pack performance.");
+            recommendations.Add($"� Cell pair #{assessment.CellsAtRest.WeakestCellIndex + 1} is consistently weak and may limit pack performance.");
 
         if (assessment.Temperatures?.AvgTemp < 10)
-            recommendations.Add("• Battery is cold. Allow warming before fast charging for best performance.");
+            recommendations.Add("� Battery is cold. Allow warming before fast charging for best performance.");
         else if (assessment.Temperatures?.AvgTemp > 35)
-            recommendations.Add("• Battery is warm. Allow cooling before fast charging to preserve longevity.");
+            recommendations.Add("� Battery is warm. Allow cooling before fast charging to preserve longevity.");
 
         if (recommendations.Count == 0)
-            recommendations.Add("• Battery appears to be in good condition. Continue normal use.");
+            recommendations.Add("� Battery appears to be in good condition. Continue normal use.");
 
         foreach (var rec in recommendations)
             AnsiConsole.MarkupLine(rec);
@@ -770,7 +770,7 @@ public static class LeafBatteryHealthCommand
             content.AppendLine($"  Cells: {assessment.CellsAtRest.CellCount}");
             content.AppendLine($"  Min:   {assessment.CellsAtRest.MinVoltage:F3}V (Cell {assessment.CellsAtRest.WeakestCellIndex + 1})");
             content.AppendLine($"  Max:   {assessment.CellsAtRest.MaxVoltage:F3}V");
-            content.AppendLine($"  ΔV:    {assessment.CellsAtRest.DeltaV * 1000:F0}mV");
+            content.AppendLine($"  ?V:    {assessment.CellsAtRest.DeltaV * 1000:F0}mV");
             content.AppendLine($"  Total: {assessment.CellsAtRest.CellVoltages.Sum():F1}V");
             content.AppendLine();
         }
@@ -778,15 +778,15 @@ public static class LeafBatteryHealthCommand
         if (assessment.Temperatures != null)
         {
             content.AppendLine("TEMPERATURES");
-            content.AppendLine($"  Avg: {assessment.Temperatures.AvgTemp:F1}°C");
-            content.AppendLine($"  Range: {assessment.Temperatures.MinTemp}°C to {assessment.Temperatures.MaxTemp}°C");
+            content.AppendLine($"  Avg: {assessment.Temperatures.AvgTemp:F1}�C");
+            content.AppendLine($"  Range: {assessment.Temperatures.MinTemp}�C to {assessment.Temperatures.MaxTemp}�C");
             content.AppendLine();
         }
 
         content.AppendLine("================================================================================");
 
         await File.WriteAllTextAsync(filePath, content.ToString());
-        AnsiConsole.MarkupLine($"[green]✓[/] Report saved to: [cyan]{filePath.EscapeMarkup()}[/]");
+        AnsiConsole.MarkupLine($"[green]?[/] Report saved to: [cyan]{filePath.EscapeMarkup()}[/]");
     }
 
     private static List<byte> ParseIsoTpResponse(string response)

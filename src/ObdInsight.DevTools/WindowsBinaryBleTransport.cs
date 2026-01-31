@@ -1,4 +1,4 @@
-using ObdInsight.Core.Transports.Ble;
+
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices.WindowsRuntime;
@@ -363,6 +363,22 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
 
         SetConnectionState(BleConnectionState.Disconnected);
         Log("Disconnected");
+    }
+
+    /// <summary>
+    /// Adapter method for interface compatibility.
+    /// </summary>
+    public Task WriteAsync(ReadOnlyMemory<byte> data, CancellationToken ct = default)
+    {
+        return WriteRawAsync(data, ct);
+    }
+
+    /// <summary>
+    /// Adapter method for interface compatibility.
+    /// </summary>
+    public Task<byte[]?> ReadAsync(TimeSpan timeout, CancellationToken ct = default)
+    {
+        return ReadAvailableAsync(timeout, ct)!;
     }
 
     /// <inheritdoc/>
