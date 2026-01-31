@@ -1,9 +1,8 @@
 using System.Collections.Concurrent;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
-using ObdInsight.Core.Communication.Bluetooth;
 
-namespace ObdInsight.Communication.Bluetooth;
+namespace ObdInsight.Core.Communication.Bluetooth;
 
 public sealed class BleScanner : IBleScanner
 {
@@ -27,6 +26,8 @@ public sealed class BleScanner : IBleScanner
 
     public bool IsScanning => _watcher.Status == BluetoothLEAdvertisementWatcherStatus.Started;
 
+    public void ClearDiscoveredDevices() => _discoveredDevices.Clear();
+
     public void Dispose()
     {
         StopScanAsync().GetAwaiter().GetResult();
@@ -34,7 +35,9 @@ public sealed class BleScanner : IBleScanner
         _watcher.Stopped -= OnWatcherStopped;
     }
 
-    public Task StartScanAsync(BleScanFilter? filter = null, CancellationToken cancellationToken = default)
+    public IReadOnlyList<BleDeviceInfo> GetDiscoveredDevices() => _discoveredDevices.Values.ToList();
+
+    public Task StartScanAsync(BleScanFilter? filter = null, CancellationToken ct = default)
     {
         _currentFilter = filter;
         _discoveredDevices.Clear();
@@ -61,9 +64,6 @@ public sealed class BleScanner : IBleScanner
         }
         return Task.CompletedTask;
     }
-
-    public IReadOnlyList<BleDeviceInfo> GetDiscoveredDevices() => _discoveredDevices.Values.ToList();
-    public void ClearDiscoveredDevices() => _discoveredDevices.Clear();
 
     private static string FormatMacAddress(ulong address)
     {
@@ -128,12 +128,14 @@ public sealed class BleScanner : IBleScanner
                 ManufacturerData: manufacturerData
             );
 
-            if (_discoveredDevices.TryAdd(address, deviceInfo) ||
-                _discoveredDevices.TryGetValue(address, out var existing) && existing.Rssi != deviceInfo.Rssi)
+            if (!_discoveredDevices.TryAdd(address, deviceInfo) &&
+                (!_discoveredDevices.TryGetValue(address, out var existing) || existing.Rssi == deviceInfo.Rssi))
             {
-                _discoveredDevices[address] = deviceInfo;
-                DeviceDiscovered?.Invoke(this, new BleDeviceDiscoveredEventArgs(deviceInfo));
+                return;
             }
+
+            _discoveredDevices[address] = deviceInfo;
+            DeviceDiscovered?.Invoke(this, new BleDeviceDiscoveredEventArgs(deviceInfo));
         }
         catch (Exception ex)
         {

@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using ObdInsight.Core.Communication.Bluetooth;
 using Spectre.Console;
 
@@ -6,6 +5,16 @@ namespace ObdInsight.UI;
 
 public static class DeviceRenderer
 {
+    public static void RenderConnectionInfo(BleDeviceInfo device, DateTime start, TimeSpan timeout)
+    {
+        var panel = new Panel($"[grey]Device:[/] [cyan]{device.Name}[/] ([grey]{device.Address}[/])\n[grey]Start:[/] {start:HH:mm:ss} UTC\n[grey]Timeout:[/] {timeout.TotalSeconds:F0}s")
+        {
+            Header = new PanelHeader("[green]Connection Info[/]"),
+            Border = BoxBorder.Rounded
+        };
+        AnsiConsole.Write(panel);
+    }
+
     public static void RenderDeviceTable(IReadOnlyList<BleDeviceInfo> devices, DevicePreferences preferences)
     {
         var table = new Table().Border(TableBorder.Rounded).Title("[bold cyan]BLE Devices[/]");
@@ -15,7 +24,7 @@ public static class DeviceRenderer
         table.AddColumn("RSSI");
         table.AddColumn("Favorite");
 
-        for (int i = 0; i < devices.Count; i++)
+        for (var i = 0; i < devices.Count; i++)
         {
             var d = devices[i];
             var isFav = preferences.IsFavorite(d) ? "[yellow]★[/]" : "";
@@ -23,16 +32,6 @@ public static class DeviceRenderer
         }
 
         AnsiConsole.Write(table);
-    }
-
-    public static void RenderConnectionInfo(BleDeviceInfo device, DateTime start, TimeSpan timeout)
-    {
-        var panel = new Panel($"[grey]Device:[/] [cyan]{device.Name}[/] ([grey]{device.Address}[/])\n[grey]Start:[/] {start:HH:mm:ss} UTC\n[grey]Timeout:[/] {timeout.TotalSeconds:F0}s")
-        {
-            Header = new PanelHeader("[green]Connection Info[/]"),
-            Border = BoxBorder.Rounded
-        };
-        AnsiConsole.Write(panel);
     }
 
     public static void RenderSessionStats(

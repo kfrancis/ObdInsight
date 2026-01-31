@@ -76,17 +76,14 @@ namespace ObdInsight
                     AnsiConsole.MarkupLine($"   [grey]   Model Year: {year}[/]");
 
                     // Determine battery type based on year
-                    string battery;
-                    if (year <= 2015)
-                        battery = "24 kWh (ZE0)";
-                    else if (year == 2016)
-                        battery = "24/30 kWh (AZE0)";
-                    else if (year == 2017)
-                        battery = "30 kWh (AZE0)";
-                    else if (year >= 2018 && year <= 2021)
-                        battery = "40/62 kWh (ZE1)";
-                    else
-                        battery = "40/60 kWh (ZE1)";
+                    var battery = year switch
+                    {
+                        <= 2015 => "24 kWh (ZE0)",
+                        2016 => "24/30 kWh (AZE0)",
+                        2017 => "30 kWh (AZE0)",
+                        >= 2018 and <= 2021 => "40/62 kWh (ZE1)",
+                        _ => "40/60 kWh (ZE1)"
+                    };
 
                     AnsiConsole.MarkupLine($"   [grey]   Battery Type: {battery}[/]");
                 }

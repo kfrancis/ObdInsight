@@ -1,13 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Spectre.Console;
 using Serilog;
 using ObdInsight.Core.Communication.Bluetooth;
 using ObdInsight.UI;
-using ObdInsight.Communication.Bluetooth;
 
 namespace ObdInsight.Application;
 
@@ -39,7 +33,7 @@ public class DeviceScanService
             if (devices.Count == 0)
             {
                 Log.Warning("No BLE devices found during scan");
-                if (AnsiConsole.Confirm("No BLE devices found. Rescan?", defaultValue: true))
+                if (await AnsiConsole.ConfirmAsync("No BLE devices found. Rescan?", defaultValue: true, cancellationToken: ct))
                 {
                     Log.Information("User requested rescan");
                     continue;
@@ -66,10 +60,10 @@ public class DeviceScanService
             actions.Add("Rescan");
             actions.Add("Cancel");
 
-            var action = AnsiConsole.Prompt(
+            var action = await AnsiConsole.PromptAsync(
                 new SelectionPrompt<string>()
                     .Title("[cyan]Select an action:[/]")
-                    .AddChoices(actions));
+                    .AddChoices(actions), ct);
 
             if (action.StartsWith("Connect to favorite", StringComparison.OrdinalIgnoreCase) && favorite != null)
             {
@@ -95,17 +89,17 @@ public class DeviceScanService
                 ? orderedDevices.IndexOf(favorite) + 1
                 : 1;
 
-            var selection = AnsiConsole.Prompt(
+            var selection = await AnsiConsole.PromptAsync(
                 new TextPrompt<int>("[cyan]Enter device number:[/]")
                     .DefaultValue(defaultSelection)
                     .Validate(n => n >= 1 && n <= orderedDevices.Count
                         ? ValidationResult.Success()
-                        : ValidationResult.Error($"Enter a number between 1 and {orderedDevices.Count}")));
+                        : ValidationResult.Error($"Enter a number between 1 and {orderedDevices.Count}")), ct);
 
             var selectedDevice = orderedDevices[selection - 1];
 
             var shouldFavorite = preferences.IsFavorite(selectedDevice) ||
-                AnsiConsole.Confirm($"Mark {selectedDevice.Name} as a favorite?", defaultValue: false);
+                await AnsiConsole.ConfirmAsync($"Mark {selectedDevice.Name} as a favorite?", defaultValue: false, cancellationToken: ct);
 
             Log.Information("User selected device #{Number}: {DeviceName} ({Address}), Favorite={IsFavorite}",
                 selection, selectedDevice.Name, selectedDevice.Address, shouldFavorite);
@@ -132,14 +126,14 @@ public class DeviceScanService
             Log.Information("Starting BLE scan for {Duration} seconds", _scanDuration.TotalSeconds);
             AnsiConsole.MarkupLine($"[cyan]Scanning for BLE devices ({_scanDuration.TotalSeconds:0}s)...[/]");
 
-            await scanner.StartScanAsync(cancellationToken: ct);
+            await scanner.StartScanAsync(ct: ct);
             try
             {
                 await Task.Delay(_scanDuration, ct);
             }
             finally
             {
-                await scanner.StopScanAsync();
+                await scanner.StopScanAsync(ct);
             }
 
             Log.Information("BLE scan completed. Found {DeviceCount} devices", devices.Count);
@@ -152,4 +146,3 @@ public class DeviceScanService
         }
     }
 }
-

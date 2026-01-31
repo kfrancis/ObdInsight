@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 namespace ObdInsight.Tests.Base;
@@ -12,6 +13,7 @@ public static class BmsParsingHelpers
     /// Golden sample from actual Nissan Leaf AZE0 BMS Group 01 response.
     /// Captured: 2026-01-18 from 66:1E:87:02:C2:DB
     /// </summary>
+    [SuppressMessage("ReSharper", "StringLiteralTypo")]
     public static readonly string[] GoldenGroup01Lines =
     [
         "7BB102B6101000000EB",  // FF: len=43, [61 01 00 00 00 EB]
@@ -22,6 +24,80 @@ public static class BmsParsingHelpers
         "7BB25000805C1800005",  // CF5: [00 08 05 C1 80 00 05]
         "7BB260000FFFFFFFFFF",  // CF6: [00 00 FF...]
     ];
+
+    /// <summary>
+    /// Parses Group 01 using OVMS-style offsets on reassembled payload.
+    /// </summary>
+    public static BmsGroup01Data ParseGroup01FromFrames(List<IsoTpFrame> frames)
+    {
+        double? currentAmps = null;
+        double? voltageVolts = null;
+        double? socPercent = null;
+        double? capacityAh = null;
+        double? hxPercent = null;
+
+        var payload = ReassembleIsoTpPayload(frames);
+
+        if (payload.Length < 4 || payload[0] != 0x61 || payload[1] != 0x01)
+        {
+            return new BmsGroup01Data(null, null, null, null, null);
+        }
+
+        var data = payload.Skip(2).ToArray();
+        var dataLen = data.Length;
+
+        // Current1 at bytes 0-3
+        if (dataLen >= 4)
+        {
+            var currentUnsigned = ((uint)data[0] << 24) | ((uint)data[1] << 16) | ((uint)data[2] << 8) | data[3];
+            var currentSigned = unchecked((int)currentUnsigned);
+            currentAmps = currentSigned / 1024.0;
+        }
+
+        // Voltage from CF3
+        var cfMap = frames.Where(f => f.FrameType == 2).ToDictionary(f => f.SeqOrLen, f => f.Data);
+        if (cfMap.TryGetValue(3, out var cf3) && cf3.Length >= 2)
+        {
+            var voltageRaw = (cf3[0] << 8) | cf3[1];
+            voltageVolts = voltageRaw / 100.0;
+        }
+
+        var isZe1 = dataLen >= 49;
+
+        if (isZe1)
+        {
+            if (dataLen >= 30)
+            {
+                var hxRaw = (data[28] << 8) | data[29];
+                hxPercent = hxRaw / 102.4;
+            }
+            if (dataLen >= 34)
+            {
+                var socRaw = (data[31] << 16) | (data[32] << 8) | data[33];
+                socPercent = socRaw / 10000.0;
+            }
+            if (dataLen >= 38)
+            {
+                var ahrRaw = (data[35] << 16) | (data[36] << 8) | data[37];
+                capacityAh = ahrRaw / 10000.0;
+            }
+        }
+        else
+        {
+            if (dataLen >= 28)
+            {
+                var hxRaw = (data[26] << 8) | data[27];
+                hxPercent = hxRaw / 100.0;
+            }
+            if (dataLen >= 36)
+            {
+                var ahrRaw = (data[33] << 16) | (data[34] << 8) | data[35];
+                capacityAh = ahrRaw / 10000.0;
+            }
+        }
+
+        return new BmsGroup01Data(socPercent, voltageVolts, currentAmps, capacityAh, hxPercent);
+    }
 
     /// <summary>
     /// Parses ISO-TP frames from ELM327 response lines.
@@ -68,6 +144,7 @@ public static class BmsParsingHelpers
                 case 0:
                     frames.Add(new IsoTpFrame(0, frameInfo, frameBytes.Skip(1).ToArray()));
                     break;
+
                 case 1:
                     if (frameBytes.Count >= 2)
                     {
@@ -75,6 +152,7 @@ public static class BmsParsingHelpers
                         frames.Add(new IsoTpFrame(1, totalLen, frameBytes.Skip(2).ToArray()));
                     }
                     break;
+
                 case 2:
                     frames.Add(new IsoTpFrame(2, frameInfo, frameBytes.Skip(1).ToArray()));
                     break;
@@ -123,80 +201,6 @@ public static class BmsParsingHelpers
             return payload.Take(expectedLength).ToArray();
 
         return payload.ToArray();
-    }
-
-    /// <summary>
-    /// Parses Group 01 using OVMS-style offsets on reassembled payload.
-    /// </summary>
-    public static BmsGroup01Data ParseGroup01FromFrames(List<IsoTpFrame> frames)
-    {
-        double? currentAmps = null;
-        double? voltageVolts = null;
-        double? socPercent = null;
-        double? capacityAh = null;
-        double? hxPercent = null;
-
-        var payload = ReassembleIsoTpPayload(frames);
-
-        if (payload.Length < 4 || payload[0] != 0x61 || payload[1] != 0x01)
-        {
-            return new BmsGroup01Data(null, null, null, null, null);
-        }
-
-        var data = payload.Skip(2).ToArray();
-        var dataLen = data.Length;
-
-        // Current1 at bytes 0-3
-        if (dataLen >= 4)
-        {
-            var currentUnsigned = ((uint)data[0] << 24) | ((uint)data[1] << 16) | ((uint)data[2] << 8) | data[3];
-            var currentSigned = unchecked((int)currentUnsigned);
-            currentAmps = currentSigned / 1024.0;
-        }
-
-        // Voltage from CF3
-        var cfMap = frames.Where(f => f.FrameType == 2).ToDictionary(f => f.SeqOrLen, f => f.Data);
-        if (cfMap.TryGetValue(3, out var cf3) && cf3.Length >= 2)
-        {
-            var voltageRaw = (cf3[0] << 8) | cf3[1];
-            voltageVolts = voltageRaw / 100.0;
-        }
-
-        bool isZE1 = dataLen >= 49;
-
-        if (isZE1)
-        {
-            if (dataLen >= 30)
-            {
-                var hxRaw = (data[28] << 8) | data[29];
-                hxPercent = hxRaw / 102.4;
-            }
-            if (dataLen >= 34)
-            {
-                var socRaw = (data[31] << 16) | (data[32] << 8) | data[33];
-                socPercent = socRaw / 10000.0;
-            }
-            if (dataLen >= 38)
-            {
-                var ahrRaw = (data[35] << 16) | (data[36] << 8) | data[37];
-                capacityAh = ahrRaw / 10000.0;
-            }
-        }
-        else
-        {
-            if (dataLen >= 28)
-            {
-                var hxRaw = (data[26] << 8) | data[27];
-                hxPercent = hxRaw / 100.0;
-            }
-            if (dataLen >= 36)
-            {
-                var ahrRaw = (data[33] << 16) | (data[34] << 8) | data[35];
-                capacityAh = ahrRaw / 10000.0;
-            }
-        }
-
-        return new BmsGroup01Data(socPercent, voltageVolts, currentAmps, capacityAh, hxPercent);
     }
 }
 

@@ -100,7 +100,7 @@ namespace ObdInsight.Core.Communication.Elm327
                     else
                     {
                         // Wait up to 5 seconds for connection with polling
-                        for (int i = 0; i < 10; i++)
+                        for (var i = 0; i < 10; i++)
                         {
                             if (_device.ConnectionStatus == BluetoothConnectionStatus.Connected)
                                 break;
@@ -247,7 +247,7 @@ namespace ObdInsight.Core.Communication.Elm327
                 await Task.Delay(10, ct);
             }
 
-            _bufferLock.Wait(ct);
+            await _bufferLock.WaitAsync(ct);
             try
             {
                 var count = Math.Min(buffer.Length, _receiveBuffer.Count);
@@ -261,13 +261,13 @@ namespace ObdInsight.Core.Communication.Elm327
             }
         }
 
-        public async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct)
+        public async ValueTask WriteAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
         {
             if (_writeCharacteristic == null)
                 throw new IOException("Transport not open");
 
             var writer = new DataWriter();
-            writer.WriteBytes(buffer.ToArray());
+            writer.WriteBytes(data.ToArray());
             var status = await _writeCharacteristic.WriteValueAsync(writer.DetachBuffer(), GattWriteOption.WriteWithoutResponse);
             if (status != GattCommunicationStatus.Success)
                 throw new IOException("Write failed");
