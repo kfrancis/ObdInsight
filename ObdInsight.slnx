@@ -1,11 +1,4 @@
 <Solution>
-  <Folder Name="/newarch/">
-    <Project Path="src/ObdInsight.SourceGeneration/ObdInsight.SourceGeneration.csproj" Id="31a510ba-88f2-4d38-b601-005c0acfd9aa" />
-    <Project Path="src/ObdTestApp.Core/ObdTestApp.Core.csproj" Id="45187bc7-b144-426b-b4ad-af4e4ad1bac6" />
-    <Project Path="src/ObdTestApp/ObdTestApp.csproj" Id="36c169ba-2379-4f56-b741-6cc9277e9c44" />
-    <Project Path="tests/ObdInsight.SourceGeneration.Tests/ObdInsight.SourceGeneration.Tests.csproj" />
-    <Project Path="tests/OdbTestApp.Tests/OdbTestApp.Tests.csproj" />
-  </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
     <File Path=".gitignore" />
@@ -25,25 +18,16 @@
     <File Path="vehicle_nissanleaf.cpp" />
   </Folder>
   <Folder Name="/src/">
-    <Project Path="src/ObdInsight.Core/ObdInsight.Core.csproj" Id="38973211-6598-4e52-8e45-2adae31097f1">
-      <Build Solution="Debug|*" Project="false" />
-    </Project>
+    <Project Path="src/ObdInsight.Core/ObdInsight.Core.csproj" />
     <Project Path="src/ObdInsight.DevTools/ObdInsight.DevTools.csproj" Id="c764fe8b-9a9f-4720-8bd1-4e8023ed8334">
       <Build Solution="Debug|*" Project="false" />
     </Project>
-    <Project Path="src/ObdInsight.Drivers/ObdInsight.Drivers.csproj" Id="d61a7cf5-15b2-4616-8185-c670c3301568">
-      <Build Solution="Debug|*" Project="false" />
-    </Project>
-    <Project Path="src/ObdInsight/ObdInsight.csproj" Id="85a1989b-1fe0-477e-a7e7-8f96b78f5837">
-      <Build Solution="Debug|*" Project="false" />
-    </Project>
+    <Project Path="src/ObdInsight.Maui/ObdInsight.Maui.csproj" />
+    <Project Path="src/ObdInsight.SourceGeneration/ObdInsight.SourceGeneration.csproj" Id="31a510ba-88f2-4d38-b601-005c0acfd9aa" />
+    <Project Path="src/ObdInsight/ObdInsight.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/ObdInsight.AdapterComplianceTests/ObdInsight.AdapterComplianceTests.csproj">
-      <Build Solution="Debug|*" Project="false" />
-    </Project>
-    <Project Path="tests/OdbInsights.Tests/ObdInsights.Tests.csproj">
-      <Build Solution="Debug|*" Project="false" />
-    </Project>
+    <Project Path="tests/ObdInsight.SourceGeneration.Tests/ObdInsight.SourceGeneration.Tests.csproj" />
+    <Project Path="tests/ObdInsight.Tests/ObdInsight.Tests.csproj" />
   </Folder>
 </Solution>
