@@ -4,6 +4,7 @@ using ObdInsight.Core.Protocols;
 using ObdInsight.UI;
 using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Communication.Bluetooth;
+using Microsoft.Extensions.Logging;
 using Serilog;
 using Spectre.Console;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf;
@@ -344,12 +345,16 @@ namespace ObdInsight
                 AnsiConsole.MarkupLine("[green]✓[/] Bluetooth connected.");
                 AnsiConsole.WriteLine();
 
-                var framer = new ElmFramer(transport)
+                // Bridge Core's ILogger-based logging into the app's Serilog pipeline
+                // (console + file sinks configured in Main).
+                using var loggerFactory = new Serilog.Extensions.Logging.SerilogLoggerFactory(Log.Logger);
+
+                var framer = new ElmFramer(transport, loggerFactory.CreateLogger<ElmFramer>())
                 {
                     EnableDebugLogging = true
                 };
 
-                var session = new ElmSession(framer, new LeafBmsWakeupStrategy())
+                var session = new ElmSession(framer, new LeafBmsWakeupStrategy(), loggerFactory.CreateLogger<ElmSession>())
                 {
                     CommandTimeout = TimeSpan.FromSeconds(5),
                     MaxConsecutiveFailures = 3,

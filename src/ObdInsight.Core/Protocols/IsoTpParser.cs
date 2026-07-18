@@ -1,5 +1,3 @@
-using Serilog;
-
 namespace ObdInsight.Core.Protocols;
 
 /// <summary>
@@ -75,8 +73,6 @@ public static class IsoTpParser
                 }
             }
         }
-
-        Log.Debug("ParseIsoTpResponse: Split into {FrameCount} raw frames from {LineCount} lines", allFrames.Count, lines.Length);
 
         var frameSequence = new List<(int Type, int Seq, byte[] Data, int TotalLen)>();
         var expectedTotalLength = 0;
@@ -169,9 +165,6 @@ public static class IsoTpParser
                 }
             }
         }
-
-        Log.Debug("ParseIsoTpResponse: Parsed {ByteCount} bytes from {FrameCount} frames (expected {ExpectedLen})",
-            bytes.Count, frameSequence.Count, expectedTotalLength);
 
         return bytes;
     }

@@ -1,4 +1,5 @@
-using Serilog;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ObdInsight.Core.Protocols;
 using System;
 
@@ -34,6 +35,7 @@ namespace ObdInsight.Core.Communication.Elm327
     {
         private readonly ElmFramer _framer;
         private readonly IEcuWakeupStrategy? _wakeupStrategy;
+        private readonly ILogger _logger;
         private readonly SemaphoreSlim _gate = new(1, 1);
         private int _failures;
         private char? _lockedProtocol;
@@ -48,10 +50,12 @@ namespace ObdInsight.Core.Communication.Elm327
         /// Optional vehicle-specific wakeup/probe strategy, tried when the standard OBD-II
         /// broadcast probe gets no response (e.g. EVs whose ECUs ignore Mode 01 queries).
         /// </param>
-        public ElmSession(ElmFramer framer, IEcuWakeupStrategy? wakeupStrategy = null)
+        /// <param name="logger">Optional logger; defaults to a no-op logger.</param>
+        public ElmSession(ElmFramer framer, IEcuWakeupStrategy? wakeupStrategy = null, ILogger<ElmSession>? logger = null)
         {
             _framer = framer;
             _wakeupStrategy = wakeupStrategy;
+            _logger = logger ?? NullLogger<ElmSession>.Instance;
         }
 
         /// <summary>
@@ -72,7 +76,8 @@ namespace ObdInsight.Core.Communication.Elm327
         public int MaxConsecutiveFailures { get; set; } = 3;
 
         /// <summary>
-        /// Enable verbose debug logging to console (useful for troubleshooting connectivity issues).
+        /// Retained for API compatibility. Logging is routed through the injected
+        /// <see cref="ILogger{ElmSession}"/>; configure that logger's level/sinks instead.
         /// </summary>
         public bool EnableDebugLogging { get; set; }
 
@@ -970,13 +975,8 @@ namespace ObdInsight.Core.Communication.Elm327
 
         private void Log(string message)
         {
-            Serilog.Log.Debug("[ElmSession] {Message}", message);
+            _logger.LogDebug("[ElmSession] {Message}", message);
             System.Diagnostics.Debug.WriteLine($"[ElmSession] {message}");
-
-            if (EnableDebugLogging)
-            {
-                Console.WriteLine($"[ElmSession] {message}");
-            }
         }
     }
 }

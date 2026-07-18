@@ -50,7 +50,6 @@ public sealed class LeafBmsWakeupStrategy : IEcuWakeupStrategy
 
     private static void Log(string message)
     {
-        Serilog.Log.Debug("[LeafBmsWakeupStrategy] {Message}", message);
         System.Diagnostics.Debug.WriteLine($"[LeafBmsWakeupStrategy] {message}");
     }
 }

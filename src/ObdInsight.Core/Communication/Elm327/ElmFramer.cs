@@ -1,4 +1,6 @@
 using System.Buffers;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ObdInsight.Core.Communication.Elm327
 {
@@ -14,6 +16,7 @@ namespace ObdInsight.Core.Communication.Elm327
     {
         private readonly byte _prompt = (byte)'>';
         private readonly IElmTransport _transport;
+        private readonly ILogger _logger;
 
         // Bytes read from the transport beyond a frame delimiter, preserved for the next read.
         // A single transport read can span a delimiter (e.g. one BLE notification carrying two
@@ -24,7 +27,12 @@ namespace ObdInsight.Core.Communication.Elm327
         /// Initializes a new instance of the ElmFramer class using the specified transport.
         /// </summary>
         /// <param name="transport">The transport mechanism used for sending and receiving Elm protocol frames. Cannot be null.</param>
-        public ElmFramer(IElmTransport transport) => _transport = transport;
+        /// <param name="logger">Optional logger; defaults to a no-op logger.</param>
+        public ElmFramer(IElmTransport transport, ILogger<ElmFramer>? logger = null)
+        {
+            _transport = transport;
+            _logger = logger ?? NullLogger<ElmFramer>.Instance;
+        }
 
         /// <summary>
         /// Enable verbose debug logging to console (useful for troubleshooting connectivity issues).
@@ -230,8 +238,7 @@ namespace ObdInsight.Core.Communication.Elm327
         
         private void Log(string message)
         {
-            // Always log to Serilog for file logging
-            Serilog.Log.Debug("[ElmFramer] {Message}", message);
+            _logger.LogDebug("[ElmFramer] {Message}", message);
             if (EnableDebugLogging)
                 System.Diagnostics.Debug.WriteLine($"[ElmFramer] {message}");
         }

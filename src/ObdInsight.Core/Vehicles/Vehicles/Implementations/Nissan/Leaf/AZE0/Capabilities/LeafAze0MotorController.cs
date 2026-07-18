@@ -106,7 +106,6 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 
         private static void Log(string message)
         {
-            Serilog.Log.Debug(message);
             System.Diagnostics.Debug.WriteLine(message);
         }
     }
