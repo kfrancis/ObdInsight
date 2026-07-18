@@ -1,7 +1,9 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ObdInsight.Core.Protocols;
-using System;
 
 namespace ObdInsight.Core.Communication.Elm327
 {
@@ -14,8 +16,8 @@ namespace ObdInsight.Core.Communication.Elm327
         TimeSpan ProtocolDetectionTimeout { get; set; }
 
         /// <summary>
-        /// Why the most recent <see cref="MonitorFramesAsync"/> enumeration ended.
-        /// <see cref="MonitoringEndReason.None"/> while a run is in progress.
+        ///     Why the most recent <see cref="MonitorFramesAsync" /> enumeration ended.
+        ///     <see cref="MonitoringEndReason.None" /> while a run is in progress.
         /// </summary>
         MonitoringEndReason LastMonitoringEndReason { get; }
 
@@ -30,34 +32,36 @@ namespace ObdInsight.Core.Communication.Elm327
     }
 
     /// <summary>
-    /// Represents a session for communicating with an ELM-based OBD-II adapter, managing protocol initialization,
-    /// command execution, and error recovery.
+    ///     Represents a session for communicating with an ELM-based OBD-II adapter, managing protocol initialization,
+    ///     command execution, and error recovery.
     /// </summary>
-    /// <remarks>An ElmSession encapsulates the state and logic required to reliably interact with an ELM
-    /// adapter, including protocol detection and locking, command timeouts, and automatic recovery from communication
-    /// failures. Instances are not thread-safe; callers should not use the same ElmSession concurrently from multiple
-    /// threads.</remarks>
+    /// <remarks>
+    ///     An ElmSession encapsulates the state and logic required to reliably interact with an ELM
+    ///     adapter, including protocol detection and locking, command timeouts, and automatic recovery from communication
+    ///     failures. Instances are not thread-safe; callers should not use the same ElmSession concurrently from multiple
+    ///     threads.
+    /// </remarks>
     public sealed class ElmSession : IElmSession
     {
         private readonly ElmFramer _framer;
-        private readonly IEcuWakeupStrategy? _wakeupStrategy;
-        private readonly ILogger _logger;
         private readonly SemaphoreSlim _gate = new(1, 1);
+        private readonly ILogger _logger;
+        private readonly IEcuWakeupStrategy? _wakeupStrategy;
+        private EcuContext? _activeContext;
         private int _failures;
         private char? _lockedProtocol;
-        private EcuContext? _activeContext;
-        private EcuCommunicationMode _currentMode = EcuCommunicationMode.RequestResponse;
 
         /// <summary>
-        /// Initializes a new instance of the ElmSession class using the specified ELM framer.
+        ///     Initializes a new instance of the ElmSession class using the specified ELM framer.
         /// </summary>
         /// <param name="framer">The ElmFramer instance used to frame and parse ELM protocol messages. Cannot be null.</param>
         /// <param name="wakeupStrategy">
-        /// Optional vehicle-specific wakeup/probe strategy, tried when the standard OBD-II
-        /// broadcast probe gets no response (e.g. EVs whose ECUs ignore Mode 01 queries).
+        ///     Optional vehicle-specific wakeup/probe strategy, tried when the standard OBD-II
+        ///     broadcast probe gets no response (e.g. EVs whose ECUs ignore Mode 01 queries).
         /// </param>
         /// <param name="logger">Optional logger; defaults to a no-op logger.</param>
-        public ElmSession(ElmFramer framer, IEcuWakeupStrategy? wakeupStrategy = null, ILogger<ElmSession>? logger = null)
+        public ElmSession(ElmFramer framer, IEcuWakeupStrategy? wakeupStrategy = null,
+            ILogger<ElmSession>? logger = null)
         {
             _framer = framer;
             _wakeupStrategy = wakeupStrategy;
@@ -65,46 +69,48 @@ namespace ObdInsight.Core.Communication.Elm327
         }
 
         /// <summary>
-        /// Gets or sets the maximum amount of time to wait for a command to execute before timing out.
+        ///     Gets or sets the maximum amount of time to wait for a command to execute before timing out.
         /// </summary>
         public TimeSpan CommandTimeout { get; set; } = TimeSpan.FromSeconds(4);
 
         /// <summary>
-        /// Gets or sets the timeout for protocol detection commands (0100 probe).
-        /// Protocol detection can take longer as the adapter searches through protocols.
-        /// The ELM327 shows "SEARCHING..." during this time.
+        ///     Gets or sets the timeout for protocol detection commands (0100 probe).
+        ///     Protocol detection can take longer as the adapter searches through protocols.
+        ///     The ELM327 shows "SEARCHING..." during this time.
         /// </summary>
         public TimeSpan ProtocolDetectionTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
         /// <summary>
-        /// Gets or sets the maximum number of consecutive failures allowed before triggering a failure response.
+        ///     Gets or sets the maximum number of consecutive failures allowed before triggering a failure response.
         /// </summary>
         public int MaxConsecutiveFailures { get; set; } = 3;
 
         /// <summary>
-        /// Retained for API compatibility. Logging is routed through the injected
-        /// <see cref="ILogger{ElmSession}"/>; configure that logger's level/sinks instead.
+        ///     Retained for API compatibility. Logging is routed through the injected
+        ///     <see cref="ILogger{ElmSession}" />; configure that logger's level/sinks instead.
         /// </summary>
         public bool EnableDebugLogging { get; set; }
 
         /// <summary>
-        /// Gets the current communication mode of the session.
+        ///     Gets the current communication mode of the session.
         /// </summary>
-        public EcuCommunicationMode CurrentMode => _currentMode;
+        public EcuCommunicationMode CurrentMode { get; private set; } = EcuCommunicationMode.RequestResponse;
 
         /// <summary>
-        /// Why the most recent <see cref="MonitorFramesAsync"/> enumeration ended.
-        /// Reset to <see cref="MonitoringEndReason.None"/> when a new enumeration starts.
+        ///     Why the most recent <see cref="MonitorFramesAsync" /> enumeration ended.
+        ///     Reset to <see cref="MonitoringEndReason.None" /> when a new enumeration starts.
         /// </summary>
         public MonitoringEndReason LastMonitoringEndReason { get; private set; }
 
 
         /// <summary>
-        /// Initializes the component and acquires an exclusive lock to prevent concurrent initialization.
+        ///     Initializes the component and acquires an exclusive lock to prevent concurrent initialization.
         /// </summary>
-        /// <remarks>This method ensures that initialization and protocol locking are performed
-        /// atomically. If another operation is already in progress, this method waits until the lock is available.
-        /// Callers should await the returned task to ensure initialization is complete before proceeding.</remarks>
+        /// <remarks>
+        ///     This method ensures that initialization and protocol locking are performed
+        ///     atomically. If another operation is already in progress, this method waits until the lock is available.
+        ///     Callers should await the returned task to ensure initialization is complete before proceeding.
+        /// </remarks>
         /// <param name="ct">A cancellation token that can be used to cancel the asynchronous operation.</param>
         /// <returns>A task that represents the asynchronous initialization and locking operation.</returns>
         public async ValueTask InitializeAndLockAsync(CancellationToken ct)
@@ -126,15 +132,19 @@ namespace ObdInsight.Core.Communication.Elm327
         }
 
         /// <summary>
-        /// Sends an OBD command asynchronously and returns the response lines after normalization and validation.
+        ///     Sends an OBD command asynchronously and returns the response lines after normalization and validation.
         /// </summary>
-        /// <remarks>If the initial response from the device is invalid, the method attempts to recover
-        /// and retries the command once. The method is thread-safe and may block if another query is in
-        /// progress.</remarks>
+        /// <remarks>
+        ///     If the initial response from the device is invalid, the method attempts to recover
+        ///     and retries the command once. The method is thread-safe and may block if another query is in
+        ///     progress.
+        /// </remarks>
         /// <param name="obdCommand">The OBD command to send to the device. Cannot be null or empty.</param>
         /// <param name="ct">A cancellation token that can be used to cancel the operation.</param>
-        /// <returns>A string array containing the normalized response lines from the OBD device. The array is guaranteed to be
-        /// valid according to the device's response validation logic.</returns>
+        /// <returns>
+        ///     A string array containing the normalized response lines from the OBD device. The array is guaranteed to be
+        ///     valid according to the device's response validation logic.
+        /// </returns>
         /// <exception cref="IOException">Thrown if the OBD device fails to provide a valid response after a recovery attempt.</exception>
         public async ValueTask<string[]> QueryAsync(string obdCommand, CancellationToken ct)
         {
@@ -153,7 +163,8 @@ namespace ObdInsight.Core.Communication.Elm327
                 }
 
                 _failures++;
-                Log($"<<< QUERY INVALID: {obdCommand} failure #{_failures} - Invalid response: {string.Join(", ", lines)}");
+                Log(
+                    $"<<< QUERY INVALID: {obdCommand} failure #{_failures} - Invalid response: {string.Join(", ", lines)}");
 
                 if (_failures >= MaxConsecutiveFailures)
                 {
@@ -169,21 +180,26 @@ namespace ObdInsight.Core.Communication.Elm327
 
                 if (!IsValid(lines))
                 {
-                    Log($"<<< QUERY FAILED: {obdCommand} - Failed after recovery. Response: {string.Join(", ", lines)}");
-                    throw new IOException($"ELM query '{obdCommand}' failed after recovery. Last response had {lines.Length} line(s).");
+                    Log(
+                        $"<<< QUERY FAILED: {obdCommand} - Failed after recovery. Response: {string.Join(", ", lines)}");
+                    throw new IOException(
+                        $"ELM query '{obdCommand}' failed after recovery. Last response had {lines.Length} line(s).");
                 }
 
-                Log($"<<< QUERY SUCCESS (retry): {obdCommand} returned {lines.Length} line(s): {string.Join(", ", lines)}");
+                Log(
+                    $"<<< QUERY SUCCESS (retry): {obdCommand} returned {lines.Length} line(s): {string.Join(", ", lines)}");
                 return lines;
             }
             finally { _gate.Release(); }
         }
 
         /// <summary>
-        /// Configures the ELM adapter for communication with a specific ECU.
+        ///     Configures the ELM adapter for communication with a specific ECU.
         /// </summary>
-        /// <remarks>This method sets up CAN headers, receive filters, and ISO-TP flow control
-        /// for the specified ECU. Configuration is cached and skipped if already active.</remarks>
+        /// <remarks>
+        ///     This method sets up CAN headers, receive filters, and ISO-TP flow control
+        ///     for the specified ECU. Configuration is cached and skipped if already active.
+        /// </remarks>
         /// <param name="context">The ECU context containing headers and flow control settings.</param>
         /// <param name="ct">Cancellation token.</param>
         public async ValueTask SetEcuContextAsync(EcuContext context, CancellationToken ct)
@@ -194,7 +210,9 @@ namespace ObdInsight.Core.Communication.Elm327
             if (context.CommunicationMode == EcuCommunicationMode.PassiveMonitoring ||
                 context.CommunicationMode == EcuCommunicationMode.ActiveMonitoring ||
                 context.CommunicationMode == EcuCommunicationMode.FilteredMonitoring)
-                throw new InvalidOperationException($"Use EnterMonitoringModeAsync() for monitoring contexts.");
+            {
+                throw new InvalidOperationException("Use EnterMonitoringModeAsync() for monitoring contexts.");
+            }
 
             await _gate.WaitAsync(ct);
             try
@@ -213,11 +231,13 @@ namespace ObdInsight.Core.Communication.Elm327
         }
 
         /// <summary>
-        /// Sends an OBD command to a specific ECU context asynchronously.
-        /// Automatically configures the adapter if needed.
+        ///     Sends an OBD command to a specific ECU context asynchronously.
+        ///     Automatically configures the adapter if needed.
         /// </summary>
-        /// <remarks>This method first ensures the ECU context is configured, then executes the query.
-        /// If the initial response is invalid, it attempts recovery and retries once.</remarks>
+        /// <remarks>
+        ///     This method first ensures the ECU context is configured, then executes the query.
+        ///     If the initial response is invalid, it attempts recovery and retries once.
+        /// </remarks>
         /// <param name="obdCommand">The OBD command to send to the device. Cannot be null or empty.</param>
         /// <param name="context">The ECU context to use for this query.</param>
         /// <param name="ct">A cancellation token that can be used to cancel the operation.</param>
@@ -226,8 +246,11 @@ namespace ObdInsight.Core.Communication.Elm327
         public async ValueTask<string[]> QueryAsync(string obdCommand, EcuContext context, CancellationToken ct)
         {
             // Enforce mode checking - cannot query while in monitoring mode
-            if (_currentMode == EcuCommunicationMode.PassiveMonitoring)
-                throw new InvalidOperationException("Cannot query while in monitoring mode. Call ExitMonitoringModeAsync() first.");
+            if (CurrentMode == EcuCommunicationMode.PassiveMonitoring)
+            {
+                throw new InvalidOperationException(
+                    "Cannot query while in monitoring mode. Call ExitMonitoringModeAsync() first.");
+            }
 
             // Configure context if needed (automatically handles switching between ECUs)
             await SetEcuContextAsync(context, ct);
@@ -237,8 +260,8 @@ namespace ObdInsight.Core.Communication.Elm327
         }
 
         /// <summary>
-        /// Activates a diagnostic session with the specified ECU.
-        /// Required for some ECUs before they will respond to queries or broadcast data.
+        ///     Activates a diagnostic session with the specified ECU.
+        ///     Required for some ECUs before they will respond to queries or broadcast data.
         /// </summary>
         /// <param name="context">The ECU context with session configuration.</param>
         /// <param name="ct">Cancellation token.</param>
@@ -275,8 +298,9 @@ namespace ObdInsight.Core.Communication.Elm327
                     line.Contains("50", StringComparison.OrdinalIgnoreCase));
                 var hasNegativeResponse = response.Any(line =>
                     line.Contains("7F", StringComparison.OrdinalIgnoreCase));
-                var isSuppressPositive = context.SessionActivationCommand.EndsWith("81", StringComparison.OrdinalIgnoreCase) ||
-                                          context.SessionActivationCommand.EndsWith("C0", StringComparison.OrdinalIgnoreCase);
+                var isSuppressPositive =
+                    context.SessionActivationCommand.EndsWith("81", StringComparison.OrdinalIgnoreCase) ||
+                    context.SessionActivationCommand.EndsWith("C0", StringComparison.OrdinalIgnoreCase);
 
                 if (hasPositiveResponse)
                 {
@@ -305,42 +329,280 @@ namespace ObdInsight.Core.Communication.Elm327
         }
 
         /// <summary>
-        /// Internal method to configure ECU context without acquiring gate (caller must hold gate).
+        ///     Enters passive monitoring mode for the specified ECU context.
+        /// </summary>
+        /// <remarks>
+        ///     This is a state transition. Once in monitoring mode, you cannot send queries
+        ///     until you call ExitMonitoringModeAsync(). Use MonitorFramesAsync() to read frames.
+        /// </remarks>
+        /// <param name="context">The ECU context configured for passive monitoring.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <exception cref="InvalidOperationException">Thrown if the context is not configured for passive monitoring.</exception>
+        public async ValueTask EnterMonitoringModeAsync(EcuContext context, CancellationToken ct)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+
+            if (context.CommunicationMode != EcuCommunicationMode.PassiveMonitoring &&
+                context.CommunicationMode != EcuCommunicationMode.ActiveMonitoring &&
+                context.CommunicationMode != EcuCommunicationMode.FilteredMonitoring)
+            {
+                throw new InvalidOperationException($"ECU context '{context.Name}' does not support monitoring modes.");
+            }
+
+            await _gate.WaitAsync(ct);
+            try
+            {
+                if (CurrentMode == EcuCommunicationMode.PassiveMonitoring)
+                {
+                    Log("Already in monitoring mode - exiting first");
+                    await ExitMonitoringModeInternalAsync(ct);
+                }
+
+                Log($"Entering monitoring mode: {context.Name}");
+
+                // CRITICAL: Reset adapter state before monitoring configuration
+                await ResetAdapterStateAsync(ct);
+
+                // Configure headers/formatting
+                await _framer.SendAndReadFrameAsync($"AT H{(context.EnableHeaders ? "1" : "0")}", CommandTimeout, ct);
+                await _framer.SendAndReadFrameAsync($"AT CAF{(context.EnableAutoFormatting ? "1" : "0")}",
+                    CommandTimeout, ct);
+
+                // Enable spaces for monitoring - required for parsing (baseline init sets AT S0)
+                await _framer.SendAndReadFrameAsync("AT S1", CommandTimeout, ct);
+
+                // Configure CAN filter to prevent buffer overflow
+                if (!string.IsNullOrEmpty(context.CanFilterMask) && !string.IsNullOrEmpty(context.CanFilterPattern))
+                {
+                    Log($"Setting CAN filter - Mask: {context.CanFilterMask}, Pattern: {context.CanFilterPattern}");
+                    await _framer.SendAndReadFrameAsync($"AT CM {context.CanFilterMask}", CommandTimeout, ct);
+                    await _framer.SendAndReadFrameAsync($"AT CF {context.CanFilterPattern}", CommandTimeout, ct);
+                }
+                else
+                {
+                    //// No filter specified - accept all frames (may cause BUFFER FULL on busy CAN buses)
+                    Log("No CAN filter specified (accept all frames)");
+                    await _framer.SendAndReadFrameAsync("AT AR", CommandTimeout, ct);
+                }
+
+                // Enter monitoring mode
+                if (!string.IsNullOrEmpty(context.MonitoringCommand))
+                {
+                    Log($"Sending monitoring command: {context.MonitoringCommand}");
+                    // Note: Monitoring mode doesn't return "OK" - it starts streaming immediately
+                    //await _framer.SendAndReadFrameAsync(context.MonitoringCommand, CommandTimeout, ct);
+                    await _framer.WriteAsync(context.MonitoringCommand + "\r", ct);
+                    await Task.Delay(100, ct); // Give ELM327 time to enter monitoring mode
+                }
+
+                CurrentMode = EcuCommunicationMode.PassiveMonitoring;
+                _activeContext = context;
+                Log($"Monitoring mode active: {context.Name}");
+            }
+            finally { _gate.Release(); }
+        }
+
+        /// <summary>
+        ///     Exits passive monitoring mode and returns to request/response mode.
+        ///     Safe to call even if already in request/response mode (will reset ELM327 state).
+        /// </summary>
+        /// <param name="ct">Cancellation token.</param>
+        public async ValueTask ExitMonitoringModeAsync(CancellationToken ct)
+        {
+            // Use TryWaitAsync with timeout to avoid blocking if gate is held
+            if (!await _gate.WaitAsync(TimeSpan.FromSeconds(2), ct))
+            {
+                Log("Warning: Could not acquire gate for ExitMonitoringMode - forcing state change");
+                CurrentMode = EcuCommunicationMode.RequestResponse;
+                _activeContext = null;
+                return;
+            }
+
+            try
+            {
+                await ExitMonitoringModeInternalAsync(ct);
+            }
+            finally { _gate.Release(); }
+        }
+
+        /// <summary>
+        ///     Reads CAN frames while in monitoring mode.
+        /// </summary>
+        /// <remarks>
+        ///     Must be called after EnterMonitoringModeAsync(). Returns parsed frames
+        ///     as they arrive. Use with a loop and cancellation token to continuously monitor.
+        /// </remarks>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>An async enumerable of frames.</returns>
+        /// <exception cref="InvalidOperationException">Thrown if not in monitoring mode.</exception>
+        /// <exception cref="IOException">Thrown if ELM327 buffer overflows (BUFFER FULL).</exception>
+        public async IAsyncEnumerable<RawCanFrame> MonitorFramesAsync([EnumeratorCancellation] CancellationToken ct)
+        {
+            if (CurrentMode != EcuCommunicationMode.PassiveMonitoring)
+            {
+                throw new InvalidOperationException("Not in monitoring mode. Call EnterMonitoringModeAsync() first.");
+            }
+
+            LastMonitoringEndReason = MonitoringEndReason.None;
+
+            while (!ct.IsCancellationRequested)
+            {
+                // Check cancellation at the start of each iteration
+                if (ct.IsCancellationRequested)
+                {
+                    Log("Monitoring cancelled (token check)");
+                    LastMonitoringEndReason = MonitoringEndReason.Stopped;
+                    yield break;
+                }
+
+                string? rawData;
+                bool hasData;
+
+                try
+                {
+                    // Read raw data from framer (no prompt expected in monitoring mode)
+                    rawData = await _framer.ReadUntilAsync("\r", TimeSpan.FromMilliseconds(500), ct);
+                    hasData = !string.IsNullOrWhiteSpace(rawData);
+                }
+                catch (TimeoutException)
+                {
+                    // Normal - no data available, check cancellation and continue
+                    continue;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when cancelled
+                    Log("Monitoring cancelled");
+                    LastMonitoringEndReason = MonitoringEndReason.Stopped;
+                    yield break;
+                }
+
+                if (!hasData)
+                {
+                    continue;
+                }
+
+                // Some ELM327 adapters emit an initial error line after starting monitoring (e.g. "TA ERROR").
+                // This is not a CAN frame and should not be treated as a failure.
+                if (rawData.Contains("TA ERROR", StringComparison.OrdinalIgnoreCase))
+                {
+                    Log($"Monitoring transient adapter error (ignored): {rawData.Trim()}");
+                    continue;
+                }
+
+                // Check for ELM327 error conditions that terminate monitoring
+                if (rawData.Contains("BUFFER FULL", StringComparison.OrdinalIgnoreCase))
+                {
+                    Log("ELM327 buffer overflow detected - monitoring terminated by device");
+                    CurrentMode = EcuCommunicationMode.RequestResponse; // Device has exited monitoring mode
+                    // Exit gracefully instead of throwing - this allows the session to continue.
+                    // The caller can check LastMonitoringEndReason to know why monitoring ended.
+                    LastMonitoringEndReason = MonitoringEndReason.BufferFull;
+                    yield break;
+                }
+
+                // Check for prompt character indicating ELM327 exited monitoring mode
+                if (rawData.Contains('>'))
+                {
+                    Log("Prompt detected - ELM327 has exited monitoring mode");
+                    CurrentMode = EcuCommunicationMode.RequestResponse;
+                    LastMonitoringEndReason = MonitoringEndReason.PromptDetected;
+                    yield break;
+                }
+
+                // Check for other error conditions
+                if (rawData.Contains("CAN ERROR", StringComparison.OrdinalIgnoreCase))
+                {
+                    Log($"CAN ERROR detected in monitoring mode: {rawData}");
+                    continue; // Continue monitoring, but skip this frame
+                }
+
+                if (rawData.Contains("DATA ERROR", StringComparison.OrdinalIgnoreCase))
+                {
+                    Log($"DATA ERROR detected in monitoring mode: {rawData}");
+                    continue; // Continue monitoring, but skip this frame
+                }
+
+                // Parse CAN frame from monitoring format
+                // Example with CAF0: "1DB 10 14 61 01 00 00 00"
+                if (TryParseMonitoringFrame(rawData, out var frame))
+                {
+                    // Some adapters occasionally output lines that look like a CAN ID but contain no data.
+                    // Treat these as noise rather than real frames to avoid confusing downstream parsers.
+                    if (frame.Data.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    yield return frame;
+                }
+                else if (!rawData.StartsWith('<') &&
+                         !rawData.Contains('?'))
+                {
+                    // Log unparseable frames (but not prompt characters or error markers)
+                    Log($"Failed to parse monitoring frame: '{rawData}'");
+                }
+            }
+
+            // While-condition exit: caller's token was cancelled.
+            LastMonitoringEndReason = MonitoringEndReason.Stopped;
+        }
+
+        /// <summary>
+        ///     Internal method to configure ECU context without acquiring gate (caller must hold gate).
         /// </summary>
         private async ValueTask ConfigureEcuContextInternalAsync(EcuContext context, CancellationToken ct)
         {
             // Configure headers and formatting
             await _framer.SendAndReadFrameAsync($"AT H{(context.EnableHeaders ? "1" : "0")}", CommandTimeout, ct);
-            await _framer.SendAndReadFrameAsync($"AT CAF{(context.EnableAutoFormatting ? "1" : "0")}", CommandTimeout, ct);
+            await _framer.SendAndReadFrameAsync($"AT CAF{(context.EnableAutoFormatting ? "1" : "0")}", CommandTimeout,
+                ct);
 
             // Set CAN headers
             if (!string.IsNullOrEmpty(context.TxHeader) && context.TxHeader != "000")
+            {
                 await _framer.SendAndReadFrameAsync($"AT SH {context.TxHeader}", CommandTimeout, ct);
+            }
+
             if (!string.IsNullOrEmpty(context.RxFilter) && context.RxFilter != "000")
+            {
                 await _framer.SendAndReadFrameAsync($"AT CRA {context.RxFilter}", CommandTimeout, ct);
+            }
 
             // Configure ISO-TP flow control
             if (!string.IsNullOrEmpty(context.FlowControlHeader))
+            {
                 await _framer.SendAndReadFrameAsync($"AT FC SH {context.FlowControlHeader}", CommandTimeout, ct);
+            }
+
             if (!string.IsNullOrEmpty(context.FlowControlData))
+            {
                 await _framer.SendAndReadFrameAsync($"AT FC SD {context.FlowControlData}", CommandTimeout, ct);
+            }
+
             if (!string.IsNullOrEmpty(context.FlowControlMode))
+            {
                 await _framer.SendAndReadFrameAsync($"AT FC SM {context.FlowControlMode}", CommandTimeout, ct);
+            }
 
             // Set adapter timeout if specified
             if (context.AdapterTimeoutUnits > 0)
+            {
                 await _framer.SendAndReadFrameAsync($"AT ST {context.AdapterTimeoutUnits:X2}", CommandTimeout, ct);
+            }
 
             _activeContext = context;
             Log($"ECU context '{context.Name}' configured");
         }
 
         private static bool IsValid(string[] lines)
-        => lines.Length > 0 && !lines.Any(ElmParsing.LooksLikeAdapterError);
+        {
+            return lines.Length > 0 && !lines.Any(ElmParsing.LooksLikeAdapterError);
+        }
 
         /// <summary>
-        /// Resets ELM327 filter and addressing state to known baseline.
-        /// Must be called before reconfiguring for a different ECU.
+        ///     Resets ELM327 filter and addressing state to known baseline.
+        ///     Must be called before reconfiguring for a different ECU.
         /// </summary>
         private async ValueTask ResetAdapterStateAsync(CancellationToken ct)
         {
@@ -431,9 +693,9 @@ namespace ObdInsight.Core.Communication.Elm327
 
             var protocolsToTry = new[]
             {
-                ('6', "ISO 15765-4 CAN 11-bit 500k"),  // Most common - most modern cars
-                ('7', "ISO 15765-4 CAN 29-bit 500k"),  // Some vehicles
-                ('0', "Auto-detect"),                   // Fallback to auto-detect
+                ('6', "ISO 15765-4 CAN 11-bit 500k"), // Most common - most modern cars
+                ('7', "ISO 15765-4 CAN 29-bit 500k"), // Some vehicles
+                ('0', "Auto-detect") // Fallback to auto-detect
             };
 
             foreach (var (protocol, description) in protocolsToTry)
@@ -458,7 +720,8 @@ namespace ObdInsight.Core.Communication.Elm327
                         var lockedProto = protocol;
                         if (protocol == '0')
                         {
-                            var dpn = ElmParsing.NormalizeLines(await _framer.SendAndReadFrameAsync("AT DPN", CommandTimeout, ct))
+                            var dpn = ElmParsing
+                                .NormalizeLines(await _framer.SendAndReadFrameAsync("AT DPN", CommandTimeout, ct))
                                 .FirstOrDefault() ?? string.Empty;
                             Log($"AT DPN response: '{dpn}'");
                             var detectedProto = dpn.Trim().TrimStart('A', 'a').FirstOrDefault();
@@ -496,13 +759,14 @@ namespace ObdInsight.Core.Communication.Elm327
             }
 
             // If we get here, all protocols failed
-            throw new IOException("All protocol detection attempts failed. Check vehicle connection and ensure ignition is ON.");
+            throw new IOException(
+                "All protocol detection attempts failed. Check vehicle connection and ensure ignition is ON.");
         }
 
         /// <summary>
-        /// Attempts to wake up sleeping ECUs before protocol detection.
-        /// Many vehicles (especially EVs) have ECUs that sleep when the car is off.
-        /// Based on OVMS (Open Vehicle Monitoring System) wakeup sequences.
+        ///     Attempts to wake up sleeping ECUs before protocol detection.
+        ///     Many vehicles (especially EVs) have ECUs that sleep when the car is off.
+        ///     Based on OVMS (Open Vehicle Monitoring System) wakeup sequences.
         /// </summary>
         private async ValueTask TryWakeupEcusAsync(CancellationToken ct)
         {
@@ -580,6 +844,7 @@ namespace ObdInsight.Core.Communication.Elm327
                 Log($"Reapplying locked protocol: {_lockedProtocol}");
                 await _framer.SendAndReadFrameAsync($"AT SP {_lockedProtocol}", CommandTimeout, ct);
             }
+
             if (await TryProbeAsync(ct))
             {
                 Log("Recovery successful at Level 2 (baseline + protocol)");
@@ -593,7 +858,9 @@ namespace ObdInsight.Core.Communication.Elm327
         }
 
         private async ValueTask<string[]> SendAndNormalizeAsync(string cmd, CancellationToken ct)
-            => await SendAndNormalizeAsync(cmd, CommandTimeout, ct);
+        {
+            return await SendAndNormalizeAsync(cmd, CommandTimeout, ct);
+        }
 
         private async ValueTask<string[]> SendAndNormalizeAsync(string cmd, TimeSpan timeout, CancellationToken ct)
         {
@@ -618,7 +885,9 @@ namespace ObdInsight.Core.Communication.Elm327
             {
                 await _framer.SendAndReadFrameAsync("AT PC", CommandTimeout, ct);
                 if (_lockedProtocol is not null)
+                {
                     await _framer.SendAndReadFrameAsync($"AT SP {_lockedProtocol}", CommandTimeout, ct);
+                }
 
                 return await TryProbeAsync(ct);
             }
@@ -635,105 +904,11 @@ namespace ObdInsight.Core.Communication.Elm327
             catch { return false; }
         }
 
-        /// <summary>
-        /// Enters passive monitoring mode for the specified ECU context.
-        /// </summary>
-        /// <remarks>
-        /// This is a state transition. Once in monitoring mode, you cannot send queries
-        /// until you call ExitMonitoringModeAsync(). Use MonitorFramesAsync() to read frames.
-        /// </remarks>
-        /// <param name="context">The ECU context configured for passive monitoring.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <exception cref="InvalidOperationException">Thrown if the context is not configured for passive monitoring.</exception>
-        public async ValueTask EnterMonitoringModeAsync(EcuContext context, CancellationToken ct)
-        {
-            ArgumentNullException.ThrowIfNull(context);
-
-            if (context.CommunicationMode != EcuCommunicationMode.PassiveMonitoring &&
-                context.CommunicationMode != EcuCommunicationMode.ActiveMonitoring &&
-                context.CommunicationMode != EcuCommunicationMode.FilteredMonitoring)
-                throw new InvalidOperationException($"ECU context '{context.Name}' does not support monitoring modes.");
-
-            await _gate.WaitAsync(ct);
-            try
-            {
-                if (_currentMode == EcuCommunicationMode.PassiveMonitoring)
-                {
-                    Log("Already in monitoring mode - exiting first");
-                    await ExitMonitoringModeInternalAsync(ct);
-                }
-
-                Log($"Entering monitoring mode: {context.Name}");
-
-                // CRITICAL: Reset adapter state before monitoring configuration
-                await ResetAdapterStateAsync(ct);
-
-                // Configure headers/formatting
-                await _framer.SendAndReadFrameAsync($"AT H{(context.EnableHeaders ? "1" : "0")}", CommandTimeout, ct);
-                await _framer.SendAndReadFrameAsync($"AT CAF{(context.EnableAutoFormatting ? "1" : "0")}", CommandTimeout, ct);
-
-                // Enable spaces for monitoring - required for parsing (baseline init sets AT S0)
-                await _framer.SendAndReadFrameAsync("AT S1", CommandTimeout, ct);
-
-                // Configure CAN filter to prevent buffer overflow
-                if (!string.IsNullOrEmpty(context.CanFilterMask) && !string.IsNullOrEmpty(context.CanFilterPattern))
-                {
-                    Log($"Setting CAN filter - Mask: {context.CanFilterMask}, Pattern: {context.CanFilterPattern}");
-                    await _framer.SendAndReadFrameAsync($"AT CM {context.CanFilterMask}", CommandTimeout, ct);
-                    await _framer.SendAndReadFrameAsync($"AT CF {context.CanFilterPattern}", CommandTimeout, ct);
-                }
-                else
-                {
-                    //// No filter specified - accept all frames (may cause BUFFER FULL on busy CAN buses)
-                    Log("No CAN filter specified (accept all frames)");
-                    await _framer.SendAndReadFrameAsync("AT AR", CommandTimeout, ct);
-                }
-
-                // Enter monitoring mode
-                if (!string.IsNullOrEmpty(context.MonitoringCommand))
-                {
-                    Log($"Sending monitoring command: {context.MonitoringCommand}");
-                    // Note: Monitoring mode doesn't return "OK" - it starts streaming immediately
-                    //await _framer.SendAndReadFrameAsync(context.MonitoringCommand, CommandTimeout, ct);
-                    await _framer.WriteAsync(context.MonitoringCommand + "\r", ct);
-                    await Task.Delay(100, ct); // Give ELM327 time to enter monitoring mode
-                }
-
-                _currentMode = EcuCommunicationMode.PassiveMonitoring;
-                _activeContext = context;
-                Log($"Monitoring mode active: {context.Name}");
-            }
-            finally { _gate.Release(); }
-        }
-
-        /// <summary>
-        /// Exits passive monitoring mode and returns to request/response mode.
-        /// Safe to call even if already in request/response mode (will reset ELM327 state).
-        /// </summary>
-        /// <param name="ct">Cancellation token.</param>
-        public async ValueTask ExitMonitoringModeAsync(CancellationToken ct)
-        {
-            // Use TryWaitAsync with timeout to avoid blocking if gate is held
-            if (!await _gate.WaitAsync(TimeSpan.FromSeconds(2), ct))
-            {
-                Log("Warning: Could not acquire gate for ExitMonitoringMode - forcing state change");
-                _currentMode = EcuCommunicationMode.RequestResponse;
-                _activeContext = null;
-                return;
-            }
-
-            try
-            {
-                await ExitMonitoringModeInternalAsync(ct);
-            }
-            finally { _gate.Release(); }
-        }
-
         private async ValueTask ExitMonitoringModeInternalAsync(CancellationToken ct)
         {
             // Note: _currentMode may already be RequestResponse if monitoring exited early
             // (e.g., due to BUFFER FULL). We still need to clean up the ELM327 state.
-            var wasInMonitoringMode = _currentMode == EcuCommunicationMode.PassiveMonitoring;
+            var wasInMonitoringMode = CurrentMode == EcuCommunicationMode.PassiveMonitoring;
 
             Log($"Exiting monitoring mode (wasInMonitoringMode={wasInMonitoringMode})");
 
@@ -769,11 +944,13 @@ namespace ObdInsight.Core.Communication.Elm327
                 {
                     try
                     {
-                        var residual = await _framer.ReadUntilAsync(">", TimeSpan.FromMilliseconds(100), CancellationToken.None);
+                        var residual = await _framer.ReadUntilAsync(">", TimeSpan.FromMilliseconds(100),
+                            CancellationToken.None);
                         if (!string.IsNullOrEmpty(residual))
                         {
                             Log($"Drained: '{residual[..Math.Min(50, residual.Length)]}...'");
                         }
+
                         // Got prompt, buffer is drained
                         Log("Buffer drain complete (got prompt)");
                         break;
@@ -813,7 +990,7 @@ namespace ObdInsight.Core.Communication.Elm327
                     Log($"Warning: AT command failed during cleanup: {ex.Message}");
                 }
 
-                _currentMode = EcuCommunicationMode.RequestResponse;
+                CurrentMode = EcuCommunicationMode.RequestResponse;
                 _activeContext = null;
                 Log("Returned to request/response mode");
             }
@@ -821,127 +998,10 @@ namespace ObdInsight.Core.Communication.Elm327
             {
                 Log($"Error exiting monitoring mode: {ex.Message}");
                 // Force mode change even on error
-                _currentMode = EcuCommunicationMode.RequestResponse;
+                CurrentMode = EcuCommunicationMode.RequestResponse;
                 _activeContext = null;
                 throw;
             }
-        }
-
-        /// <summary>
-        /// Reads CAN frames while in monitoring mode.
-        /// </summary>
-        /// <remarks>
-        /// Must be called after EnterMonitoringModeAsync(). Returns parsed CAN frames
-        /// as they arrive. Use with a loop and cancellation token to continuously monitor.
-        /// </remarks>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>An async enumerable of CAN frames.</returns>
-        /// <exception cref="InvalidOperationException">Thrown if not in monitoring mode.</exception>
-        /// <exception cref="IOException">Thrown if ELM327 buffer overflows (BUFFER FULL).</exception>
-        public async IAsyncEnumerable<RawCanFrame> MonitorFramesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
-        {
-            if (_currentMode != EcuCommunicationMode.PassiveMonitoring)
-                throw new InvalidOperationException("Not in monitoring mode. Call EnterMonitoringModeAsync() first.");
-
-            LastMonitoringEndReason = MonitoringEndReason.None;
-
-            while (!ct.IsCancellationRequested)
-            {
-                // Check cancellation at the start of each iteration
-                if (ct.IsCancellationRequested)
-                {
-                    Log("Monitoring cancelled (token check)");
-                    LastMonitoringEndReason = MonitoringEndReason.Stopped;
-                    yield break;
-                }
-
-                string? rawData = null;
-                var hasData = false;
-
-                try
-                {
-                    // Read raw data from framer (no prompt expected in monitoring mode)
-                    rawData = await _framer.ReadUntilAsync("\r", TimeSpan.FromMilliseconds(500), ct);
-                    hasData = !string.IsNullOrWhiteSpace(rawData);
-                }
-                catch (TimeoutException)
-                {
-                    // Normal - no data available, check cancellation and continue
-                    continue;
-                }
-                catch (OperationCanceledException)
-                {
-                    // Expected when cancelled
-                    Log("Monitoring cancelled");
-                    LastMonitoringEndReason = MonitoringEndReason.Stopped;
-                    yield break;
-                }
-
-                if (hasData && rawData != null)
-                {
-                    // Some ELM327 adapters emit an initial error line after starting monitoring (e.g. "TA ERROR").
-                    // This is not a CAN frame and should not be treated as a failure.
-                    if (rawData.Contains("TA ERROR", StringComparison.OrdinalIgnoreCase))
-                    {
-                        Log($"Monitoring transient adapter error (ignored): {rawData.Trim()}");
-                        continue;
-                    }
-
-                    // Check for ELM327 error conditions that terminate monitoring
-                    if (rawData.Contains("BUFFER FULL", StringComparison.OrdinalIgnoreCase))
-                    {
-                        Log("ELM327 buffer overflow detected - monitoring terminated by device");
-                        _currentMode = EcuCommunicationMode.RequestResponse; // Device has exited monitoring mode
-                        // Exit gracefully instead of throwing - this allows the session to continue.
-                        // The caller can check LastMonitoringEndReason to know why monitoring ended.
-                        LastMonitoringEndReason = MonitoringEndReason.BufferFull;
-                        yield break;
-                    }
-
-                    // Check for prompt character indicating ELM327 exited monitoring mode
-                    if (rawData.Contains('>'))
-                    {
-                        Log("Prompt detected - ELM327 has exited monitoring mode");
-                        _currentMode = EcuCommunicationMode.RequestResponse;
-                        LastMonitoringEndReason = MonitoringEndReason.PromptDetected;
-                        yield break;
-                    }
-
-                    // Check for other error conditions
-                    if (rawData.Contains("CAN ERROR", StringComparison.OrdinalIgnoreCase))
-                    {
-                        Log($"CAN ERROR detected in monitoring mode: {rawData}");
-                        continue; // Continue monitoring, but skip this frame
-                    }
-
-                    if (rawData.Contains("DATA ERROR", StringComparison.OrdinalIgnoreCase))
-                    {
-                        Log($"DATA ERROR detected in monitoring mode: {rawData}");
-                        continue; // Continue monitoring, but skip this frame
-                    }
-
-                    // Parse CAN frame from monitoring format
-                    // Example with CAF0: "1DB 10 14 61 01 00 00 00"
-                    if (TryParseMonitoringFrame(rawData, out var frame))
-                    {
-                        // Some adapters occasionally output lines that look like a CAN ID but contain no data.
-                        // Treat these as noise rather than real frames to avoid confusing downstream parsers.
-                        if (frame.Data.Length == 0)
-                            continue;
-
-                        yield return frame;
-                    }
-                    else if (!rawData.StartsWith('<') &&
-                             !rawData.Contains('?'))
-                    {
-                        // Log unparseable frames (but not prompt characters or error markers)
-                        Log($"Failed to parse monitoring frame: '{rawData}'");
-                    }
-                }
-            }
-
-            // While-condition exit: caller's token was cancelled.
-            LastMonitoringEndReason = MonitoringEndReason.Stopped;
         }
 
         private bool TryParseMonitoringFrame(string rawData, out RawCanFrame frame)
@@ -965,30 +1025,42 @@ namespace ObdInsight.Core.Communication.Elm327
 
             // Need at least CAN ID (1 part) - data bytes are optional for valid frames
             if (parts.Length < 1)
+            {
                 return false;
+            }
 
             // Parse CAN ID (3 hex digits for 11-bit CAN)
-            if (!int.TryParse(parts[0], System.Globalization.NumberStyles.HexNumber, null, out var canId))
+            if (!int.TryParse(parts[0], NumberStyles.HexNumber, null, out var canId))
+            {
                 return false;
+            }
 
             // Validate CAN ID range (11-bit CAN: 0x000-0x7FF)
             if (canId < 0 || canId > 0x7FF)
+            {
                 return false;
+            }
 
             // Parse data bytes (if any)
             var dataBytes = new List<byte>();
             for (var i = 1; i < parts.Length; i++)
             {
-                if (byte.TryParse(parts[i], System.Globalization.NumberStyles.HexNumber, null, out var b))
+                if (byte.TryParse(parts[i], NumberStyles.HexNumber, null, out var b))
+                {
                     dataBytes.Add(b);
+                }
                 else
+                {
                     break; // Stop at first non-hex byte
+                }
             }
 
             // Valid CAN frames have 0-8 data bytes
             // If we got more than 8 bytes, something is wrong - reject the frame
             if (dataBytes.Count > 8)
+            {
                 return false;
+            }
 
             frame = new RawCanFrame(canId, new ReadOnlyMemory<byte>([.. dataBytes]));
             return true;
@@ -997,7 +1069,7 @@ namespace ObdInsight.Core.Communication.Elm327
         private void Log(string message)
         {
             _logger.LogDebug("[ElmSession] {Message}", message);
-            System.Diagnostics.Debug.WriteLine($"[ElmSession] {message}");
+            Debug.WriteLine($"[ElmSession] {message}");
         }
     }
 }

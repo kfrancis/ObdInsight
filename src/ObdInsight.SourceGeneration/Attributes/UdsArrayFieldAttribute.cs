@@ -5,7 +5,7 @@ namespace ObdInsight.SourceGeneration.Attributes;
 /// <summary>
 /// Defines how to extract an array field from a UDS response payload.
 /// </summary>
-[AttributeUsage(AttributeTargets.Property, Inherited = false, AllowMultiple = false)]
+[AttributeUsage(AttributeTargets.Property)]
 public sealed class UdsArrayFieldAttribute : Attribute
 {
     /// <summary>

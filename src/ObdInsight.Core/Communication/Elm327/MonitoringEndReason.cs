@@ -1,9 +1,9 @@
 namespace ObdInsight.Core.Communication.Elm327
 {
     /// <summary>
-    /// Why a monitoring run ended. Surfaced by <see cref="IElmSession.LastMonitoringEndReason"/>
-    /// after <see cref="IElmSession.MonitorFramesAsync"/> completes, and by
-    /// <see cref="CanMonitor.EndReason"/> for the long-lived monitor.
+    ///     Why a monitoring run ended. Surfaced by <see cref="IElmSession.LastMonitoringEndReason" />
+    ///     after <see cref="IElmSession.MonitorFramesAsync" /> completes, and by
+    ///     <see cref="CanMonitor.EndReason" /> for the long-lived monitor.
     /// </summary>
     public enum MonitoringEndReason
     {
@@ -20,6 +20,6 @@ namespace ObdInsight.Core.Communication.Elm327
         PromptDetected,
 
         /// <summary>The underlying transport failed.</summary>
-        TransportError,
+        TransportError
     }
 }

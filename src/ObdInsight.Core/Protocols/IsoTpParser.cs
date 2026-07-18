@@ -1,21 +1,25 @@
+using System.Globalization;
+
 namespace ObdInsight.Core.Protocols;
 
 /// <summary>
-/// Utilities for parsing ISO-TP (ISO 15765-2) responses from ELM327
+///     Utilities for parsing ISO-TP (ISO 15765-2) responses from ELM327
 /// </summary>
 public static class IsoTpParser
 {
     /// <summary>
-    /// Parse ISO-TP response, handling multi-frame messages.
-    /// Handles both spaced and concatenated hex formats from ELM327.
-    /// Also handles frames concatenated together on a single line (e.g., "7BB25...7BB26...").
+    ///     Parse ISO-TP response, handling multi-frame messages.
+    ///     Handles both spaced and concatenated hex formats from ELM327.
+    ///     Also handles frames concatenated together on a single line (e.g., "7BB25...7BB26...").
     /// </summary>
     public static List<byte> ParseIsoTpResponse(string response)
     {
         var bytes = new List<byte>();
 
         if (string.IsNullOrWhiteSpace(response))
+        {
             return bytes;
+        }
 
         var cleaned = response
             .Replace("\r", "\n")
@@ -29,7 +33,10 @@ public static class IsoTpParser
         foreach (var line in lines)
         {
             var trimmed = line.Trim();
-            if (trimmed.Length < 6) continue;
+            if (trimmed.Length < 6)
+            {
+                continue;
+            }
 
             // Split concatenated frames by finding CAN ID patterns (3 hex chars followed by frame data)
             var remaining = trimmed;
@@ -45,20 +52,34 @@ public static class IsoTpParser
                 for (var i = 7; i <= remaining.Length - 6; i++)
                 {
                     var potentialCanId = remaining.Substring(i, 3);
-                    if (!potentialCanId.All(Uri.IsHexDigit)) continue;
-                    if (!int.TryParse(potentialCanId, System.Globalization.NumberStyles.HexNumber, null, out var id)) continue;
-
-                    if (!(id is >= 0x700 and <= 0x7FF or >= 0x790 and <= 0x79F)) continue;
-
-                    if (i + 3 < remaining.Length)
+                    if (!potentialCanId.All(Uri.IsHexDigit))
                     {
-                        var frameTypeChar = remaining[i + 3];
-                        if (frameTypeChar == '0' || frameTypeChar == '1' || frameTypeChar == '2' || frameTypeChar == '3')
-                        {
-                            nextFrameStart = i;
-                            break;
-                        }
+                        continue;
                     }
+
+                    if (!int.TryParse(potentialCanId, NumberStyles.HexNumber, null, out var id))
+                    {
+                        continue;
+                    }
+
+                    if (!(id is >= 0x700 and <= 0x7FF or >= 0x790 and <= 0x79F))
+                    {
+                        continue;
+                    }
+
+                    if (i + 3 >= remaining.Length)
+                    {
+                        continue;
+                    }
+
+                    var frameTypeChar = remaining[i + 3];
+                    if (frameTypeChar is not ('0' or '1' or '2' or '3'))
+                    {
+                        continue;
+                    }
+
+                    nextFrameStart = i;
+                    break;
                 }
 
                 if (nextFrameStart > 0)
@@ -79,17 +100,27 @@ public static class IsoTpParser
 
         foreach (var frame in allFrames)
         {
-            if (frame.Length < 6) continue;
+            if (frame.Length < 6)
+            {
+                continue;
+            }
 
             if (!IsCanIdPrefixForIsoTp(frame))
+            {
                 continue;
+            }
 
             var frameHex = frame[3..];
 
-            if (frameHex.Length < 2) continue;
-
-            if (!byte.TryParse(frameHex[..2], System.Globalization.NumberStyles.HexNumber, null, out var frameTypeByte))
+            if (frameHex.Length < 2)
+            {
                 continue;
+            }
+
+            if (!byte.TryParse(frameHex[..2], NumberStyles.HexNumber, null, out var frameTypeByte))
+            {
+                continue;
+            }
 
             var frameType = (frameTypeByte & 0xF0) >> 4;
             var frameInfo = frameTypeByte & 0x0F;
@@ -103,14 +134,24 @@ public static class IsoTpParser
                     var sfDataHex = frameHex[2..];
                     frameData = ParseHexString(sfDataHex);
                     if (frameData.Length > sfLen)
+                    {
                         frameData = frameData[..sfLen];
+                    }
+
                     frameSequence.Add((0, 0, frameData, sfLen));
                     break;
 
                 case 1: // First Frame
-                    if (frameHex.Length < 4) continue;
-                    if (!byte.TryParse(frameHex[2..4], System.Globalization.NumberStyles.HexNumber, null, out var lenLowByte))
+                    if (frameHex.Length < 4)
+                    {
                         continue;
+                    }
+
+                    if (!byte.TryParse(frameHex[2..4], NumberStyles.HexNumber, null, out var lenLowByte))
+                    {
+                        continue;
+                    }
+
                     expectedTotalLength = (frameInfo << 8) | lenLowByte;
                     var ffDataHex = frameHex[4..];
                     frameData = ParseHexString(ffDataHex);
@@ -127,7 +168,10 @@ public static class IsoTpParser
                 default:
                     frameData = ParseHexString(frameHex);
                     if (frameData.Length > 0)
+                    {
                         frameSequence.Add((-1, 0, frameData, 0));
+                    }
+
                     break;
             }
         }
@@ -170,28 +214,39 @@ public static class IsoTpParser
     }
 
     /// <summary>
-    /// Checks if a string starts with a valid CAN ID prefix for ISO-TP frames.
+    ///     Checks if a string starts with a valid CAN ID prefix for ISO-TP frames.
     /// </summary>
     private static bool IsCanIdPrefixForIsoTp(string s)
     {
-        if (s.Length < 3) return false;
+        if (s.Length < 3)
+        {
+            return false;
+        }
+
         var prefix = s[..3];
-        if (!prefix.All(Uri.IsHexDigit)) return false;
-        if (!int.TryParse(prefix, System.Globalization.NumberStyles.HexNumber, null, out var id)) return false;
+        if (!prefix.All(Uri.IsHexDigit))
+        {
+            return false;
+        }
+
+        if (!int.TryParse(prefix, NumberStyles.HexNumber, null, out var id))
+        {
+            return false;
+        }
 
         // Accept standard OBD-II and Nissan Leaf extended ranges
         return id is >= 0x700 and <= 0x7FF or >= 0x790 and <= 0x79F;
     }
 
     /// <summary>
-    /// Parse hex string to byte array
+    ///     Parse hex string to byte array
     /// </summary>
     public static byte[] ParseHexString(string hex)
     {
         var result = new List<byte>();
         for (var i = 0; i + 1 < hex.Length; i += 2)
         {
-            if (byte.TryParse(hex.Substring(i, 2), System.Globalization.NumberStyles.HexNumber, null, out var b))
+            if (byte.TryParse(hex.Substring(i, 2), NumberStyles.HexNumber, null, out var b))
             {
                 result.Add(b);
             }
@@ -200,6 +255,7 @@ public static class IsoTpParser
                 break;
             }
         }
+
         return result.ToArray();
     }
 }

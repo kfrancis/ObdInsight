@@ -6,7 +6,7 @@ namespace ObdInsight.SourceGeneration.Attributes;
 /// Marks a property as computed (not extracted from payload).
 /// The generator will skip generating extraction code for this property.
 /// </summary>
-[AttributeUsage(AttributeTargets.Property, Inherited = false, AllowMultiple = false)]
+[AttributeUsage(AttributeTargets.Property)]
 public sealed class UdsComputedAttribute : Attribute
 {
 }
