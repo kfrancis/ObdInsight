@@ -419,3 +419,7 @@ FodyWeavers.xsd
 
 *.JPEG
 *.PNG
+
+# Claude Code local settings (per-machine)
+**/.claude/settings.local.json
+**/.claude/*.local.md

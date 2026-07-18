@@ -251,29 +251,10 @@ namespace ObdInsight
                     Log.Information("Device selected: {DeviceName} ({Address})", selectedDevice.Name, selectedDevice.Address);
                 }
 
-                //// Select vehicle profile
-                //Log.Information("Prompting user to select vehicle");
-                //var vehicleSelector = new VehicleSelector();
-                //var vehicleProfile = vehicleSelector.SelectVehicle();
-
-                //if (vehicleProfile == null)
-                //{
-                //    Log.Information("No vehicle profile selected by user. Exiting.");
-                //    AnsiConsole.MarkupLine("[yellow]No vehicle selected. Exiting.[/]");
-                //    return;
-                //}
-
-                //// Select vehicle variant
-                //Log.Information("Prompting user to select vehicle variant for {Make} {Model}", vehicleProfile.Make, vehicleProfile.Model);
-                //var vehicleVariant = vehicleSelector.SelectVariant(vehicleProfile);
-
-                //if (vehicleVariant == null)
-                //{
-                //    Log.Information("No vehicle variant selected by user. Exiting.");
-                //    AnsiConsole.MarkupLine("[yellow]No variant selected. Exiting.[/]");
-                //    return;
-                //}
-
+                // Vehicle selection is currently hardcoded to the development Leaf.
+                // Interactive selection (a VehicleSelector over VehicleProfileRegistry) was
+                // removed as dead code — restore from git history if/when multi-vehicle
+                // support returns (see AUDIT.md M3.7).
                 var vehicleProfile = new NissanLeaf();
                 var vehicleVariantId = vehicleProfile.DetectVariantFromVin("1N4AZ0CP7HC308656");
                 var vehicleVariant = vehicleProfile.Variants.FirstOrDefault(v => v.Id == vehicleVariantId);

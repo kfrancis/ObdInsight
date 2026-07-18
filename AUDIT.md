@@ -214,11 +214,11 @@ Five themes explain nearly all findings.
 
 | # | Task | Why |
 |---|---|---|
-| QW1 | Delete the five `*.cs.broken` files (3,511 lines) — or move to a branch if sentimental | Largest single noise reduction; git keeps history |
+| QW1 — **DONE 2026-07-18** | Five `*.cs.broken` files deleted (3,511 lines; git history preserves them, incl. the recording feature — `ReplayElmTransport` covers replay-testing needs now) | Largest single noise reduction; git keeps history |
 | QW2 — **DONE 2026-07-18** | `CLAUDE.md` rewritten from current ground truth: real layout (console-first, MAUI shell), correct test invocation (`dotnet run --project`, SDK-10 `dotnet test` caveat, `LEAF_BLE_ADDRESS` skip gate), current architecture (ElmSession/CanMonitor/capabilities/IEcuWakeupStrategy), source-gen model + limitations, replay-testing conventions, Verify accept workflow, gotchas. Every referenced path exists. | Stops misdirecting every AI-assisted and human session |
 | QW3 | Decide `global.json`: commit the SDK-10 bump or revert to 9.0.3xx | Unblocks CI task; removes clone-time surprise |
 | QW4 | Remove the duplicate (runtime) `ProjectReference` to SourceGeneration; move attributes + `CanBits` to linked source or a tiny annotations project | Drops Roslyn from runtime closure; verify with `dotnet build` |
-| QW5 | Delete dead `VehicleSelector.cs`, `MissingTypeStubs.cs`, empty `ObdInsight.Drivers`, stray logs/screenshots, orphaned `.DotSettings` | Hygiene sweep, zero behavior risk |
+| QW5 — **DONE 2026-07-18** | Deleted: `VehicleSelector.cs` (+ its commented-out call block in `Program.cs`, replaced with a pointer comment), `MissingTypeStubs.cs` (zero references verified), empty `ObdInsight.Drivers/`, orphaned `ObdInsight.sln.DotSettings`, stray `obdtest-*.log`/`test-output*.log`; IntegrationTests csproj scaffolding leftovers removed; `src/ObdInsight/.claude/` local settings untracked (kept on disk) + gitignored. Screenshots folder turned out untracked local data — left alone. DevTools stub commands (live menu entries with TODOs) kept — that's the port-or-rebuild decision for DevTools features, separate from dead code. | Hygiene sweep, zero behavior risk |
 
 ### M0 — Safety net
 

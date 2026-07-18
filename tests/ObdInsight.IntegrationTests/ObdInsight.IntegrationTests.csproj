@@ -10,12 +10,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Nissan\NewFolder\**" />
-    <EmbeddedResource Remove="Nissan\NewFolder\**" />
-    <None Remove="Nissan\NewFolder\**" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="TUnit" Version="1.12.3" />
   </ItemGroup>
 
@@ -23,10 +17,6 @@
     <ProjectReference Include="..\..\src\ObdInsight.Core\ObdInsight.Core.csproj" />
     <ProjectReference Include="..\..\src\ObdInsight\ObdInsight.csproj" />
     <ProjectReference Include="..\ObdInsight.Tests.Base\ObdInsight.Tests.Base.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Nissan\Leaf\" />
   </ItemGroup>
 
 </Project>
