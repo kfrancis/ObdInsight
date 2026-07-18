@@ -60,7 +60,7 @@ public class BleSessionFixture : IAsyncInitializer, IAsyncDisposable
             {
                 EnableDebugLogging = true
             };
-            _session = new ElmSession(_framer)
+            _session = new ElmSession(_framer, new ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.LeafBmsWakeupStrategy())
             {
                 EnableDebugLogging = true,
                 CommandTimeout = TimeSpan.FromSeconds(5),

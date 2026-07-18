@@ -16,7 +16,8 @@ public class Elm327Adapter
     public async Task<bool> InitializeAsync(IElmTransport transport, CancellationToken ct = default)
     {
         _framer = new ElmFramer(transport);
-        _session = new ElmSession(_framer);
+        // DevTools is Leaf-focused tooling — wire the Leaf wakeup probe.
+        _session = new ElmSession(_framer, new ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.LeafBmsWakeupStrategy());
 
         try
         {
@@ -32,7 +33,7 @@ public class Elm327Adapter
     public void SetTransport(IElmTransport transport, bool markAsInitialized = false)
     {
         _framer = new ElmFramer(transport);
-        _session = new ElmSession(_framer);
+        _session = new ElmSession(_framer, new ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.LeafBmsWakeupStrategy());
     }
 
     public ElmSession? Session => _session;

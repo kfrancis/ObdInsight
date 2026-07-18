@@ -64,6 +64,30 @@ public class ElmSessionReplayTests
     }
 
     [Test]
+    public async Task Initialize_LeafWakeupStrategy_LocksProtocolWhenStandardObdSilent(CancellationToken token)
+    {
+        // EV scenario: no ECU answers the standard 0100 broadcast; the vehicle-specific
+        // wakeup strategy (Leaf BMS Mode 21 probe) must confirm the protocol instead.
+        var transport = new ReplayElmTransport();
+        var session = new ElmSession(
+            new ElmFramer(transport),
+            new ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.LeafBmsWakeupStrategy());
+
+        // Wakeup broadcast probe fails...
+        transport.Expect("0100", "NO DATA\r\r>");
+        // ...then the strategy's BMS probe (AT setup is auto-OK'd) gets a 7BB response.
+        transport.Expect("2101", ObdInsight.Tests.Base.LeafGoldenData.GoldenGroup01Lines.AsElmResponse());
+
+        await session.InitializeAndLockAsync(token);
+
+        var sent = transport.SentCommands;
+        await Assert.That(sent).Contains("AT SH 79B");   // strategy configured BMS headers
+        await Assert.That(sent).Contains("2101");        // strategy probe ran
+        // Protocol confirmed by the strategy — the detection loop must not run its probes.
+        await Assert.That(sent.Count(c => c == "0100")).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task MonitoringMode_StreamsFrames_AndExitsCleanly(CancellationToken token)
     {
         var (transport, session) = CreateSession();

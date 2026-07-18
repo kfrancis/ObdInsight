@@ -33,6 +33,7 @@ namespace ObdInsight.Core.Communication.Elm327
     public sealed class ElmSession : IElmSession
     {
         private readonly ElmFramer _framer;
+        private readonly IEcuWakeupStrategy? _wakeupStrategy;
         private readonly SemaphoreSlim _gate = new(1, 1);
         private int _failures;
         private char? _lockedProtocol;
@@ -43,7 +44,15 @@ namespace ObdInsight.Core.Communication.Elm327
         /// Initializes a new instance of the ElmSession class using the specified ELM framer.
         /// </summary>
         /// <param name="framer">The ElmFramer instance used to frame and parse ELM protocol messages. Cannot be null.</param>
-        public ElmSession(ElmFramer framer) => _framer = framer;
+        /// <param name="wakeupStrategy">
+        /// Optional vehicle-specific wakeup/probe strategy, tried when the standard OBD-II
+        /// broadcast probe gets no response (e.g. EVs whose ECUs ignore Mode 01 queries).
+        /// </param>
+        public ElmSession(ElmFramer framer, IEcuWakeupStrategy? wakeupStrategy = null)
+        {
+            _framer = framer;
+            _wakeupStrategy = wakeupStrategy;
+        }
 
         /// <summary>
         /// Gets or sets the maximum amount of time to wait for a command to execute before timing out.
@@ -362,7 +371,7 @@ namespace ObdInsight.Core.Communication.Elm327
             Log("Baseline init: AT S0 (spaces off)");
             await _framer.SendAndReadFrameAsync("AT S0", CommandTimeout, ct);
 
-            // Headers ON is required for proper CAN communication with Nissan Leaf and many EVs
+            // Headers ON is required for proper CAN communication with many EVs
             // The response needs the CAN ID prefix to identify which ECU responded
             Log("Baseline init: AT H1 (headers on)");
             await _framer.SendAndReadFrameAsync("AT H1", CommandTimeout, ct);
@@ -379,33 +388,33 @@ namespace ObdInsight.Core.Communication.Elm327
         private async ValueTask DetectAndLockProtocolAsync(CancellationToken ct)
         {
             // First, try to wake up the ECUs by sending a broadcast query
-            // Many vehicles (especially EVs like Nissan Leaf) have ECUs that sleep
+            // Many vehicles (especially EVs) have ECUs that sleep
             // Sending to broadcast address 7DF wakes them up
             Log("Sending broadcast wakeup sequence...");
             await TryWakeupEcusAsync(ct);
 
-            // If we already locked the protocol during wakeup (e.g., Nissan Leaf BMS responded),
+            // If we already locked the protocol during wakeup (vehicle-specific strategy responded),
             // verify it works and return early
             if (_lockedProtocol is not null)
             {
                 Log($"Protocol already locked to {_lockedProtocol} during wakeup - verifying...");
                 // Reset headers to default for standard OBD queries
                 await _framer.SendAndReadFrameAsync("AT SH 7DF", CommandTimeout, ct);
-                // For Nissan Leaf, 0100 won't work, but the protocol is already confirmed
+                // Standard 0100 may not work on this vehicle, but the protocol is already confirmed
                 Log($"Protocol {_lockedProtocol} locked (EV-CAN mode - standard OBD-II queries may not work)");
                 return;
             }
 
             // Try known protocols first before auto-detect
             // This is faster and more reliable for known vehicles
-            // Protocol 6 = ISO 15765-4 CAN (11-bit, 500kbps) - most modern vehicles including Nissan Leaf
+            // Protocol 6 = ISO 15765-4 CAN (11-bit, 500kbps) - most modern vehicles
             // Protocol 7 = ISO 15765-4 CAN (29-bit, 500kbps) - some vehicles
             // Protocol 8 = ISO 15765-4 CAN (11-bit, 250kbps) - rare
             // Protocol 9 = ISO 15765-4 CAN (29-bit, 250kbps) - rare
 
             var protocolsToTry = new[]
             {
-                ('6', "ISO 15765-4 CAN 11-bit 500k"),  // Most common - Nissan Leaf, most modern cars
+                ('6', "ISO 15765-4 CAN 11-bit 500k"),  // Most common - most modern cars
                 ('7', "ISO 15765-4 CAN 29-bit 500k"),  // Some vehicles
                 ('0', "Auto-detect"),                   // Fallback to auto-detect
             };
@@ -500,12 +509,21 @@ namespace ObdInsight.Core.Communication.Elm327
                 {
                     Log($"Wakeup: ECU responded! Response: {string.Join(", ", lines.Take(2))}");
                 }
+                else if (_wakeupStrategy is not null)
+                {
+                    // Some vehicles (especially EVs) don't respond to standard OBD-II queries;
+                    // fall back to the vehicle-specific probe supplied by the caller.
+                    Log($"Wakeup: No standard OBD-II response - trying wakeup strategy '{_wakeupStrategy.Name}'...");
+                    var lockedProtocol = await _wakeupStrategy.TryWakeupAsync(_framer, CommandTimeout, ct);
+                    if (lockedProtocol is not null)
+                    {
+                        Log($"Wakeup strategy '{_wakeupStrategy.Name}' confirmed protocol {lockedProtocol}");
+                        _lockedProtocol = lockedProtocol;
+                    }
+                }
                 else
                 {
-                    Log($"Wakeup: No standard OBD-II response - trying Nissan Leaf BMS...");
-                    // Nissan Leaf doesn't respond to standard OBD-II queries
-                    // Try the BMS directly with Mode 21
-                    await TryNissanLeafBmsAsync(ct);
+                    Log("Wakeup: No standard OBD-II response and no wakeup strategy configured");
                 }
 
                 // Small delay for ECUs to wake up
@@ -519,47 +537,6 @@ namespace ObdInsight.Core.Communication.Elm327
             {
                 Log($"Wakeup sequence error (non-fatal): {ex.Message}");
                 // Don't throw - wakeup is best-effort
-            }
-        }
-
-        /// <summary>
-        /// Try to communicate with Nissan Leaf BMS using Mode 21 manufacturer-specific commands.
-        /// The Leaf doesn't respond to standard OBD-II Mode 01 queries - it uses EV-CAN.
-        /// </summary>
-        private async ValueTask<bool> TryNissanLeafBmsAsync(CancellationToken ct)
-        {
-            try
-            {
-                // Configure for Nissan Leaf BMS communication
-                // BMS TX: 0x79B, BMS RX: 0x7BB
-                Log("Trying Nissan Leaf BMS (79B/7BB)...");
-
-                await _framer.SendAndReadFrameAsync("AT SH 79B", CommandTimeout, ct);
-                await _framer.SendAndReadFrameAsync("AT CRA 7BB", CommandTimeout, ct);
-                await _framer.SendAndReadFrameAsync("AT FC SH 79B", CommandTimeout, ct);
-                await _framer.SendAndReadFrameAsync("AT FC SD 30 00 00", CommandTimeout, ct);
-                await _framer.SendAndReadFrameAsync("AT FC SM 1", CommandTimeout, ct);
-
-                // Send Mode 21 Group 01 query (BMS SOC, Capacity, etc.)
-                Log("Sending Mode 21 Group 01 query (2101)...");
-                var response = await _framer.SendAndReadFrameAsync("2101", TimeSpan.FromSeconds(5), ct);
-                var lines = ElmParsing.NormalizeLines(response);
-
-                // Check if we got a valid response (should contain 7BB prefix)
-                if (lines.Any(l => l.Contains("7BB") && l.Length > 10))
-                {
-                    Log($"Nissan Leaf BMS responded! Response: {string.Join(", ", lines.Take(2))}");
-                    _lockedProtocol = '6'; // Lock to Protocol 6 (CAN 11-bit 500k)
-                    return true;
-                }
-
-                Log("No Nissan Leaf BMS response");
-                return false;
-            }
-            catch (Exception ex)
-            {
-                Log($"Nissan Leaf BMS probe failed: {ex.Message}");
-                return false;
             }
         }
 

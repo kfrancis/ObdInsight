@@ -349,7 +349,7 @@ namespace ObdInsight
                     EnableDebugLogging = true
                 };
 
-                var session = new ElmSession(framer)
+                var session = new ElmSession(framer, new LeafBmsWakeupStrategy())
                 {
                     CommandTimeout = TimeSpan.FromSeconds(5),
                     MaxConsecutiveFailures = 3,
