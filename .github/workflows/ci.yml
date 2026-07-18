@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    # Windows runner required: most projects target net9.0-windows10.0.19041.0.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET (from global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # ObdInsight.Maui is excluded: it is a template shell with no project
+      # references, and building it needs MAUI mobile workloads on the runner.
+      # These four builds transitively cover every other project in the solution.
+      - name: Build unit tests (+ app, Core, SourceGeneration, Tests.Base)
+        run: dotnet build tests/ObdInsight.Tests -c Release
+
+      - name: Build source generator tests
+        run: dotnet build tests/ObdInsight.SourceGeneration.Tests -c Release
+
+      - name: Build integration tests (compile only — needs real vehicle hardware to run)
+        run: dotnet build tests/ObdInsight.IntegrationTests -c Release
+
+      - name: Build DevTools
+        run: dotnet build src/ObdInsight.DevTools -c Release
+
+      # TUnit uses Microsoft.Testing.Platform; `dotnet test` fails under the
+      # .NET 10 SDK ("Testing with VSTest target is no longer supported"),
+      # so run the test executables directly. They exit non-zero on failure.
+      - name: Run unit tests
+        run: dotnet run --project tests/ObdInsight.Tests -c Release --no-build
+
+      - name: Run source generator tests
+        run: dotnet run --project tests/ObdInsight.SourceGeneration.Tests -c Release --no-build

@@ -225,7 +225,7 @@ Five themes explain nearly all findings.
 | Task | Description | Files | Acceptance | Effort | Risk | Deps |
 |---|---|---|---|---|---|---|
 | M0.1 CanBits characterization tests — **DONE 2026-07-18** | Matrix tests (signed/unsigned × widths incl. 32 × positive/negative) against production `CanBits`, plus regression tests through real generated frame decoders. Written first (red on the defect), green after M1.1 | `tests/ObdInsight.SourceGeneration.Tests/CanBitsTests.cs`, `tests/ObdInsight.Tests/NissanLeaf/AZE0/Unit/GeneratedFrameDecodingTests.cs` | Tests exist and pass ✔ (CI wiring still pending M0.2) | M | None (test-only) | — |
-| M0.2 CI workflow | GitHub Actions: windows-latest (net9.0-windows TFMs require it), `dotnet build` + `dotnet test` on `ObdInsight.Tests` + `ObdInsight.SourceGeneration.Tests`. Integration project excluded. | new `.github/workflows/ci.yml` | Red PR on failing test | S/M | Low | QW3 |
+| M0.2 CI workflow — **DONE 2026-07-18** | GitHub Actions on windows-latest: builds all non-MAUI projects (integration tests compile-only), runs unit + source-generator suites via `dotnet run --project` (MTP exes; `dotnet test` unsupported under SDK 10). QW3 resolved: SDK-10 `global.json` committed; setup-dotnet reads it. | `.github/workflows/ci.yml` | Red PR on failing test ✔ (commands verified locally in Release; first real run happens on push) | S/M | Low | QW3 ✔ |
 | M0.3 ReplayElmTransport skeleton | Fake `IElmTransport` replaying scripted command→response exchanges incl. `>` prompts and monitoring streams. | new file under `tests/ObdInsight.Tests.Base/` | `ElmSession.InitializeAndLockAsync` + one `QueryAsync` pass against replay | M | Low | — |
 
 ### M1 — Correctness
