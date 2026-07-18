@@ -1,5 +1,6 @@
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
+using ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
 using ObdInsight.Tests.Base;
 
 namespace OdbTestApp.Tests.Elm327;
@@ -155,6 +156,51 @@ public class CanMonitorTests
         await foreach (var f in stream) received.Add(f);
         await Assert.That(received.Count).IsEqualTo(1);
         await Assert.That(received[0].CanId).IsEqualTo(0x1DB);
+    }
+
+    [Test]
+    public async Task TypedSubscribe_DecodesProductionFrames(CancellationToken token)
+    {
+        var (transport, _, monitor) = CreateMonitor();
+        await monitor.StartAsync(token);
+
+        var decoded = new List<BatteryFrame_1DB_AZE0>();
+        var readTask = Task.Run(async () =>
+        {
+            await foreach (var f in monitor.Subscribe<BatteryFrame_1DB_AZE0>(token)) decoded.Add(f);
+        }, token);
+
+        // Battery current: bit 13, 11 bits signed, Factor 0.5. Raw -32 => -16.0 A (charging).
+        // Voltage: bit 30, 10 bits, Factor 0.5. Raw 720 => 360.0 V.
+        var raw = ((ulong)(-32 & 0x7FF) << 13) | (720ul << 30);
+        transport.EnqueueIncoming($"1DB {string.Join(" ", BitConverter.GetBytes(raw).Select(b => b.ToString("X2")))}\r");
+        transport.EnqueueIncoming("1DA 00 00 00 00 00 00 00 00\r"); // different ID — must not reach the typed stream
+
+        await WaitForLatestAsync(monitor, 0x1DA, token);
+        await monitor.StopAsync(token);
+        await readTask.WaitAsync(token);
+
+        await Assert.That(decoded.Count).IsEqualTo(1);
+        await Assert.That(decoded[0].Current).IsEqualTo(-16.0);
+        await Assert.That(decoded[0].Voltage).IsEqualTo(360.0);
+    }
+
+    [Test]
+    public async Task TypedTryGetLatest_DecodesCachedFrame(CancellationToken token)
+    {
+        var (transport, _, monitor) = CreateMonitor();
+
+        await Assert.That(monitor.TryGetLatest<BatteryFrame_1DB_AZE0>(out _)).IsFalse();
+
+        await monitor.StartAsync(token);
+        var raw = 720ul << 30; // 360.0 V, zero current
+        transport.EnqueueIncoming($"1DB {string.Join(" ", BitConverter.GetBytes(raw).Select(b => b.ToString("X2")))}\r");
+        await WaitForLatestAsync(monitor, 0x1DB, token);
+        await monitor.StopAsync(token);
+
+        await Assert.That(monitor.TryGetLatest<BatteryFrame_1DB_AZE0>(out var frame)).IsTrue();
+        await Assert.That(frame.Voltage).IsEqualTo(360.0);
+        await Assert.That(frame.Current).IsEqualTo(0.0);
     }
 
     [Test]

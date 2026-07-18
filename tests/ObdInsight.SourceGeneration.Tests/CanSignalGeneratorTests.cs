@@ -241,6 +241,46 @@ namespace ObdInsight.SourceGeneration.Tests
         }
 
         [Test]
+        public async Task ImplementsICanFrame_WhenCoreInterfaceIsPresent()
+        {
+            // When the compilation defines ObdInsight.Core.Protocols.ICanFrame<TSelf>,
+            // generated frames must implement it (typed CanMonitor subscriptions).
+            // All other snapshot tests compile WITHOUT the interface and verify the
+            // interface-free output stays unchanged.
+            var source = """
+            using System;
+            using ObdInsight.SourceGeneration.Attributes;
+
+            namespace ObdInsight.Core.Protocols
+            {
+                public interface ICanFrame<TSelf> where TSelf : ICanFrame<TSelf>
+                {
+                    static abstract int FrameCanId { get; }
+                    static abstract TSelf Parse(ReadOnlySpan<byte> data);
+                }
+            }
+
+            namespace TestNamespace
+            {
+                [CanFrame(0x1DB)]
+                public partial class BatteryFrame
+                {
+                    [CanSignal(30, 10, Factor = 0.5, Unit = "V")]
+                    public partial double Voltage { get; }
+                }
+            }
+            """;
+
+            var result = GeneratorTestHelper.RunGenerator(source);
+
+            var generated = GeneratorTestHelper.GetGeneratedSource(result);
+            await Assert.That(generated).Contains("ICanFrame<BatteryFrame>");
+            await Assert.That(generated).Contains("public static int FrameCanId => 0x1DB;");
+
+            await Verify(result);
+        }
+
+        [Test]
         public async Task GeneratesUnsignedIntSignal()
         {
             var source = """

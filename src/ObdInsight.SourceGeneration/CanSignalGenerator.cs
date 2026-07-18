@@ -46,10 +46,19 @@ namespace ObdInsight.SourceGeneration
                 .Where(static m => m is not null)
                 .Select(static (m, _) => m!);
 
+            // When the compilation defines ObdInsight.Core.Protocols.ICanFrame<TSelf> (net7+
+            // static abstract interface members — the netstandard2.0 generator assembly cannot
+            // host it), generated frames implement it so typed CanMonitor subscriptions work.
+            // Compilations without the interface (e.g. generator snapshot tests) are unchanged.
+            var hasICanFrame = context.CompilationProvider
+                .Select(static (compilation, _) =>
+                    compilation.GetTypeByMetadataName("ObdInsight.Core.Protocols.ICanFrame`1") is not null);
+
             // Generate source for each frame class
-            context.RegisterSourceOutput(canFrameClasses, static (spc, model) =>
+            context.RegisterSourceOutput(canFrameClasses.Combine(hasICanFrame), static (spc, pair) =>
             {
-                var source = GenerateCanFrameDecoder(model);
+                var (model, implementICanFrame) = pair;
+                var source = GenerateCanFrameDecoder(model, implementICanFrame);
                 spc.AddSource($"{model.ClassName}.g.cs", SourceText.From(source, Encoding.UTF8));
             });
 
@@ -243,7 +252,7 @@ namespace ObdInsight.SourceGeneration
         /// <param name="model">The CAN frame model that defines the structure, signals, and metadata for the generated decoder class.
         /// Cannot be null.</param>
         /// <returns>A string containing the complete source code for the generated CAN frame decoder class.</returns>
-        private static string GenerateCanFrameDecoder(CanFrameModel model)
+        private static string GenerateCanFrameDecoder(CanFrameModel model, bool implementICanFrame)
         {
             var sb = new StringBuilder();
 
@@ -273,8 +282,19 @@ namespace ObdInsight.SourceGeneration
                 sb.AppendLine($"    /// CAN Frame decoder for ID 0x{model.CanId:X3}");
             }
             sb.AppendLine("    /// </summary>");
-            sb.AppendLine($"    partial class {model.ClassName}");
+            sb.AppendLine(implementICanFrame
+                ? $"    partial class {model.ClassName} : global::ObdInsight.Core.Protocols.ICanFrame<{model.ClassName}>"
+                : $"    partial class {model.ClassName}");
             sb.AppendLine("    {");
+
+            if (implementICanFrame)
+            {
+                sb.AppendLine("        /// <summary>");
+                sb.AppendLine($"        /// The CAN ID this frame decodes (0x{model.CanId:X3}).");
+                sb.AppendLine("        /// </summary>");
+                sb.AppendLine($"        public static int FrameCanId => 0x{model.CanId:X3};");
+                sb.AppendLine();
+            }
 
             // Generate Parse method
             GenerateParseMethod(sb, model);
