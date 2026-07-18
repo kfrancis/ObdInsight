@@ -1,163 +1,85 @@
-using TUnit.Assertions;
-using TUnit.Assertions.Extensions;
-using TUnit.Core;
-using static ObdInsight.Tests.Base.BmsParsingHelpers;
+using ObdInsight.Core.Communication.Elm327;
+using ObdInsight.Core.Vehicles;
+using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
+using ObdInsight.Tests.Base;
 
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
-/// Unit tests for Nissan Leaf Charger VIN parsing using golden sample data.
+/// Unit tests for Nissan Leaf VIN parsing using golden sample data.
+/// Exercises the PRODUCTION path — LeafAze0CommandSet → LeafAze0VehicleIdentification
+/// (Mode 21 PID 81 to the IDENT/Charger ECU) — over a replay transport. No BLE required.
 /// </summary>
+[Timeout(30_000)]
 public class LeafChargerVinParsingTests
 {
-    /// <summary>
-    /// Golden sample for a 2017 Nissan Leaf AZE0 VIN query (Mode 21 PID 81).
-    /// Fake/Generated VIN: 1N4AZ0CP7HC308656
-    /// </summary>
-    private static readonly string[] s_goldenVinLines =
-    [
-        // FF (First Frame): ID=79A, PCI=10 (First Frame), Len=0x15 (21 decimal)
-        // Payload: [61 81] (Response) + "1N4A" (31 4E 34 41)
-        "79A10156181314E3441",
-
-        // CF1 (Consecutive Frame 1): ID=79A, PCI=21
-        // Payload: "Z0CP7HC" (5A 30 43 50 37 48 43)
-        "79A215A304350374843",
-
-        // CF2 (Consecutive Frame 2): ID=79A, PCI=22
-        // Payload: "308656" (33 30 38 36 35 36) + 00 (Padding/Termination)
-        "79A2233303836353600",
-
-        // CF3 (Consecutive Frame 3): ID=79A, PCI=23
-        // Payload: 00 (Remaining Termination) + CAN Frame Padding
-        "79A230000000000000"
-    ];
+    private static (ReplayElmTransport Transport, IVehicleIdentification Ident) CreateIdent()
+    {
+        var transport = new ReplayElmTransport();
+        var session = new ElmSession(new ElmFramer(transport));
+        var commands = new LeafAze0CommandSet(session);
+        commands.TryGet<IVehicleIdentification>(out var ident);
+        return (transport, ident);
+    }
 
     [Test]
-    public async Task ParseVin_ExtractsCorrectVin()
+    public async Task GetVin_ExtractsCorrectVin(CancellationToken token)
     {
-        // Arrange
-        var frames = ParseIsoTpFrames(s_goldenVinLines);
-        var payload = ReassembleIsoTpPayload(frames);
+        var (transport, ident) = CreateIdent();
+        transport.Expect("2181", LeafGoldenData.GoldenVinLines.AsElmResponse());
 
-        // Act
-        var vin = ParseVinFromPayload(payload);
+        var vin = await ident.GetVinAsync(token);
 
-        // Assert
         await Assert.That(vin).IsEqualTo("1N4AZ0CP7HC308656");
     }
 
     [Test]
-    public async Task ParseVin_HandlesEmptyLines()
+    public async Task GetVin_QueriesIdentEcu(CancellationToken token)
     {
-        // Act
-        var vin = ParseVinFromLines([]);
+        var (transport, ident) = CreateIdent();
+        transport.Expect("2181", LeafGoldenData.GoldenVinLines.AsElmResponse());
 
-        // Assert
+        await ident.GetVinAsync(token);
+
+        // IDENT (Charger) ECU: TX 797, RX filter 79A.
+        var sent = transport.SentCommands;
+        await Assert.That(sent).Contains("AT SH 797");
+        await Assert.That(sent).Contains("AT CRA 79A");
+        await Assert.That(sent).Contains("2181");
+    }
+
+    [Test]
+    public async Task GetVin_InvalidHeader_ReturnsNull(CancellationToken token)
+    {
+        var (transport, ident) = CreateIdent();
+        // Negative response (7F 21 31) instead of 61 81 — parseable frame, wrong header.
+        transport.Expect("2181", "79A037F2131\r\r>");
+
+        var vin = await ident.GetVinAsync(token);
+
         await Assert.That(vin).IsNull();
     }
 
     [Test]
-    public async Task ParseVin_HandlesInvalidHeader()
+    public async Task GetVin_TruncatedVin_ReturnsNull(CancellationToken token)
     {
-        // Arrange - payload with wrong header
-        var invalidPayload = new byte[] { 0x7F, 0x81, 0x31, 0x4E };
+        var (transport, ident) = CreateIdent();
+        // Valid 61 81 header but only 4 VIN characters — fewer than the required 17.
+        transport.Expect("2181", "79A0661813134353600\r\r>");
 
-        // Act
-        var vin = ParseVinFromPayload(invalidPayload);
+        var vin = await ident.GetVinAsync(token);
 
-        // Assert
         await Assert.That(vin).IsNull();
     }
 
     [Test]
-    public async Task ParseVin_HandlesNullLines()
+    public async Task GetVin_AdapterError_ThrowsAfterRetry(CancellationToken token)
     {
-        // Act
-        var vin = ParseVinFromLines(null);
+        var (transport, ident) = CreateIdent();
+        // Both the query and its automatic retry return an adapter error.
+        transport.Expect("2181", "NO DATA\r\r>");
+        transport.Expect("2181", "NO DATA\r\r>");
 
-        // Assert
-        await Assert.That(vin).IsNull();
-    }
-
-    [Test]
-    public async Task ParseVinFrames_ExtractsCorrectFrameCount()
-    {
-        // Arrange & Act
-        var frames = ParseIsoTpFrames(s_goldenVinLines);
-
-        // Assert
-        await Assert.That(frames).Count().IsEqualTo(4);
-    }
-
-    [Test]
-    public async Task ParseVinPayload_HasValidHeader()
-    {
-        // Arrange
-        var frames = ParseIsoTpFrames(s_goldenVinLines);
-
-        // Act
-        var payload = ReassembleIsoTpPayload(frames);
-
-        // Assert - response to Mode 21 PID 81 should be 61 81
-        await Assert.That(payload[0]).IsEqualTo((byte)0x61);
-        await Assert.That(payload[1]).IsEqualTo((byte)0x81);
-    }
-
-    [Test]
-    public async Task ParseVinPayload_ProducesCorrectLength()
-    {
-        // Arrange
-        var frames = ParseIsoTpFrames(s_goldenVinLines);
-
-        // Act
-        var payload = ReassembleIsoTpPayload(frames);
-
-        // Assert - should be 21 bytes as indicated by First Frame
-        await Assert.That(payload).Count().IsEqualTo(21);
-    }
-
-    /// <summary>
-    /// Helper to parse VIN from lines (wraps the parsing steps).
-    /// </summary>
-    private static string? ParseVinFromLines(string[]? lines)
-    {
-        if (lines == null || lines.Length == 0)
-            return null;
-
-        var frames = ParseIsoTpFrames(lines);
-        if (frames.Count == 0)
-            return null;
-
-        var payload = ReassembleIsoTpPayload(frames);
-        return ParseVinFromPayload(payload);
-    }
-
-    /// <summary>
-    /// Parses VIN from reassembled ISO-TP payload.
-    /// Expected format: [61 81] [VIN ASCII bytes] [00 padding]
-    /// </summary>
-    private static string? ParseVinFromPayload(byte[] payload)
-    {
-        // Validate header (61 81 = response to Mode 21 PID 81)
-        if (payload.Length < 3 || payload[0] != 0x61 || payload[1] != 0x81)
-            return null;
-
-        // VIN data starts at byte 2
-        var vinBytes = payload.AsSpan(2);
-
-        // Convert to ASCII, stopping at first null byte
-        var chars = new List<char>();
-        foreach (var b in vinBytes)
-        {
-            if (b == 0x00)
-                break;
-
-            // Only include valid ASCII characters
-            if (b >= 0x20 && b <= 0x7E)
-                chars.Add((char)b);
-        }
-
-        return chars.Count >= 17 ? new string([.. chars]) : null;
+        await Assert.That(async () => await ident.GetVinAsync(token)).Throws<IOException>();
     }
 }

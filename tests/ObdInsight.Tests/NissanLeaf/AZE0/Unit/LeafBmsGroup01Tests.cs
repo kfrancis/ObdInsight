@@ -1,99 +1,94 @@
-using static ObdInsight.Tests.Base.BmsParsingHelpers;
+using ObdInsight.Core.Communication.Elm327;
+using ObdInsight.Core.Vehicles;
+using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
+using ObdInsight.Tests.Base;
 
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
 /// Unit tests for Nissan Leaf BMS Group 01 parsing using golden sample data.
-/// These tests validate the parsing logic without requiring BLE connectivity.
+/// Exercises the PRODUCTION path — LeafAze0CommandSet → LeafAze0Bms → generated
+/// LeafBmsDiagnostics.QueryGroup01Async — over a replay transport. No BLE required.
 /// </summary>
+[Timeout(30_000)]
 public class LeafBmsGroup01ParsingTests
 {
-    [Test]
-    public async Task ParseGroup01_AllFieldsPresent()
+    private static async Task<BatteryStatus> QueryGoldenStatusAsync(CancellationToken token)
     {
-        // Arrange
-        var frames = ParseIsoTpFrames(GoldenGroup01Lines);
+        var transport = new ReplayElmTransport();
+        transport.Expect("2101", LeafGoldenData.GoldenGroup01Lines.AsElmResponse());
 
-        // Act
-        var result = ParseGroup01FromFrames(frames);
+        var session = new ElmSession(new ElmFramer(transport));
+        var commands = new LeafAze0CommandSet(session);
 
-        // Assert
-        await Assert.That(result.VoltageVolts).IsNotNull();
-        await Assert.That(result.CurrentAmps).IsNotNull();
-        await Assert.That(result.HxPercent).IsNotNull();
-        await Assert.That(result.CapacityAh).IsNotNull();
+        await Assert.That(commands.TryGet<IBatteryManagementSystem>(out var bms)).IsTrue();
+        return await bms.GetStatusAsync(token);
     }
 
     [Test]
-    public async Task ParseGroup01_ExtractsCapacity()
+    public async Task GetStatus_ExtractsVoltage(CancellationToken token)
     {
-        // Arrange
-        var frames = ParseIsoTpFrames(GoldenGroup01Lines);
+        var result = await QueryGoldenStatusAsync(token);
 
-        // Act
-        var result = ParseGroup01FromFrames(frames);
+        var expectedVoltage = 0x8D52 / 100.0; // 361.78 V, from CF3 bytes 0-1
+        await Assert.That(result.VoltageVolts).IsNotNull();
+        await Assert.That(Math.Abs(result.VoltageVolts!.Value - expectedVoltage)).IsLessThan(0.01);
+    }
 
-        // Assert
+    [Test]
+    public async Task GetStatus_ExtractsCurrent(CancellationToken token)
+    {
+        var result = await QueryGoldenStatusAsync(token);
+
+        var expectedCurrent = 0xEB / 1024.0; // ~0.229 A
+        await Assert.That(result.CurrentAmps).IsNotNull();
+        await Assert.That(Math.Abs(result.CurrentAmps!.Value - expectedCurrent)).IsLessThan(0.01);
+    }
+
+    [Test]
+    public async Task GetStatus_ExtractsHealth(CancellationToken token)
+    {
+        var result = await QueryGoldenStatusAsync(token);
+
+        var expectedHx = 0x0DD8 / 100.0; // 35.44 % (24/30kWh format: /100)
+        await Assert.That(result.HealthPercent).IsNotNull();
+        await Assert.That(Math.Abs(result.HealthPercent!.Value - expectedHx)).IsLessThan(0.1);
+    }
+
+    [Test]
+    public async Task GetStatus_ExtractsCapacity(CancellationToken token)
+    {
+        var result = await QueryGoldenStatusAsync(token);
+
         var expectedAhr = 0x0805C1 / 10000.0; // 52.58 Ah
         await Assert.That(result.CapacityAh).IsNotNull();
         await Assert.That(Math.Abs(result.CapacityAh!.Value - expectedAhr)).IsLessThan(0.1);
     }
 
     [Test]
-    public async Task ParseGroup01_ExtractsCurrent()
+    public async Task GetStatus_SocIsNull_For24And30kWhLeaf(CancellationToken token)
     {
-        // Arrange
-        var frames = ParseIsoTpFrames(GoldenGroup01Lines);
+        var result = await QueryGoldenStatusAsync(token);
 
-        // Act
-        var result = ParseGroup01FromFrames(frames);
-
-        // Assert
-        var expectedCurrent = 0xEB / 1024.0; // ~0.229A
-        await Assert.That(result.CurrentAmps).IsNotNull();
-        await Assert.That(Math.Abs(result.CurrentAmps!.Value - expectedCurrent)).IsLessThan(0.01);
-    }
-
-    [Test]
-    public async Task ParseGroup01_ExtractsHx()
-    {
-        // Arrange
-        var frames = ParseIsoTpFrames(GoldenGroup01Lines);
-
-        // Act
-        var result = ParseGroup01FromFrames(frames);
-
-        // Assert - 24/30kWh format uses /100 divisor
-        var expectedHx = 0x0DD8 / 100.0; // 35.44%
-        await Assert.That(result.HxPercent).IsNotNull();
-        await Assert.That(Math.Abs(result.HxPercent!.Value - expectedHx)).IsLessThan(0.1);
-    }
-
-    [Test]
-    public async Task ParseGroup01_ExtractsVoltage()
-    {
-        // Arrange
-        var frames = ParseIsoTpFrames(GoldenGroup01Lines);
-
-        // Act
-        var result = ParseGroup01FromFrames(frames);
-
-        // Assert
-        var expectedVoltage = 0x8D52 / 100.0; // 361.78V
-        await Assert.That(result.VoltageVolts).IsNotNull();
-        await Assert.That(Math.Abs(result.VoltageVolts!.Value - expectedVoltage)).IsLessThan(0.01);
-    }
-
-    [Test]
-    public async Task ParseGroup01_SocIsNull_For24And30kWhLeaf()
-    {
-        // Arrange
-        var frames = ParseIsoTpFrames(GoldenGroup01Lines);
-
-        // Act
-        var result = ParseGroup01FromFrames(frames);
-
-        // Assert - SOC should be null for 24/30kWh Leaf (must use passive CAN)
+        // SOC field only exists in the 40kWh/ZE1 response layout (must use passive CAN otherwise)
         await Assert.That(result.SocPercent).IsNull();
+    }
+
+    [Test]
+    public async Task GetStatus_SendsBmsQueryToBmsEcu(CancellationToken token)
+    {
+        var transport = new ReplayElmTransport();
+        transport.Expect("2101", LeafGoldenData.GoldenGroup01Lines.AsElmResponse());
+
+        var session = new ElmSession(new ElmFramer(transport));
+        var commands = new LeafAze0CommandSet(session);
+        commands.TryGet<IBatteryManagementSystem>(out var bms);
+        await bms.GetStatusAsync(token);
+
+        // ECU context must target the LBC/BMS (TX 79B, RX filter 7BB) before the Mode 21 query.
+        var sent = transport.SentCommands;
+        await Assert.That(sent).Contains("AT SH 79B");
+        await Assert.That(sent).Contains("AT CRA 7BB");
+        await Assert.That(sent).Contains("2101");
     }
 }

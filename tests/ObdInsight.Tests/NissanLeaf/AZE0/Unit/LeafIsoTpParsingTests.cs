@@ -1,90 +1,67 @@
-using static ObdInsight.Tests.Base.BmsParsingHelpers;
+using ObdInsight.Core.Protocols;
+using ObdInsight.Tests.Base;
 
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
-/// Unit tests for Nissan Leaf ISO-TP frame parsing.
-/// These tests use golden sample data and do not require BLE connectivity.
+/// Unit tests for the PRODUCTION ISO-TP parser (ObdInsight.Core.Protocols.IsoTpParser)
+/// using golden Nissan Leaf sample data. No BLE required.
 /// </summary>
 public class LeafIsoTpParsingTests
 {
     [Test]
-    public async Task ParseIsoTpFrames_ExtractsConsecutiveFrameCount()
+    public async Task ParseIsoTpResponse_ReassemblesGroup01Payload()
     {
-        // Arrange
-        var lines = GoldenGroup01Lines;
+        var response = string.Join("\r", LeafGoldenData.GoldenGroup01Lines);
 
-        // Act
-        var frames = ParseIsoTpFrames(lines);
-        var consecutiveFrames = frames.Where(f => f.FrameType == 2).ToList();
+        var payload = IsoTpParser.ParseIsoTpResponse(response);
 
-        // Assert
-        await Assert.That(consecutiveFrames).Count().IsEqualTo(6);
+        // First Frame declares 0x2B (43) bytes; reassembly must trim to exactly that.
+        await Assert.That(payload).Count().IsEqualTo(43);
     }
 
     [Test]
-    public async Task ParseIsoTpFrames_ExtractsCorrectFrameCount()
+    public async Task ParseIsoTpResponse_Group01_HasValidHeader()
     {
-        // Arrange
-        var lines = GoldenGroup01Lines;
+        var response = string.Join("\r", LeafGoldenData.GoldenGroup01Lines);
 
-        // Act
-        var frames = ParseIsoTpFrames(lines);
+        var payload = IsoTpParser.ParseIsoTpResponse(response);
 
-        // Assert
-        await Assert.That(frames).Count().IsEqualTo(7);
-    }
-
-    [Test]
-    public async Task ParseIsoTpFrames_ExtractsFirstFrameType()
-    {
-        // Arrange
-        var lines = GoldenGroup01Lines;
-
-        // Act
-        var frames = ParseIsoTpFrames(lines);
-        var firstFrame = frames.FirstOrDefault(f => f.FrameType == 1);
-
-        // Assert
-        await Assert.That(firstFrame).IsNotNull();
-        await Assert.That(firstFrame!.FrameType).IsEqualTo(1);
-    }
-
-    [Test]
-    public async Task ReassembleIsoTpPayload_FirstFrameContainsExpectedLength()
-    {
-        // Arrange
-        var frames = ParseIsoTpFrames(GoldenGroup01Lines);
-        var firstFrame = frames.First(f => f.FrameType == 1);
-
-        // Act & Assert
-        await Assert.That(firstFrame.SeqOrLen).IsEqualTo(0x2B); // 43 bytes
-    }
-
-    [Test]
-    public async Task ReassembleIsoTpPayload_HasValidHeader()
-    {
-        // Arrange
-        var frames = ParseIsoTpFrames(GoldenGroup01Lines);
-
-        // Act
-        var payload = ReassembleIsoTpPayload(frames);
-
-        // Assert
+        // Positive response to Mode 21 PID 01 = [61 01]
         await Assert.That(payload[0]).IsEqualTo((byte)0x61);
         await Assert.That(payload[1]).IsEqualTo((byte)0x01);
     }
 
     [Test]
-    public async Task ReassembleIsoTpPayload_ProducesCorrectLength()
+    public async Task ParseIsoTpResponse_ReassemblesVinPayload()
     {
-        // Arrange
-        var frames = ParseIsoTpFrames(GoldenGroup01Lines);
+        var response = string.Join("\r", LeafGoldenData.GoldenVinLines);
 
-        // Act
-        var payload = ReassembleIsoTpPayload(frames);
+        var payload = IsoTpParser.ParseIsoTpResponse(response);
 
-        // Assert
+        // First Frame declares 0x15 (21) bytes, header [61 81].
+        await Assert.That(payload).Count().IsEqualTo(21);
+        await Assert.That(payload[0]).IsEqualTo((byte)0x61);
+        await Assert.That(payload[1]).IsEqualTo((byte)0x81);
+    }
+
+    [Test]
+    public async Task ParseIsoTpResponse_HandlesFramesConcatenatedOnOneLine()
+    {
+        // Some adapters emit multiple frames on a single line with no separator.
+        var response = string.Concat(LeafGoldenData.GoldenGroup01Lines);
+
+        var payload = IsoTpParser.ParseIsoTpResponse(response);
+
         await Assert.That(payload).Count().IsEqualTo(43);
+        await Assert.That(payload[0]).IsEqualTo((byte)0x61);
+        await Assert.That(payload[1]).IsEqualTo((byte)0x01);
+    }
+
+    [Test]
+    public async Task ParseIsoTpResponse_EmptyInput_ReturnsEmpty()
+    {
+        await Assert.That(IsoTpParser.ParseIsoTpResponse("")).Count().IsEqualTo(0);
+        await Assert.That(IsoTpParser.ParseIsoTpResponse("   ")).Count().IsEqualTo(0);
     }
 }

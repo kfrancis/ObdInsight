@@ -552,7 +552,17 @@ public class UdsGenerator : IIncrementalGenerator
                     model.AppliesTo = namedArg.Value.Value?.ToString();
                     break;
                 case "FrameType":
-                    model.FrameSource = namedArg.Value.Value?.ToString() ?? "Payload";
+                    // Enum named arguments arrive as their boxed underlying int — convert to the
+                    // member name, otherwise the "ConsecutiveFrame" comparison never matches.
+                    var frameSourceValue = namedArg.Value.Value;
+                    if (frameSourceValue is int frameSourceInt)
+                    {
+                        model.FrameSource = ((ObdInsight.SourceGeneration.Attributes.FrameSource)frameSourceInt).ToString();
+                    }
+                    else
+                    {
+                        model.FrameSource = frameSourceValue?.ToString() ?? "Payload";
+                    }
                     break;
                 case "FrameSequence":
                     model.FrameSequence = (int)(namedArg.Value.Value ?? 0);

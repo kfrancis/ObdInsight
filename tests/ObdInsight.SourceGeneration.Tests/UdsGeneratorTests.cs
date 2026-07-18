@@ -144,6 +144,56 @@ public class UdsGeneratorTests
     }
 
     [Test]
+    public async Task GeneratesConsecutiveFrameSourcedField()
+    {
+        // Regression: FrameType is an enum named argument, which Roslyn surfaces as a boxed
+        // int. The generator must map it back to the member name — otherwise the
+        // "ConsecutiveFrame" branch never matches and the field silently decodes from the
+        // wrong bytes (payload offset 0). This is how Leaf BMS VoltageVolts read as 0.
+        var source = """
+        using ObdInsight.SourceGeneration.Attributes;
+        using System.Threading;
+        using System.Threading.Tasks;
+        using System.Collections.Generic;
+
+        namespace TestNamespace
+        {
+            public interface IElmSession
+            {
+                Task<string[]> QueryAsync(string command, object context, CancellationToken ct);
+            }
+
+            public class EcuContext { }
+
+            [UdsService(0x21)]
+            public partial class FrameSourceDiagnostics
+            {
+                private readonly IElmSession _session;
+                private readonly EcuContext _context;
+
+                public static List<(int FrameType, int SeqOrLen, byte[] Data)> ParseIsoTpFrames(string[] lines) => new();
+                public static byte[] ReassembleIsoTpPayload(List<(int FrameType, int SeqOrLen, byte[] Data)> frames) => [];
+
+                [UdsPid(0x01)]
+                public partial class StatusResponse
+                {
+                    [UdsField(FrameType = FrameSource.ConsecutiveFrame, FrameSequence = 3, Offset = 0, Length = 2,
+                        Type = UdsFieldType.UInt16BE, Scale = 0.01)]
+                    public double VoltageVolts { get; set; }
+                }
+            }
+        }
+        """;
+
+        var result = GeneratorTestHelper.RunGenerator<UdsGenerator>(source);
+
+        var generated = GeneratorTestHelper.GetGeneratedSource(result);
+        await Assert.That(generated).Contains("f.FrameType == 2 && f.SeqOrLen == 3");
+
+        await Verify(result);
+    }
+
+    [Test]
     public async Task GeneratesSignedInt32Conversion()
     {
         var source = """

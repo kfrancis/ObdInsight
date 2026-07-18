@@ -1,30 +1,21 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
-namespace ObdInsight.Tests.Base;
+namespace ObdInsight.IntegrationTests;
 
 /// <summary>
-/// Shared parsing utilities for Nissan Leaf BMS data.
-/// These methods are extracted from LeafAze0Bms for testing.
+/// Test-side re-implementation of Leaf BMS/ISO-TP parsing, used by the hardware
+/// integration tests to sanity-check raw session lines independently of production code.
+///
+/// NOTE: this intentionally lives ONLY in the integration-test project. Deterministic unit
+/// tests must exercise the production parsers (LeafBmsDiagnostics, IsoTpParser, the
+/// capability classes) instead — see tests/ObdInsight.Tests/NissanLeaf/AZE0/Unit/.
+/// Retargeting the integration tests at production parsing (and deleting this file) needs
+/// a real vehicle to validate and is tracked in AUDIT.md (M2.1 follow-up).
+/// Known divergence from production: LeafBmsDiagnostics repairs the adapter's 'H' quirk
+/// as "H" → "48" (raw ASCII 0x48 leaking through); this copy replaces 'H' → '4'.
 /// </summary>
 public static class BmsParsingHelpers
 {
-    /// <summary>
-    /// Golden sample from actual Nissan Leaf AZE0 BMS Group 01 response.
-    /// Captured: 2026-01-18 from 66:1E:87:02:C2:DB
-    /// </summary>
-    [SuppressMessage("ReSharper", "StringLiteralTypo")]
-    public static readonly string[] GoldenGroup01Lines =
-    [
-        "7BB102B6101000000EB",  // FF: len=43, [61 01 00 00 00 EB]
-        "7BB21028AFFFFFD5AFF",  // CF1: [02 8A FF FF FD 5A FF]
-        "7BB22FFFFFF07F220AC",  // CF2: [FF FF FF 07 F2 20 AC]
-        "7BB238D52386C039201",  // CF3: [8D 52 38 6C 03 92 01]
-        "7BB244E0DD80006658A",  // CF4: [4E 0D D8 00 06 65 8A]
-        "7BB25000805C1800005",  // CF5: [00 08 05 C1 80 00 05]
-        "7BB260000FFFFFFFFFF",  // CF6: [00 00 FF...]
-    ];
-
     /// <summary>
     /// Parses Group 01 using OVMS-style offsets on reassembled payload.
     /// </summary>
