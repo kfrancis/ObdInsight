@@ -29,6 +29,45 @@ namespace ObdInsight.Core.Communication.Elm327
         }
 
         /// <summary>
+        ///     Waits until the monitor's latest-frame cache holds all of <paramref name="canIds" />,
+        ///     or the timeout elapses. Returns immediately on a warm cache. Used by cache-view
+        ///     capabilities to bridge the cold-start gap; partial data after timeout is expected.
+        /// </summary>
+        /// <returns>true if all IDs are cached; false if the timeout elapsed first.</returns>
+        public static async ValueTask<bool> WaitForCacheAsync(
+            this CanMonitor monitor,
+            TimeSpan timeout,
+            CancellationToken ct,
+            params int[] canIds)
+        {
+            var deadline = Environment.TickCount64 + (long)timeout.TotalMilliseconds;
+            while (true)
+            {
+                var allPresent = true;
+                foreach (var id in canIds)
+                {
+                    if (!monitor.TryGetLatest(id, out _))
+                    {
+                        allPresent = false;
+                        break;
+                    }
+                }
+
+                if (allPresent)
+                {
+                    return true;
+                }
+
+                if (Environment.TickCount64 >= deadline)
+                {
+                    return false;
+                }
+
+                await Task.Delay(10, ct);
+            }
+        }
+
+        /// <summary>
         ///     Decodes the latest cached frame of type <typeparamref name="T" />, if one has been
         ///     seen with a full 8-byte payload. O(1) plus decode; no I/O.
         /// </summary>

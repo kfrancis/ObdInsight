@@ -8,21 +8,21 @@ public sealed class LeafAze0CommandSet : VehicleCommandSet
     public LeafAze0CommandSet(IElmSession session)
     {
         // One shared monitoring pass for all broadcast data (streaming design P2/P3).
-        // Migrated capabilities (HVAC, MotorController) read the monitor's cache/streams;
-        // everything else gets a decorated session that transparently suspends the monitor
-        // around queries and legacy enter/exit monitoring, so both models coexist.
+        // Broadcast capabilities read the monitor's cache/streams; UDS capabilities (BMS, VIN)
+        // and Steering (needs session activation + keep-alive — not yet monitor-native) get a
+        // decorated session that transparently suspends the monitor around their work.
         Monitor = new CanMonitor(session, LeafAze0Contexts.SharedBroadcastMonitor);
         var arbitrated = new MonitorSuspendingElmSession(session, Monitor);
 
-        Add<IAntilockBrakingSystem>(new LeafAze0Abs(arbitrated, LeafAze0Contexts.AbsBroadcast));
+        Add<IAntilockBrakingSystem>(new LeafAze0Abs(Monitor));
         Add<IBatteryManagementSystem>(new LeafAze0Bms(arbitrated, LeafAze0Contexts.LbcBms));
-        Add<IBodyControl>(new LeafAze0BodyControl(arbitrated, LeafAze0Contexts.BcmBroadcast));
-        Add<IBrake>(new LeafAze0Brake(arbitrated, LeafAze0Contexts.BrakeBroadcast));
+        Add<IBodyControl>(new LeafAze0BodyControl(Monitor));
+        Add<IBrake>(new LeafAze0Brake(Monitor));
         Add<IHvac>(new LeafAze0Hvac(Monitor));
         Add<IMotorController>(new LeafAze0MotorController(Monitor));
-        Add<IOnboardCharger>(new LeafAze0Charger(arbitrated, LeafAze0Contexts.ObcPdBroadcast));
+        Add<IOnboardCharger>(new LeafAze0Charger(Monitor));
         Add<ISteering>(new LeafAze0Steering(arbitrated, LeafAze0Contexts.SteeringBroadcast));
-        Add<IVcm>(new LeafAze0Vcm(arbitrated, LeafAze0Contexts.VcmEvCanBroadcast, LeafAze0Contexts.VcmCarCanBroadcast));
+        Add<IVcm>(new LeafAze0Vcm(Monitor));
         Add<IVehicleIdentification>(new LeafAze0VehicleIdentification(arbitrated, LeafAze0Contexts.Ident));
     }
 

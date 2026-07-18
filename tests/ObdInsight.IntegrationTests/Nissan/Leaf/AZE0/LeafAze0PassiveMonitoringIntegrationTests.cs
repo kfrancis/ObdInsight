@@ -13,6 +13,12 @@ namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
 [ClassDataSource<BleSessionFixture>(Shared = SharedType.Keyed)]
 public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixture)
 {
+    private ObdInsight.Core.Communication.Elm327.CanMonitor? _monitor;
+
+    private ObdInsight.Core.Communication.Elm327.CanMonitor Monitor =>
+        _monitor ??= new ObdInsight.Core.Communication.Elm327.CanMonitor(
+            bleFixture.Session, LeafAze0Contexts.SharedBroadcastMonitor);
+
     [Test]
     [Category("Integration")]
     [Category("AZE0")]
@@ -21,8 +27,8 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
     {
         // Arrange
         var session = bleFixture.Session;
-        var brake = new LeafAze0Brake(session, LeafAze0Contexts.BrakeBroadcast);
-        var abs = new LeafAze0Abs(session, LeafAze0Contexts.AbsBroadcast);
+        var brake = new LeafAze0Brake(Monitor);
+        var abs = new LeafAze0Abs(Monitor);
 
         // Act
         var brakeStatus = await brake.GetStatusAsync(CancellationToken.None);
@@ -47,7 +53,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.AbsBroadcast;
-        var abs = new LeafAze0Abs(session, context);
+        var abs = new LeafAze0Abs(Monitor);
 
         // Act
         var status = await abs.GetStatusAsync(CancellationToken.None);
@@ -69,7 +75,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.AbsBroadcast;
-        var abs = new LeafAze0Abs(session, context);
+        var abs = new LeafAze0Abs(Monitor);
 
         // Act
         var status = await abs.GetStatusAsync(CancellationToken.None);
@@ -103,7 +109,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.AbsBroadcast;
-        var abs = new LeafAze0Abs(session, context);
+        var abs = new LeafAze0Abs(Monitor);
 
         // Act
         var status = await abs.GetStatusAsync(CancellationToken.None);
@@ -125,7 +131,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.AbsBroadcast;
-        var abs = new LeafAze0Abs(session, context);
+        var abs = new LeafAze0Abs(Monitor);
 
         // Act
         var status = await abs.GetStatusAsync(CancellationToken.None);
@@ -149,7 +155,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.BcmBroadcast;
-        var bodyControl = new LeafAze0BodyControl(session, context);
+        var bodyControl = new LeafAze0BodyControl(Monitor);
 
         // Act
         var status = await bodyControl.GetStatusAsync(CancellationToken.None);
@@ -171,7 +177,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.BcmBroadcast;
-        var bodyControl = new LeafAze0BodyControl(session, context);
+        var bodyControl = new LeafAze0BodyControl(Monitor);
 
         // Act
         var status = await bodyControl.GetStatusAsync(CancellationToken.None);
@@ -191,7 +197,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.BrakeBroadcast;
-        var brake = new LeafAze0Brake(session, context);
+        var brake = new LeafAze0Brake(Monitor);
 
         // Act - Even if frames are slow or missing, should return valid default
         var status = await brake.GetStatusAsync(CancellationToken.None);
@@ -212,7 +218,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.BrakeBroadcast;
-        var brake = new LeafAze0Brake(session, context);
+        var brake = new LeafAze0Brake(Monitor);
 
         // Act
         var status = await brake.GetStatusAsync(CancellationToken.None);
@@ -233,7 +239,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.BrakeBroadcast;
-        var brake = new LeafAze0Brake(session, context);
+        var brake = new LeafAze0Brake(Monitor);
 
         // Act
         var status = await brake.GetStatusAsync(CancellationToken.None);
@@ -254,8 +260,8 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         // Arrange
         var session = bleFixture.Session;
         var steering = new LeafAze0Steering(session, LeafAze0Contexts.SteeringBroadcast);
-        var brake = new LeafAze0Brake(session, LeafAze0Contexts.BrakeBroadcast);
-        var abs = new LeafAze0Abs(session, LeafAze0Contexts.AbsBroadcast);
+        var brake = new LeafAze0Brake(Monitor);
+        var abs = new LeafAze0Abs(Monitor);
 
         // Act & Assert - Query multiple capabilities in sequence
         _ = await steering.GetStatusAsync(CancellationToken.None);
@@ -351,7 +357,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.VcmCarCanBroadcast;
-        var vcmCarCan = new LeafAze0VcmCarCan(session, context);
+        var vcmCarCan = new LeafAze0Vcm(Monitor);
 
         // Act
         var status = await vcmCarCan.GetStatusAsync(CancellationToken.None);
@@ -373,7 +379,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.VcmCarCanBroadcast;
-        var vcmCarCan = new LeafAze0VcmCarCan(session, context);
+        var vcmCarCan = new LeafAze0Vcm(Monitor);
 
         // Act
         var status = await vcmCarCan.GetStatusAsync(CancellationToken.None);
@@ -399,7 +405,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.VcmCarCanBroadcast;
-        var vcmCarCan = new LeafAze0VcmCarCan(session, context);
+        var vcmCarCan = new LeafAze0Vcm(Monitor);
 
         // Act
         var status = await vcmCarCan.GetStatusAsync(CancellationToken.None);
@@ -429,7 +435,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.VcmCarCanBroadcast;
-        var vcmCarCan = new LeafAze0VcmCarCan(session, context);
+        var vcmCarCan = new LeafAze0Vcm(Monitor);
 
         // Act
         var status = await vcmCarCan.GetStatusAsync(CancellationToken.None);

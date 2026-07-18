@@ -1,81 +1,37 @@
 using ObdInsight.Core.Communication.Elm327;
-using ObdInsight.Core.Protocols;
-using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 {
     /// <summary>
-    /// On-board charger implementation for Nissan Leaf AZE0.
-    /// Monitors OBCpd (On-Board Charger power distribution) broadcast frames.
+    /// On-board charger capability as a view over the shared <see cref="CanMonitor"/>
+    /// (streaming design P3). Reads OBCpd broadcast frame 0x390 (charge power/status,
+    /// 100ms cadence) from the monitor's latest-frame cache.
     /// </summary>
     internal sealed class LeafAze0Charger : IOnboardCharger
     {
-        private readonly IElmSession _session;
-        private readonly EcuContext _context;
+        private static readonly TimeSpan WarmupTimeout = TimeSpan.FromMilliseconds(300);
 
-        public LeafAze0Charger(IElmSession session, EcuContext context)
+        private readonly CanMonitor _monitor;
+
+        public LeafAze0Charger(CanMonitor monitor)
         {
-            _session = session;
-            _context = context;
+            _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
         }
 
-        /// <summary>
-        /// Gets current charging status by monitoring OBCpd broadcast frames:
-        /// - 0x390: Charge power, charge status, max power out, AC voltage status
-        /// - 0x393: Secondary status information
-        /// 
-        /// These frames transmit every 100ms.
-        /// </summary>
         public async ValueTask<ChargingStatus?> GetChargingStatusAsync(CancellationToken ct = default)
         {
-            var timeout = TimeSpan.FromMilliseconds(300); // 100ms frame rate
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(timeout);
+            await _monitor.StartAsync(ct);
+            await _monitor.WaitForCacheAsync(WarmupTimeout, ct, 0x390);
 
-            await _session.EnterMonitoringModeAsync(_context, ct);
-
-            ObcPdFrame_390_AZE0? frame390 = null;
-
-            try
+            if (!_monitor.TryGetLatest<ObcPdFrame_390_AZE0>(out var frame390))
             {
-                await foreach (var frame in _session.MonitorFramesAsync(timeoutCts.Token))
-                {
-                    if (frame.Data.Length != 8)
-                        continue;
-
-                    // Use generated router for type-safe frame parsing
-                    if (CanFrameRouter.TryParseObcPdFrame_390_AZE0(frame.CanId, frame.Data.Span, out var parsed390))
-                    {
-                        frame390 = parsed390;
-                        break; // Got what we need for basic charging status
-                    }
-                }
-            }
-            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
-            {
-                // Timeout - no frame received
-                Log("[Charger Status] Timeout waiting for OBCpd frames");
-            }
-            finally
-            {
-                await _session.ExitMonitoringModeAsync(ct);
-            }
-
-            // If we didn't receive the frame, return null
-            if (frame390 == null)
-            {
-                Log("[Charger Status] No OBCpd frame received");
                 return null;
             }
 
-            // Parse charging status from frame
             // ChargeStatus values: 1=Idle/QC, 2=Finished, 4=Charging/interrupted, 8/9=Idle, 12=Waiting on timer
             var isCharging = frame390.ChargeStatus == 4;
             var isPluggedIn = frame390.ChargeStatus is 2 or 4 or 12;
-
-            Log($"[Charger Status] ChargeStatus={frame390.ChargeStatus}, ChargePower={frame390.ChargePower}kW, " +
-                $"MaxPower={frame390.MaximumChargePowerOut}kW, ACVoltage={frame390.StatusAcVoltage}");
 
             return new ChargingStatus
             {
@@ -100,12 +56,5 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
             2 => 200.0,
             _ => null
         };
-
-        private static void Log(string message)
-        {
-            System.Diagnostics.Debug.WriteLine(message);
-        }
     }
 }
-
-
