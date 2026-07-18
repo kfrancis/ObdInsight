@@ -81,6 +81,12 @@ namespace ObdInsight.Core.Communication.Elm327
             return await _inner.ActivateSessionAsync(context, ct);
         }
 
+        public async ValueTask<bool> SendKeepAliveAsync(EcuContext context, CancellationToken ct)
+        {
+            await using var _ = await _monitor.SuspendAsync(ct);
+            return await _inner.SendKeepAliveAsync(context, ct);
+        }
+
         public async ValueTask EnterMonitoringModeAsync(EcuContext context, CancellationToken ct)
         {
             // Legacy monitoring consumer wants exclusive monitoring: hold the shared monitor

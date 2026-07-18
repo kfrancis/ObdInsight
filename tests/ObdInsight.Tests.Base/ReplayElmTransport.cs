@@ -28,6 +28,7 @@ public sealed class ReplayElmTransport : IElmTransport
     private readonly Queue<byte> _rx = new();
     private readonly SemaphoreSlim _dataSignal = new(0, int.MaxValue);
     private readonly Queue<(string Command, string Response)> _script = new();
+    private readonly Dictionary<string, string> _autoResponses = new();
     private readonly List<string> _sent = [];
     private readonly StringBuilder _txBuffer = new();
 
@@ -54,6 +55,16 @@ public sealed class ReplayElmTransport : IElmTransport
     public void Expect(string command, string response)
     {
         lock (_gate) _script.Enqueue((command, response));
+    }
+
+    /// <summary>
+    /// Registers a canned response for every occurrence of <paramref name="command"/> that is
+    /// not consumed by the ordered script. Useful for unbounded repeating commands
+    /// (e.g. periodic keep-alive "3E80"). Script entries still take priority.
+    /// </summary>
+    public void AutoRespond(string command, string response)
+    {
+        lock (_gate) _autoResponses[command] = response;
     }
 
     /// <summary>Pushes unsolicited bytes (e.g. monitoring-mode CAN frame lines) to the read buffer.</summary>
@@ -140,6 +151,12 @@ public sealed class ReplayElmTransport : IElmTransport
         {
             var (_, response) = _script.Dequeue();
             EnqueueLocked(response);
+            return;
+        }
+
+        if (_autoResponses.TryGetValue(command, out var canned))
+        {
+            EnqueueLocked(canned);
             return;
         }
 

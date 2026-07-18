@@ -158,6 +158,89 @@ public class CanMonitorTests
         await Assert.That(received[0].CanId).IsEqualTo(0x1DB);
     }
 
+    private static EcuContext ActiveMonitorContext(string? keepAlive = null, int keepAliveMs = 2000) => new()
+    {
+        Name = "EPS Monitor",
+        TxHeader = "742",
+        RxFilter = "",
+        FlowControlHeader = "742",
+        CommunicationMode = EcuCommunicationMode.ActiveMonitoring,
+        MonitoringCommand = "ATMA",
+        SessionActivationCommand = "1081",
+        RequiresSessionActivation = true,
+        KeepAliveCommand = keepAlive,
+        KeepAliveIntervalMs = keepAliveMs,
+        EnableHeaders = true,
+        EnableAutoFormatting = false,
+    };
+
+    [Test]
+    public async Task Start_WithActivationContext_ActivatesSessionBeforeMonitoring(CancellationToken token)
+    {
+        var transport = new ReplayElmTransport();
+        var session = new ElmSession(new ElmFramer(transport));
+        var monitor = new CanMonitor(session, ActiveMonitorContext());
+
+        // Suppress-positive activation: empty response with prompt is success.
+        transport.Expect("1081", "\r>");
+        transport.Expect("ATMA", "");
+
+        await monitor.StartAsync(token);
+        transport.EnqueueIncoming("002 01 02 03 04 05 06 07 08\r");
+        await WaitForLatestAsync(monitor, 0x002, token);
+        await monitor.StopAsync(token);
+
+        var sent = transport.SentCommands.ToList();
+        await Assert.That(sent).Contains("1081");
+        await Assert.That(sent.IndexOf("1081") < sent.IndexOf("ATMA")).IsTrue();
+        // Activation configured the EPS TX header before sending 1081.
+        await Assert.That(sent.IndexOf("AT SH 742") < sent.IndexOf("1081")).IsTrue();
+    }
+
+    [Test]
+    public async Task KeepAlive_PeriodicallySendsTesterPresent_AndResumesMonitoring(CancellationToken token)
+    {
+        var transport = new ReplayElmTransport();
+        var session = new ElmSession(new ElmFramer(transport));
+        var monitor = new CanMonitor(session, ActiveMonitorContext(keepAlive: "3E80", keepAliveMs: 100));
+
+        transport.Expect("1081", "\r>");
+        // Monitoring re-enters after every keep-alive beat and TesterPresent repeats — use
+        // canned responses instead of ordered script entries.
+        transport.AutoRespond("ATMA", "");
+        transport.AutoRespond("3E80", "\r>");
+
+        await monitor.StartAsync(token);
+        var stream = monitor.Subscribe(new[] { 0x002 }, token);
+
+        transport.EnqueueIncoming("002 01 00 00 00 00 00 00 00\r");
+        await WaitForLatestAsync(monitor, 0x002, token);
+
+        // Keep-alive beat: TesterPresent sent, monitoring re-entered.
+        while (!transport.SentCommands.Contains("3E80"))
+            await Task.Delay(10, token);
+        while (transport.SentCommands.Count(c => c == "ATMA") < 2)
+            await Task.Delay(10, token);
+
+        // Frames still flow after the cycle. (Re-enqueue while polling: a concurrent beat's
+        // buffer drain can eat a frame that arrives exactly during the suspend window.)
+        while (!(monitor.TryGetLatest(0x002, out var latest) && latest.Data.Span[0] == 0x02))
+        {
+            transport.EnqueueIncoming("002 02 00 00 00 00 00 00 00\r");
+            await Task.Delay(20, token);
+        }
+
+        await monitor.StopAsync(token);
+        await Assert.That(monitor.EndReason).IsEqualTo(MonitoringEndReason.Stopped);
+
+        // Subscription survived the keep-alive cycles and saw frames from both windows.
+        var received = new List<RawCanFrame>();
+        await foreach (var f in stream) received.Add(f);
+        await Assert.That(received.Count).IsGreaterThanOrEqualTo(2);
+        await Assert.That(received[0].Data.Span[0]).IsEqualTo((byte)0x01);
+        await Assert.That(received[^1].Data.Span[0]).IsEqualTo((byte)0x02);
+    }
+
     [Test]
     public async Task Suspend_AllowsQueries_ResumePreservesSubscribers(CancellationToken token)
     {

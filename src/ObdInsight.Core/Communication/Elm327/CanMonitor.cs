@@ -33,6 +33,11 @@ namespace ObdInsight.Core.Communication.Elm327
         private Task? _loopTask;
         private bool _suspending;
 
+        // Serializes suspend/resume cycles (external query arbitration vs the keep-alive timer).
+        private readonly SemaphoreSlim _controlGate = new(1, 1);
+        private CancellationTokenSource? _keepAliveCts;
+        private Task? _keepAliveTask;
+
         /// <param name="session">The session to monitor through. The monitor owns mode transitions while running.</param>
         /// <param name="monitoringContext">
         ///     A monitoring-mode <see cref="EcuContext" /> (e.g.
@@ -82,11 +87,16 @@ namespace ObdInsight.Core.Communication.Elm327
                 _logger.LogDebug(ex, "[CanMonitor] Dispose-time stop failed");
             }
 
+            _keepAliveCts?.Cancel();
             _loopCts?.Dispose();
+            _keepAliveCts?.Dispose();
         }
 
         /// <summary>
         ///     Enters monitoring mode and starts the shared read loop. Idempotent while running.
+        ///     When the context requires session activation (e.g. a sleeping EPS module), the
+        ///     activation command is sent first; when it defines a keep-alive command, a periodic
+        ///     keep-alive cycle (brief suspend → TesterPresent → resume) starts alongside the loop.
         /// </summary>
         public async ValueTask StartAsync(CancellationToken ct)
         {
@@ -95,6 +105,22 @@ namespace ObdInsight.Core.Communication.Elm327
                 return;
             }
 
+            // Cold-start only — resume after a suspension skips re-activation; the keep-alive
+            // cycle is what keeps the ECU's session alive across suspensions.
+            if (_context.RequiresSessionActivation && !string.IsNullOrEmpty(_context.SessionActivationCommand))
+            {
+                var activated = await _session.ActivateSessionAsync(_context, ct);
+                if (!activated)
+                {
+                    _logger.LogDebug("[CanMonitor] Session activation failed for '{Context}' - starting anyway (frames may be absent)", _context.Name);
+                }
+            }
+
+            await StartCoreAsync(ct);
+        }
+
+        private async ValueTask StartCoreAsync(CancellationToken ct)
+        {
             await _session.EnterMonitoringModeAsync(_context, ct);
 
             lock (_lock)
@@ -105,6 +131,12 @@ namespace ObdInsight.Core.Communication.Elm327
             EndReason = MonitoringEndReason.None;
             _loopCts = new CancellationTokenSource();
             _loopTask = Task.Run(() => RunLoopAsync(_loopCts.Token), CancellationToken.None);
+
+            if (!string.IsNullOrEmpty(_context.KeepAliveCommand) && _keepAliveTask is not { IsCompleted: false })
+            {
+                _keepAliveCts = new CancellationTokenSource();
+                _keepAliveTask = Task.Run(() => RunKeepAliveAsync(_keepAliveCts.Token), CancellationToken.None);
+            }
         }
 
         /// <summary>
@@ -115,21 +147,33 @@ namespace ObdInsight.Core.Communication.Elm327
         /// <exception cref="AggregateException"></exception>
         public async ValueTask StopAsync(CancellationToken ct)
         {
-            var task = _loopTask;
-            if (task is null)
-            {
-                return;
-            }
-
-            // ReSharper disable once MethodHasAsyncOverload
-            _loopCts?.Cancel();
+            // Serialize with suspend/resume cycles (keep-alive timer, query arbitration) so a
+            // mid-cycle resume cannot revive the loop after this stop completes.
+            await _controlGate.WaitAsync(ct);
             try
             {
-                await task.WaitAsync(ct);
+                _keepAliveCts?.Cancel();
+
+                var task = _loopTask;
+                if (task is null)
+                {
+                    return;
+                }
+
+                // ReSharper disable once MethodHasAsyncOverload
+                _loopCts?.Cancel();
+                try
+                {
+                    await task.WaitAsync(ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    // Caller gave up waiting; the loop still winds down on its own.
+                }
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            finally
             {
-                // Caller gave up waiting; the loop still winds down on its own.
+                _controlGate.Release();
             }
         }
 
@@ -142,8 +186,13 @@ namespace ObdInsight.Core.Communication.Elm327
         /// </summary>
         public async ValueTask<IAsyncDisposable> SuspendAsync(CancellationToken ct)
         {
+            // The control gate serializes suspension cycles (external query arbitration vs the
+            // keep-alive timer). Held for the whole scope; released by resume.
+            await _controlGate.WaitAsync(ct);
+
             if (!IsRunning)
             {
+                _controlGate.Release();
                 return NoopScope.Instance;
             }
 
@@ -156,6 +205,7 @@ namespace ObdInsight.Core.Communication.Elm327
             catch
             {
                 _suspending = false;
+                _controlGate.Release();
                 throw;
             }
 
@@ -164,8 +214,52 @@ namespace ObdInsight.Core.Communication.Elm327
 
         private async ValueTask ResumeAsync()
         {
-            _suspending = false;
-            await StartAsync(CancellationToken.None);
+            try
+            {
+                _suspending = false;
+                await StartCoreAsync(CancellationToken.None);
+            }
+            finally
+            {
+                _controlGate.Release();
+            }
+        }
+
+        private async Task RunKeepAliveAsync(CancellationToken ct)
+        {
+            var interval = TimeSpan.FromMilliseconds(Math.Max(100, _context.KeepAliveIntervalMs));
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(interval, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+
+                if (!IsRunning)
+                {
+                    // Parked or externally suspended — skip this beat rather than fight for the session.
+                    continue;
+                }
+
+                try
+                {
+                    await using var scope = await SuspendAsync(ct);
+                    await _session.SendKeepAliveAsync(_context, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    // Best-effort: a failed keep-alive beat must not kill monitoring.
+                    _logger.LogDebug(ex, "[CanMonitor] Keep-alive cycle failed");
+                }
+            }
         }
 
         /// <summary>Latest frame seen for a CAN ID, if any. O(1), no I/O.</summary>
@@ -303,6 +397,7 @@ namespace ObdInsight.Core.Communication.Elm327
                 if (!_suspending)
                 {
                     EndReason = reason;
+                    _keepAliveCts?.Cancel();
                     lock (_lock)
                     {
                         _ended = true;

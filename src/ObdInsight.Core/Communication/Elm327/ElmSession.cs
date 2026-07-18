@@ -22,6 +22,14 @@ namespace ObdInsight.Core.Communication.Elm327
         MonitoringEndReason LastMonitoringEndReason { get; }
 
         ValueTask<bool> ActivateSessionAsync(EcuContext context, CancellationToken ct);
+
+        /// <summary>
+        /// Sends the context's keep-alive command (typically TesterPresent, e.g. "3E80") with
+        /// tolerance for suppress-positive-response silence. Returns true when the command was
+        /// sent and no adapter error came back; false when keep-alive could not be sent
+        /// (e.g. session is in monitoring mode). No-op true when the context has no keep-alive.
+        /// </summary>
+        ValueTask<bool> SendKeepAliveAsync(EcuContext context, CancellationToken ct);
         ValueTask EnterMonitoringModeAsync(EcuContext context, CancellationToken ct);
         ValueTask ExitMonitoringModeAsync(CancellationToken ct);
         ValueTask InitializeAndLockAsync(CancellationToken ct);
@@ -546,6 +554,56 @@ namespace ObdInsight.Core.Communication.Elm327
 
             // While-condition exit: caller's token was cancelled.
             LastMonitoringEndReason = MonitoringEndReason.Stopped;
+        }
+
+        /// <summary>
+        ///     Sends the context's keep-alive command (e.g. TesterPresent "3E80"). Tolerant of
+        ///     suppress-positive-response silence: a response timeout counts as success, unlike
+        ///     <see cref="QueryAsync(string, CancellationToken)" /> which would trigger recovery.
+        /// </summary>
+        public async ValueTask<bool> SendKeepAliveAsync(EcuContext context, CancellationToken ct)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+
+            if (string.IsNullOrEmpty(context.KeepAliveCommand))
+            {
+                return true;
+            }
+
+            if (CurrentMode == EcuCommunicationMode.PassiveMonitoring)
+            {
+                Log("Keep-alive skipped: session is in monitoring mode");
+                return false;
+            }
+
+            await _gate.WaitAsync(ct);
+            try
+            {
+                // Monitoring exit clears the active context, so (re)configure headers each time.
+                if (_activeContext?.Name != context.Name)
+                {
+                    await ResetAdapterStateAsync(ct);
+                    await ConfigureEcuContextInternalAsync(context, ct);
+                }
+
+                try
+                {
+                    var response = await SendAndNormalizeAsync(context.KeepAliveCommand, TimeSpan.FromMilliseconds(500), ct);
+                    var ok = !response.Any(ElmParsing.LooksLikeAdapterError);
+                    Log($"Keep-alive '{context.KeepAliveCommand}' sent (ok={ok})");
+                    return ok;
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    // No response — expected for suppress-positive-response keep-alives.
+                    Log($"Keep-alive '{context.KeepAliveCommand}' sent (no response, as expected)");
+                    return true;
+                }
+            }
+            finally
+            {
+                _gate.Release();
+            }
         }
 
         /// <summary>
