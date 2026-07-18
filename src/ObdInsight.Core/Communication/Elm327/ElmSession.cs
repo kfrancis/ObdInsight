@@ -13,6 +13,12 @@ namespace ObdInsight.Core.Communication.Elm327
         int MaxConsecutiveFailures { get; set; }
         TimeSpan ProtocolDetectionTimeout { get; set; }
 
+        /// <summary>
+        /// Why the most recent <see cref="MonitorFramesAsync"/> enumeration ended.
+        /// <see cref="MonitoringEndReason.None"/> while a run is in progress.
+        /// </summary>
+        MonitoringEndReason LastMonitoringEndReason { get; }
+
         ValueTask<bool> ActivateSessionAsync(EcuContext context, CancellationToken ct);
         ValueTask EnterMonitoringModeAsync(EcuContext context, CancellationToken ct);
         ValueTask ExitMonitoringModeAsync(CancellationToken ct);
@@ -85,6 +91,12 @@ namespace ObdInsight.Core.Communication.Elm327
         /// Gets the current communication mode of the session.
         /// </summary>
         public EcuCommunicationMode CurrentMode => _currentMode;
+
+        /// <summary>
+        /// Why the most recent <see cref="MonitorFramesAsync"/> enumeration ended.
+        /// Reset to <see cref="MonitoringEndReason.None"/> when a new enumeration starts.
+        /// </summary>
+        public MonitoringEndReason LastMonitoringEndReason { get; private set; }
 
 
         /// <summary>
@@ -831,12 +843,15 @@ namespace ObdInsight.Core.Communication.Elm327
             if (_currentMode != EcuCommunicationMode.PassiveMonitoring)
                 throw new InvalidOperationException("Not in monitoring mode. Call EnterMonitoringModeAsync() first.");
 
+            LastMonitoringEndReason = MonitoringEndReason.None;
+
             while (!ct.IsCancellationRequested)
             {
                 // Check cancellation at the start of each iteration
                 if (ct.IsCancellationRequested)
                 {
                     Log("Monitoring cancelled (token check)");
+                    LastMonitoringEndReason = MonitoringEndReason.Stopped;
                     yield break;
                 }
 
@@ -858,6 +873,7 @@ namespace ObdInsight.Core.Communication.Elm327
                 {
                     // Expected when cancelled
                     Log("Monitoring cancelled");
+                    LastMonitoringEndReason = MonitoringEndReason.Stopped;
                     yield break;
                 }
 
@@ -876,8 +892,9 @@ namespace ObdInsight.Core.Communication.Elm327
                     {
                         Log("ELM327 buffer overflow detected - monitoring terminated by device");
                         _currentMode = EcuCommunicationMode.RequestResponse; // Device has exited monitoring mode
-                        // Exit gracefully instead of throwing - this allows the session to continue
-                        // The caller can check the frame count to know monitoring ended early
+                        // Exit gracefully instead of throwing - this allows the session to continue.
+                        // The caller can check LastMonitoringEndReason to know why monitoring ended.
+                        LastMonitoringEndReason = MonitoringEndReason.BufferFull;
                         yield break;
                     }
 
@@ -886,6 +903,7 @@ namespace ObdInsight.Core.Communication.Elm327
                     {
                         Log("Prompt detected - ELM327 has exited monitoring mode");
                         _currentMode = EcuCommunicationMode.RequestResponse;
+                        LastMonitoringEndReason = MonitoringEndReason.PromptDetected;
                         yield break;
                     }
 
@@ -921,6 +939,9 @@ namespace ObdInsight.Core.Communication.Elm327
                     }
                 }
             }
+
+            // While-condition exit: caller's token was cancelled.
+            LastMonitoringEndReason = MonitoringEndReason.Stopped;
         }
 
         private bool TryParseMonitoringFrame(string rawData, out RawCanFrame frame)

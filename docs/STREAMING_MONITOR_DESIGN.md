@@ -1,6 +1,6 @@
 # Streaming Monitor Design
 
-**Status:** Proposed (M2.4 design deliverable — see AUDIT.md). Implementation is phased and tracked separately.
+**Status:** P1 implemented (`CanMonitor`, `MonitoringEndReason`, `IElmSession.LastMonitoringEndReason` — tests in `tests/ObdInsight.Tests/Elm327/CanMonitorTests.cs`). P2/P3 pending.
 **Date:** 2026-07-18
 
 ## 1. Problem
@@ -171,7 +171,7 @@ windows. Phase 3; until then callers stop the monitor explicitly before UDS work
 
 | Phase | Scope | Effort | Proves |
 |---|---|---|---|
-| P1 | `CanMonitor` with raw `Subscribe`, latest cache, `MonitoringEndReason`, BUFFER FULL auto-restart. Replay tests: multi-subscriber demux, drop-oldest, end reasons. | M/L | Core mechanics, no consumer changes |
+| P1 — **DONE 2026-07-18** | `CanMonitor` with raw `Subscribe`, latest cache, `MonitoringEndReason`, BUFFER FULL auto-restart. Replay tests: multi-subscriber demux, drop-oldest, end reasons. Also landed: `IElmSession.LastMonitoringEndReason` — `MonitorFramesAsync` now records why it ended at every exit site (fixes audit A7 at the source). Hardware checkpoint (real-adapter BUFFER FULL restart) pending. | M/L | Core mechanics, no consumer changes ✔ |
 | P2 | Generator: `ICanFrame<T>` + const CAN ID; typed `Subscribe<T>`/`TryGetLatest<T>`; migrate `LeafAze0Hvac` + `LeafAze0MotorController` as pilots; console app dashboard uses streams. | L | Consumer API shape, capability migration pattern |
 | P3 | Migrate remaining broadcast capabilities; query/monitor arbitration (`SuspendScope`); keep-alive integration; delete dead per-capability monitoring code. | L | Whole-system model |
 
