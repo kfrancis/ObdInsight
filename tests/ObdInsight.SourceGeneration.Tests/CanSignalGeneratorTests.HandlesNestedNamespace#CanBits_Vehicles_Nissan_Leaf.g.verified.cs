@@ -11,16 +11,17 @@ namespace Vehicles.Nissan.Leaf
         {
             return ReadUnsigned(data, bitPos, 1) != 0;
         }
-        public static uint ReadSigned(ReadOnlySpan<byte> data, int bitPos, int bitLen)
+        public static int ReadSigned(ReadOnlySpan<byte> data, int bitPos, int bitLen)
         {
             var unsigned = ReadUnsigned(data, bitPos, bitLen);
             var signBitMask = 1u << (bitLen - 1);
             if ((unsigned & signBitMask) != 0)
             {
-                var signExtendMask = ~((1u << bitLen) - 1);
-                return unsigned | signExtendMask;
+                // Sign extend; at 32 bits the (int) reinterpretation is already two's complement.
+                var signExtendMask = bitLen == 32 ? 0u : ~((1u << bitLen) - 1);
+                return (int)(unsigned | signExtendMask);
             }
-            return unsigned;
+            return (int)unsigned;
         }
         public static uint ReadUnsigned(ReadOnlySpan<byte> data, int bitPos, int bitLen)
         {

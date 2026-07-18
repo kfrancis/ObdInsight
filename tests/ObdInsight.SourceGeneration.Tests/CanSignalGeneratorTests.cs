@@ -216,6 +216,31 @@ namespace ObdInsight.SourceGeneration.Tests
         }
 
         [Test]
+        public async Task GeneratesSignedScaledDoubleSignal()
+        {
+            // Regression case: signed signal with Factor decoding into a double property.
+            // The signed raw value must stay negative through scaling (Leaf 0x1DB battery
+            // current shape: negative = charging).
+            var source = """
+            using ObdInsight.SourceGeneration.Attributes;
+
+            namespace TestNamespace
+            {
+                [CanFrame(0x1DB)]
+                public partial class BatteryFrame
+                {
+                    [CanSignal(13, 11, IsSigned = true, Factor = 0.5, Unit = "A",
+                        Description = "Battery current (positive=discharge, negative=charge)")]
+                    public partial double Current { get; }
+                }
+            }
+            """;
+
+            var result = GeneratorTestHelper.RunGenerator(source);
+            await Verify(result);
+        }
+
+        [Test]
         public async Task GeneratesUnsignedIntSignal()
         {
             var source = """

@@ -506,16 +506,17 @@ namespace ObdInsight.SourceGeneration
             sb.AppendLine("        }");
             sb.AppendLine();
 
-            sb.AppendLine("        public static uint ReadSigned(ReadOnlySpan<byte> data, int bitPos, int bitLen)");
+            sb.AppendLine("        public static int ReadSigned(ReadOnlySpan<byte> data, int bitPos, int bitLen)");
             sb.AppendLine("        {");
             sb.AppendLine("            var unsigned = ReadUnsigned(data, bitPos, bitLen);");
             sb.AppendLine("            var signBitMask = 1u << (bitLen - 1);");
             sb.AppendLine("            if ((unsigned & signBitMask) != 0)");
             sb.AppendLine("            {");
-            sb.AppendLine("                var signExtendMask = ~((1u << bitLen) - 1);");
-            sb.AppendLine("                return unsigned | signExtendMask;");
+            sb.AppendLine("                // Sign extend; at 32 bits the (int) reinterpretation is already two's complement.");
+            sb.AppendLine("                var signExtendMask = bitLen == 32 ? 0u : ~((1u << bitLen) - 1);");
+            sb.AppendLine("                return (int)(unsigned | signExtendMask);");
             sb.AppendLine("            }");
-            sb.AppendLine("            return unsigned;");
+            sb.AppendLine("            return (int)unsigned;");
             sb.AppendLine("        }");
             sb.AppendLine();
 

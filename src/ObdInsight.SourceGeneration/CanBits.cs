@@ -42,8 +42,10 @@ public static class CanBits
         var signBitMask = 1u << (bitLen - 1);
         if ((unsigned & signBitMask) != 0)
         {
-            // Sign extend: fill upper bits with 1s
-            var signExtendMask = ~((1u << bitLen) - 1);
+            // Sign extend: fill upper bits with 1s.
+            // At 32 bits there are no upper bits — the (int) reinterpretation is already
+            // two's complement, and (1u << 32) would wrap to 1 via C# shift-count masking.
+            var signExtendMask = bitLen == 32 ? 0u : ~((1u << bitLen) - 1);
             return (int)(unsigned | signExtendMask);
         }
 

@@ -59,14 +59,18 @@ public sealed class CanSignalAttribute : Attribute
     public bool IsSigned { get; set; } = false;
 
     /// <summary>
-    /// Maximum valid value (inclusive). Values above this are considered invalid.
-    /// Set to double.NaN to disable maximum validation.
+    /// Maximum expected value (inclusive), after scaling. Used only for generated XML
+    /// documentation ("Valid range" remarks); no runtime validation is emitted — callers
+    /// must range-check decoded values themselves if needed.
+    /// Set to double.NaN to omit from documentation.
     /// </summary>
     public double MaxValue { get; set; } = double.NaN;
 
     /// <summary>
-    /// Minimum valid value (inclusive). Values below this are considered invalid.
-    /// Set to double.NaN to disable minimum validation.
+    /// Minimum expected value (inclusive), after scaling. Used only for generated XML
+    /// documentation ("Valid range" remarks); no runtime validation is emitted — callers
+    /// must range-check decoded values themselves if needed.
+    /// Set to double.NaN to omit from documentation.
     /// </summary>
     public double MinValue { get; set; } = double.NaN;
 
