@@ -80,18 +80,12 @@ public sealed class ReplayElmTransport : IElmTransport
             {
                 if (_rx.Count > 0)
                 {
-                    // Deliver at most one CR-terminated line per read. ElmFramer.ReadUntilAsync
-                    // discards whatever follows the delimiter inside a single read chunk, so a
-                    // read spanning two monitoring frames would silently destroy the second one.
+                    // Deliver everything available in one chunk — deliberately allowing a single
+                    // read to span multiple lines, like a bursty BLE notification would. The
+                    // framer's carry-over buffering must cope without losing data.
                     var n = Math.Min(buffer.Length, _rx.Count);
-                    var written = 0;
-                    while (written < n)
-                    {
-                        var b = _rx.Dequeue();
-                        buffer.Span[written++] = b;
-                        if (b == (byte)'\r') break;
-                    }
-                    return written;
+                    for (var i = 0; i < n; i++) buffer.Span[i] = _rx.Dequeue();
+                    return n;
                 }
             }
 

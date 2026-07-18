@@ -75,8 +75,9 @@ public class ElmSessionReplayTests
         await session.EnterMonitoringModeAsync(EcuContext.NissanLeafHvbatMonitor, token);
         await Assert.That(session.CurrentMode).IsEqualTo(EcuCommunicationMode.PassiveMonitoring);
 
-        transport.EnqueueIncoming("1DB 10 14 61 01 00 00 00 5C\r");
-        transport.EnqueueIncoming("1DA 05 C0 24 00 4E 20 00 07\r");
+        // Both frames in ONE chunk — a bursty BLE notification. The framer must yield both;
+        // it previously discarded everything after the first delimiter in a read chunk.
+        transport.EnqueueIncoming("1DB 10 14 61 01 00 00 00 5C\r1DA 05 C0 24 00 4E 20 00 07\r");
 
         var frames = new List<RawCanFrame>();
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);

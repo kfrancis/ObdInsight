@@ -15,6 +15,11 @@ namespace ObdInsight.Core.Communication.Elm327
         private readonly byte _prompt = (byte)'>';
         private readonly IElmTransport _transport;
 
+        // Bytes read from the transport beyond a frame delimiter, preserved for the next read.
+        // A single transport read can span a delimiter (e.g. one BLE notification carrying two
+        // monitoring lines); without this carry-over the trailing bytes would be lost.
+        private readonly Queue<byte> _carryOver = new();
+
         /// <summary>
         /// Initializes a new instance of the ElmFramer class using the specified transport.
         /// </summary>
@@ -72,7 +77,7 @@ namespace ObdInsight.Core.Communication.Elm327
                         }
                     }
 
-                    var n = await _transport.ReadAsync(buf.AsMemory(0, 256), cts.Token);
+                    var n = await ReadChunkAsync(buf, cts.Token);
                     if (n <= 0) continue;
 
                     hasReceivedData = true;
@@ -84,6 +89,7 @@ namespace ObdInsight.Core.Communication.Elm327
                         if (b == 0x00) continue; // defensive: drop rare NULLs
                         if (b == _prompt)
                         {
+                            StashRemainder(buf, i + 1, n);
                             var response = sb.ToString();
                             var elapsed = DateTime.UtcNow - startTime;
                             var escaped = response.Replace("\r", "\\r").Replace("\n", "\\n");
@@ -146,7 +152,7 @@ namespace ObdInsight.Core.Communication.Elm327
                 {
                     ct.ThrowIfCancellationRequested();
 
-                    var n = await _transport.ReadAsync(buf.AsMemory(0, 256), cts.Token);
+                    var n = await ReadChunkAsync(buf, cts.Token);
 
                     // If we got 0 bytes and cancellation is pending, exit
                     if (n <= 0)
@@ -170,6 +176,7 @@ namespace ObdInsight.Core.Communication.Elm327
                         var end = sb.ToString()[^delimiter.Length..];
                         if (end == delimiter)
                         {
+                            StashRemainder(buf, i + 1, n);
                             return sb.ToString()[..^delimiter.Length];
                         }
                     }
@@ -189,11 +196,36 @@ namespace ObdInsight.Core.Communication.Elm327
         }
 
         /// <summary>
-        /// Clears any pending data from the transport buffer.
+        /// Clears any pending data from the transport buffer and the framer's carry-over buffer.
         /// </summary>
         public void ClearBuffer()
         {
+            _carryOver.Clear();
             _transport.ClearBuffer();
+        }
+
+        /// <summary>
+        /// Reads the next chunk of bytes, serving carried-over bytes (read past a previous
+        /// delimiter) before touching the transport, so stream order is preserved.
+        /// </summary>
+        private async ValueTask<int> ReadChunkAsync(byte[] buf, CancellationToken ct)
+        {
+            if (_carryOver.Count > 0)
+            {
+                var n = Math.Min(buf.Length, _carryOver.Count);
+                for (var i = 0; i < n; i++) buf[i] = _carryOver.Dequeue();
+                return n;
+            }
+
+            return await _transport.ReadAsync(buf.AsMemory(0, buf.Length), ct);
+        }
+
+        /// <summary>
+        /// Preserves bytes read beyond a delimiter for the next read instead of discarding them.
+        /// </summary>
+        private void StashRemainder(byte[] buf, int start, int end)
+        {
+            for (var i = start; i < end; i++) _carryOver.Enqueue(buf[i]);
         }
         
         private void Log(string message)
