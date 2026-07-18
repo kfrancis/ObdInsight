@@ -8,6 +8,7 @@ namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
 /// Integration tests for Nissan Leaf BMS Group 02 (cell voltages) using a real BLE connection.
 /// These tests require a physical Nissan Leaf OBD adapter to be connected.
 /// </summary>
+[ObdInsight.IntegrationTests.RequiresLeafHardware]
 [ClassDataSource<BleSessionFixture>(Shared = SharedType.Keyed)]
 public class LeafBmsGroup02IntegrationTests(BleSessionFixture bleFixture)
 {

@@ -7,6 +7,7 @@ namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
 /// <summary>
 /// Integration tests for Nissan Leaf Charger using a real BLE connection.
 /// </summary>
+[ObdInsight.IntegrationTests.RequiresLeafHardware]
 [ClassDataSource<BleSessionFixture>(Shared = SharedType.Keyed)]
 public class LeafChargerIntegrationTests(BleSessionFixture bleFixture)
 {

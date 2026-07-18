@@ -36,9 +36,22 @@ public class BleSessionFixture : IAsyncInitializer, IAsyncDisposable
     /// </summary>
     public bool IsConnected => _transport?.IsOpen == true;
 
+    /// <summary>
+    /// True when LEAF_BLE_ADDRESS is set — the opt-in for hardware tests. When false the
+    /// fixture skips BLE initialization entirely; tests are skipped by
+    /// <see cref="RequiresLeafHardwareAttribute"/> before they would touch the session.
+    /// </summary>
+    public static bool HardwareRequested =>
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("LEAF_BLE_ADDRESS"));
+
     public async Task InitializeAsync()
     {
-        // Allow override via environment variable
+        if (!HardwareRequested)
+        {
+            Console.WriteLine("[BleSessionFixture] LEAF_BLE_ADDRESS not set - skipping BLE initialization (hardware tests will be skipped)");
+            return;
+        }
+
         var envAddress = Environment.GetEnvironmentVariable("LEAF_BLE_ADDRESS");
         if (!string.IsNullOrWhiteSpace(envAddress))
         {

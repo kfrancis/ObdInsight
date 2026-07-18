@@ -12,6 +12,7 @@ namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
 ///
 /// IMPORTANT: These tests should be run with the vehicle in READY mode for best results.
 /// </summary>
+[ObdInsight.IntegrationTests.RequiresLeafHardware]
 [ClassDataSource<BleSessionFixture>(Shared = SharedType.Keyed)]
 public class LeafAze0SessionActivationDiagnosticsTests(BleSessionFixture bleFixture)
 {

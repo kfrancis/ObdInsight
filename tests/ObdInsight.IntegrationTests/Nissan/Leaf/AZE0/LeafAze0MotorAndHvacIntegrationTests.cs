@@ -9,6 +9,7 @@ namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
 /// These tests require a physical Nissan Leaf AZE0 with OBD adapter connected via BLE.
 /// Validates: Motor/Inverter status and HVAC status from broadcast CAN frames.
 /// </summary>
+[ObdInsight.IntegrationTests.RequiresLeafHardware]
 [ClassDataSource<BleSessionFixture>(Shared = SharedType.Keyed)]
 public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
 {
