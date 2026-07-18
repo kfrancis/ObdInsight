@@ -368,6 +368,13 @@ namespace ObdInsight.Core.Communication.Elm327
 
                 Log($"Entering monitoring mode: {context.Name}");
 
+                // CRITICAL: Discard any residual bytes first. After a BUFFER FULL the adapter
+                // dumps a trailing prompt into the stream; if it survives into the AT sequence
+                // below, every command consumes the PREVIOUS command's response (observed on
+                // hardware 2026-07-18: first AT AR "answered" by a stale '\r', then off-by-one
+                // desync until ATMA's late OK was parsed as a monitoring frame).
+                _framer.ClearBuffer();
+
                 // CRITICAL: Reset adapter state before monitoring configuration
                 await ResetAdapterStateAsync(ct);
 

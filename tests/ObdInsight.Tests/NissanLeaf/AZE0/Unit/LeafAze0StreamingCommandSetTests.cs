@@ -32,6 +32,9 @@ public class LeafAze0StreamingCommandSetTests
 
         // --- HVAC via the running monitor ---
         var hvacTask = hvac.GetStatusAsync(token);
+        // Enter clears residual buffer bytes — wait until monitoring is live before feeding frames.
+        while (!transport.SentCommands.Contains("ATMA"))
+            await Task.Delay(10, token);
         // 0x54C: OutsideAmbientTemp bits 48-55, factor 0.5, offset -40 => raw 150 = 35.0 °C
         transport.EnqueueIncoming($"54C {Bytes(150ul << 48)}\r");
         // 0x54B: FanSpeed bits 35-39 => 3

@@ -328,6 +328,37 @@ public class CanMonitorTests
     }
 
     [Test]
+    public async Task BufferFull_WithResidualPromptBytes_RestartSurvives(CancellationToken token)
+    {
+        // Hardware regression (2026-07-18): BUFFER FULL leaves a stray "\r>" in the stream.
+        // Without buffer clearing on re-enter, the AT sequence desyncs off-by-one and the
+        // monitor dies with PromptDetected. The restart must survive residual bytes.
+        var (transport, _, monitor) = CreateMonitor();
+        transport.Expect("ATMA", ""); // re-enter after BUFFER FULL
+
+        await monitor.StartAsync(token);
+        transport.EnqueueIncoming("1DB 01 00 00 00 00 00 00 00\r");
+        await WaitForLatestAsync(monitor, 0x1DB, token);
+
+        // Adapter overflows AND dumps its prompt into the stream.
+        transport.EnqueueIncoming("BUFFER FULL\r\r>");
+
+        while (transport.SentCommands.Count(c => c == "ATMA") < 2)
+            await Task.Delay(10, token);
+
+        // Monitor is alive after the restart and still delivers frames.
+        while (!(monitor.TryGetLatest(0x1DB, out var latest) && latest.Data.Span[0] == 0x02))
+        {
+            transport.EnqueueIncoming("1DB 02 00 00 00 00 00 00 00\r");
+            await Task.Delay(20, token);
+        }
+
+        await Assert.That(monitor.IsRunning).IsTrue();
+        await monitor.StopAsync(token);
+        await Assert.That(monitor.EndReason).IsEqualTo(MonitoringEndReason.Stopped);
+    }
+
+    [Test]
     public async Task Stop_EndsWithStoppedReason_AndRestoresRequestResponseMode(CancellationToken token)
     {
         var (transport, session, monitor) = CreateMonitor();

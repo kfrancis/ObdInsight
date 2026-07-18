@@ -19,6 +19,16 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         _monitor ??= new ObdInsight.Core.Communication.Elm327.CanMonitor(
             bleFixture.Session, LeafAze0Contexts.SharedBroadcastMonitor);
 
+    [After(Test)]
+    public async Task DisposeMonitorAsync()
+    {
+        if (_monitor is not null)
+        {
+            await _monitor.DisposeAsync();
+            _monitor = null;
+        }
+    }
+
     [Test]
     [Category("Integration")]
     [Category("AZE0")]
@@ -343,7 +353,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
 
         // Act & Assert
         await Assert.That(async () => await steering.GetStatusAsync(cts.Token))
-            .ThrowsExactly<OperationCanceledException>();
+            .Throws<OperationCanceledException>();
 
         Console.WriteLine($"[Steering Cancellation] Successfully handled cancellation");
     }

@@ -339,7 +339,9 @@ namespace ObdInsight.Core.Communication.Elm327
                     }
 
                     var sessionReason = _session.LastMonitoringEndReason;
-                    if (sessionReason == MonitoringEndReason.BufferFull)
+                    // Both are adapter-initiated exits (overflow, or a stray prompt from
+                    // residual bytes/adapter quirks) — recoverable by re-entering monitoring.
+                    if (sessionReason is MonitoringEndReason.BufferFull or MonitoringEndReason.PromptDetected)
                     {
                         if (framesThisRun > 0)
                         {
@@ -349,15 +351,15 @@ namespace ObdInsight.Core.Communication.Elm327
                         if (noProgressRestarts >= MaxBufferFullRestarts)
                         {
                             _logger.LogDebug(
-                                "[CanMonitor] BUFFER FULL after {Restarts} no-progress restarts - giving up",
-                                noProgressRestarts);
-                            reason = MonitoringEndReason.BufferFull;
+                                "[CanMonitor] {Reason} after {Restarts} no-progress restarts - giving up",
+                                sessionReason, noProgressRestarts);
+                            reason = sessionReason;
                             break;
                         }
 
                         noProgressRestarts++;
-                        _logger.LogDebug("[CanMonitor] BUFFER FULL - restarting monitoring (attempt {Attempt}/{Max})",
-                            noProgressRestarts, MaxBufferFullRestarts);
+                        _logger.LogDebug("[CanMonitor] {Reason} - restarting monitoring (attempt {Attempt}/{Max})",
+                            sessionReason, noProgressRestarts, MaxBufferFullRestarts);
                         try
                         {
                             if (RestartDelay > TimeSpan.Zero)
