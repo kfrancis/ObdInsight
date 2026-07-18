@@ -13,6 +13,14 @@ namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
 [ClassDataSource<BleSessionFixture>(Shared = SharedType.Keyed)]
 public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
 {
+    // Migrated capabilities view a shared CanMonitor (streaming design P2) instead of
+    // taking (session, context). One monitor per test class instance.
+    private ObdInsight.Core.Communication.Elm327.CanMonitor? _monitor;
+
+    private ObdInsight.Core.Communication.Elm327.CanMonitor Monitor =>
+        _monitor ??= new ObdInsight.Core.Communication.Elm327.CanMonitor(
+            bleFixture.Session, LeafAze0Contexts.SharedBroadcastMonitor);
+
     [Test]
     [Category("Integration")]
     [Category("AZE0")]
@@ -22,7 +30,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.HvacBroadcast;
-        var hvac = new LeafAze0Hvac(session, context);
+        var hvac = new LeafAze0Hvac(Monitor);
 
         // Act - Even if some frames are slow or missing, should return valid status
         var status = await hvac.GetStatusAsync(CancellationToken.None);
@@ -43,7 +51,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.HvacBroadcast;
-        var hvac = new LeafAze0Hvac(session, context);
+        var hvac = new LeafAze0Hvac(Monitor);
 
         // Act
         var status = await hvac.GetStatusAsync(CancellationToken.None);
@@ -74,7 +82,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.HvacBroadcast;
-        var hvac = new LeafAze0Hvac(session, context);
+        var hvac = new LeafAze0Hvac(Monitor);
 
         // Act
         var status = await hvac.GetStatusAsync(CancellationToken.None);
@@ -111,7 +119,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.HvacBroadcast;
-        var hvac = new LeafAze0Hvac(session, context);
+        var hvac = new LeafAze0Hvac(Monitor);
 
         // Act
         var status = await hvac.GetStatusAsync(CancellationToken.None);
@@ -133,7 +141,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.HvacBroadcast;
-        var hvac = new LeafAze0Hvac(session, context);
+        var hvac = new LeafAze0Hvac(Monitor);
 
         // Act
         var status = await hvac.GetStatusAsync(CancellationToken.None);
@@ -168,7 +176,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.HvacBroadcast;
-        var hvac = new LeafAze0Hvac(session, context);
+        var hvac = new LeafAze0Hvac(Monitor);
 
         // Act
         var status = await hvac.GetStatusAsync(CancellationToken.None);
@@ -204,8 +212,8 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
     {
         // Arrange
         var session = bleFixture.Session;
-        var motorController = new LeafAze0MotorController(session, LeafAze0Contexts.InvMcBroadcast);
-        var hvac = new LeafAze0Hvac(session, LeafAze0Contexts.HvacBroadcast);
+        var motorController = new LeafAze0MotorController(Monitor);
+        var hvac = new LeafAze0Hvac(Monitor);
 
         // Act
         var motorStatus = await motorController.GetStatusAsync(CancellationToken.None);
@@ -232,8 +240,8 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
     {
         // Arrange
         var session = bleFixture.Session;
-        var motorController = new LeafAze0MotorController(session, LeafAze0Contexts.InvMcBroadcast);
-        var hvac = new LeafAze0Hvac(session, LeafAze0Contexts.HvacBroadcast);
+        var motorController = new LeafAze0MotorController(Monitor);
+        var hvac = new LeafAze0Hvac(Monitor);
 
         // Act & Assert
         var motorStatus = await motorController.GetStatusAsync(CancellationToken.None);
@@ -255,7 +263,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.InvMcBroadcast;
-        var motorController = new LeafAze0MotorController(session, context);
+        var motorController = new LeafAze0MotorController(Monitor);
 
         // Act
         var status = await motorController.GetStatusAsync(CancellationToken.None);
@@ -280,7 +288,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.InvMcBroadcast;
-        var motorController = new LeafAze0MotorController(session, context);
+        var motorController = new LeafAze0MotorController(Monitor);
 
         // Act
         var status = await motorController.GetStatusAsync(CancellationToken.None);
@@ -301,7 +309,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         var session = bleFixture.Session;
         session.EnableDebugLogging = true;
         var context = LeafAze0Contexts.InvMcBroadcast;
-        var motorController = new LeafAze0MotorController(session, context);
+        var motorController = new LeafAze0MotorController(Monitor);
 
         // Act
         var status = await motorController.GetStatusAsync(CancellationToken.None);
@@ -335,7 +343,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.InvMcBroadcast;
-        var motorController = new LeafAze0MotorController(session, context);
+        var motorController = new LeafAze0MotorController(Monitor);
 
         // Act
         var status = await motorController.GetStatusAsync(CancellationToken.None);
@@ -364,7 +372,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.InvMcBroadcast;
-        var motorController = new LeafAze0MotorController(session, context);
+        var motorController = new LeafAze0MotorController(Monitor);
 
         // Act
         var status = await motorController.GetStatusAsync(CancellationToken.None);
@@ -386,7 +394,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.InvMcBroadcast;
-        var motorController = new LeafAze0MotorController(session, context);
+        var motorController = new LeafAze0MotorController(Monitor);
 
         // Act
         var status = await motorController.GetStatusAsync(CancellationToken.None);
@@ -407,7 +415,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.InvMcBroadcast;
-        var motorController = new LeafAze0MotorController(session, context);
+        var motorController = new LeafAze0MotorController(Monitor);
 
         // Act
         var status = await motorController.GetStatusAsync(CancellationToken.None);
@@ -428,7 +436,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         // Arrange
         var session = bleFixture.Session;
         var context = LeafAze0Contexts.InvMcBroadcast;
-        var motorController = new LeafAze0MotorController(session, context);
+        var motorController = new LeafAze0MotorController(Monitor);
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(10)); // Very short timeout
 
         // Act & Assert

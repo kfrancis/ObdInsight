@@ -1,96 +1,39 @@
 using ObdInsight.Core.Communication.Elm327;
-using ObdInsight.Core.Protocols;
-using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 {
     /// <summary>
-    /// Motor controller/inverter implementation for Nissan Leaf AZE0.
-    /// Monitors INVmc (Inverter Motor Controller) broadcast frames.
+    /// Motor controller/inverter capability as a view over the shared <see cref="CanMonitor"/>
+    /// (streaming design P2). Reads INVmc broadcast frames — 0x1DA (10ms: voltage, torque, RPM,
+    /// error codes) and 0x55A (100ms: temperatures) — from the monitor's latest-frame cache.
     /// </summary>
     internal sealed class LeafAze0MotorController : IMotorController
     {
-        readonly IElmSession _session;
-        readonly EcuContext _context;
+        /// <summary>How long a cold cache is given for the first frames to arrive.</summary>
+        private static readonly TimeSpan WarmupTimeout = TimeSpan.FromMilliseconds(300);
 
-        public LeafAze0MotorController(IElmSession session, EcuContext context)
+        private readonly CanMonitor _monitor;
+
+        public LeafAze0MotorController(CanMonitor monitor)
         {
-            _session = session ?? throw new ArgumentNullException(nameof(session));
-            _context = context ?? throw new ArgumentNullException(nameof(context));
-            if (_context.CommunicationMode != EcuCommunicationMode.PassiveMonitoring)
-                throw new ArgumentException("Motor controller status requires PassiveMonitoring context for broadcast frames.", nameof(context));
+            _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
         }
 
-        /// <summary>
-        /// Reads current motor and inverter status by monitoring INVmc broadcast frames:
-        /// - 0x1DA (10ms): Motor voltage, torque, RPM, error codes
-        /// - 0x55A (100ms): Motor and inverter temperatures
-        /// </summary>
         public async ValueTask<MotorStatus> GetStatusAsync(CancellationToken ct = default)
         {
-            var timeout = TimeSpan.FromMilliseconds(300); // Should catch both frames
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(timeout);
+            await _monitor.StartAsync(ct);
 
-            await _session.EnterMonitoringModeAsync(_context, ct);
-
-            InvMcFrame_1DA_AZE0? frame1DA = null;
-            InvMcFrame_55A_AZE0? frame55A = null;
-
-            try
+            var deadline = Environment.TickCount64 + (long)WarmupTimeout.TotalMilliseconds;
+            while (Environment.TickCount64 < deadline &&
+                   !(_monitor.TryGetLatest(0x1DA, out _) && _monitor.TryGetLatest(0x55A, out _)))
             {
-                await foreach (var frame in _session.MonitorFramesAsync(timeoutCts.Token))
-                {
-                    // Log received frame
-                    Log($"[MotorController] Received frame: ID=0x{frame.CanId:X3}, Data={BitConverter.ToString(frame.Data.ToArray())}");
-
-                    if (frame.Data.Length != 8)
-                        continue;
-
-                    // Use generated router for type-safe frame parsing
-                    if (CanFrameRouter.TryParseInvMcFrame_1DA_AZE0(frame.CanId, frame.Data.Span, out var parsed1DA))
-                    {
-                        Log("[MotorController] Parsed INVmc 0x1DA frame");
-                        frame1DA = parsed1DA;
-                    }
-                    else if (CanFrameRouter.TryParseInvMcFrame_55A_AZE0(frame.CanId, frame.Data.Span, out var parsed55A))
-                    {
-                        Log("[MotorController] Parsed INVmc 0x55A frame");
-                        frame55A = parsed55A;
-                    }
-
-                    // Exit early if we have both frames
-                    if (frame1DA != null && frame55A != null)
-                    {
-                        Log("[MotorController] Received all required INVmc frames");
-                        break;
-                    }
-                }
-            }
-            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
-            {
-                // Timeout - return partial data
-                Log("[MotorController] Timeout waiting for INVmc frames");
-            }
-            finally
-            {
-                await _session.ExitMonitoringModeAsync(ct);
+                await Task.Delay(10, ct);
             }
 
-            // Log what we received
-            if (frame1DA != null)
-            {
-                Log($"[MotorController] 0x1DA: Voltage={frame1DA.InputVoltage}V, Torque={frame1DA.EffectiveTorque}Nm, " +
-                    $"RPM={frame1DA.OutputRevolution}, Errors=0x{frame1DA.ErrorCodes:X2}");
-            }
-            if (frame55A != null)
-            {
-                Log($"[MotorController] 0x55A: Motor={frame55A.MotorTemperatureC:F1}°C, IGBT={frame55A.IgbtTemperatureC:F1}°C, " +
-                    $"ComBoard={frame55A.InverterComBoardTempC:F1}°C, DriverBoard={frame55A.IgbtDriverBoardTempC:F1}°C");
-            }
+            _monitor.TryGetLatest<InvMcFrame_1DA_AZE0>(out var frame1DA);
+            _monitor.TryGetLatest<InvMcFrame_55A_AZE0>(out var frame55A);
 
-            // Map to generic interface
             return new MotorStatus
             {
                 InputVoltageV = frame1DA?.InputVoltage,
@@ -102,11 +45,6 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
                 IgbtTempC = frame55A?.IgbtTemperatureC,
                 IgbtDriverBoardTempC = frame55A?.IgbtDriverBoardTempC
             };
-        }
-
-        private static void Log(string message)
-        {
-            System.Diagnostics.Debug.WriteLine(message);
         }
     }
 }

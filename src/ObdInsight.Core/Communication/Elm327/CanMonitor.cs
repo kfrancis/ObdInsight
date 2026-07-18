@@ -31,6 +31,7 @@ namespace ObdInsight.Core.Communication.Elm327
 
         private CancellationTokenSource? _loopCts;
         private Task? _loopTask;
+        private bool _suspending;
 
         /// <param name="session">The session to monitor through. The monitor owns mode transitions while running.</param>
         /// <param name="monitoringContext">
@@ -130,6 +131,41 @@ namespace ObdInsight.Core.Communication.Elm327
             {
                 // Caller gave up waiting; the loop still winds down on its own.
             }
+        }
+
+        /// <summary>
+        ///     Temporarily halts monitoring so request/response work (UDS queries) can use the
+        ///     session, without tearing down subscriptions: channels stay open, the latest-frame
+        ///     cache stays warm, and no end reason is recorded. Disposing the returned scope
+        ///     re-enters monitoring and resumes the loop. No-op scope when not running.
+        ///     Not reentrant — matches the session's single-consumer threading contract.
+        /// </summary>
+        public async ValueTask<IAsyncDisposable> SuspendAsync(CancellationToken ct)
+        {
+            if (!IsRunning)
+            {
+                return NoopScope.Instance;
+            }
+
+            _suspending = true;
+            try
+            {
+                _loopCts!.Cancel();
+                await _loopTask!.WaitAsync(ct);
+            }
+            catch
+            {
+                _suspending = false;
+                throw;
+            }
+
+            return new SuspendScope(this);
+        }
+
+        private async ValueTask ResumeAsync()
+        {
+            _suspending = false;
+            await StartAsync(CancellationToken.None);
         }
 
         /// <summary>Latest frame seen for a CAN ID, if any. O(1), no I/O.</summary>
@@ -262,13 +298,18 @@ namespace ObdInsight.Core.Communication.Elm327
             }
             finally
             {
-                EndReason = reason;
-                lock (_lock)
+                // During a suspend (see SuspendAsync) the stop is temporary: subscribers stay
+                // registered with open channels and no permanent end reason is recorded.
+                if (!_suspending)
                 {
-                    _ended = true;
-                    foreach (var subscription in _subscriptions)
+                    EndReason = reason;
+                    lock (_lock)
                     {
-                        subscription.Channel.Writer.TryComplete();
+                        _ended = true;
+                        foreach (var subscription in _subscriptions)
+                        {
+                            subscription.Channel.Writer.TryComplete();
+                        }
                     }
                 }
 
@@ -298,5 +339,23 @@ namespace ObdInsight.Core.Communication.Elm327
         }
 
         private sealed record Subscription(Channel<RawCanFrame> Channel, HashSet<int>? Ids);
+
+        private sealed class SuspendScope(CanMonitor monitor) : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync()
+            {
+                return monitor.ResumeAsync();
+            }
+        }
+
+        private sealed class NoopScope : IAsyncDisposable
+        {
+            public static readonly NoopScope Instance = new();
+
+            public ValueTask DisposeAsync()
+            {
+                return ValueTask.CompletedTask;
+            }
+        }
     }
 }

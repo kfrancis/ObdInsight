@@ -159,6 +159,47 @@ public class CanMonitorTests
     }
 
     [Test]
+    public async Task Suspend_AllowsQueries_ResumePreservesSubscribers(CancellationToken token)
+    {
+        var (transport, session, monitor) = CreateMonitor();
+
+        await monitor.StartAsync(token);
+        var stream = monitor.Subscribe(new[] { 0x1DB }, token);
+
+        transport.EnqueueIncoming("1DB 01 00 00 00 00 00 00 00\r");
+        await WaitForLatestAsync(monitor, 0x1DB, token);
+
+        // Suspend: monitoring halts, request/response works, nothing torn down.
+        // Wire order: query during suspension, then ATMA again on resume.
+        transport.Expect("010C", "41 0C 1A F8\r\r>");
+        transport.Expect("ATMA", "");
+        await using (await monitor.SuspendAsync(token))
+        {
+            await Assert.That(monitor.IsRunning).IsFalse();
+            await Assert.That(session.CurrentMode).IsEqualTo(EcuCommunicationMode.RequestResponse);
+
+            var lines = await session.QueryAsync("010C", token);
+            await Assert.That(lines[0]).IsEqualTo("41 0C 1A F8");
+
+            await Assert.That(monitor.EndReason).IsEqualTo(MonitoringEndReason.None);
+        }
+
+        // Resumed: loop running again, same subscription still receives frames.
+        await Assert.That(monitor.IsRunning).IsTrue();
+        transport.EnqueueIncoming("1DB 02 00 00 00 00 00 00 00\r");
+        while (!(monitor.TryGetLatest(0x1DB, out var latest) && latest.Data.Span[0] == 0x02))
+            await Task.Delay(10, token);
+
+        await monitor.StopAsync(token);
+
+        var received = new List<RawCanFrame>();
+        await foreach (var f in stream) received.Add(f);
+        await Assert.That(received.Count).IsEqualTo(2);
+        await Assert.That(received[0].Data.Span[0]).IsEqualTo((byte)0x01);
+        await Assert.That(received[1].Data.Span[0]).IsEqualTo((byte)0x02);
+    }
+
+    [Test]
     public async Task TypedSubscribe_DecodesProductionFrames(CancellationToken token)
     {
         var (transport, _, monitor) = CreateMonitor();

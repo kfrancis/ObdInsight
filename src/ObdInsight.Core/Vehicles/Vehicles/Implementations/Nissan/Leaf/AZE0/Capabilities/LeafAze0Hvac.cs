@@ -1,91 +1,45 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using ObdInsight.Core.Communication.Elm327;
-using ObdInsight.Core.Protocols;
-using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
 
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 {
-
+    /// <summary>
+    /// HVAC capability as a view over the shared <see cref="CanMonitor"/> (streaming design P2).
+    /// Reads Leaf AZE0 HVAC broadcast frames (0x54A/0x54B/0x54C/0x54F, ~100ms cadence) from the
+    /// monitor's latest-frame cache instead of entering/exiting monitoring mode per call.
+    /// </summary>
     internal sealed class LeafAze0Hvac : IHvac
     {
-        readonly IElmSession _session;
-        readonly EcuContext _context;
+        /// <summary>How long a cold cache is given for the first frames to arrive.</summary>
+        private static readonly TimeSpan WarmupTimeout = TimeSpan.FromMilliseconds(400);
 
-        public LeafAze0Hvac(IElmSession session, EcuContext context)
+        private readonly CanMonitor _monitor;
+
+        public LeafAze0Hvac(CanMonitor monitor)
         {
-            _session = session ?? throw new ArgumentNullException(nameof(session));
-            _context = context ?? throw new ArgumentNullException(nameof(context));
-            if (_context.CommunicationMode != EcuCommunicationMode.PassiveMonitoring)
-                throw new ArgumentException("HVAC status requires PassiveMonitoring context (0x54A-0x54F).", nameof(context));
+            _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
         }
 
-        /// <summary>
-        /// Reads current HVAC status by monitoring Leaf AZE0 HVAC broadcast frames:
-        /// - 0x54A: setpoint/ambient-ish fields (setpoint raw in byte4)
-        /// - 0x54B: fan speed nibble (bits 36..39), vent modes (bytes2/3)
-        /// - 0x54C: outside ambient temp, evap temp, A/C status bits, rear defrost, fan voltage
-        /// - 0x54F: interior intake temp, A/C power, heater power, auto amp status bits
-        ///
-        /// These frames transmit about every 100ms.
-        /// </summary>
         public async ValueTask<HvacStatus> GetStatusAsync(CancellationToken ct = default)
         {
-            var timeout = TimeSpan.FromMilliseconds(400);
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(timeout);
+            await _monitor.StartAsync(ct);
 
-            await _session.EnterMonitoringModeAsync(_context, ct);
-
-            HvacFrame_54C_AZE0? status = null;
-            HvacFrame_54B_AZE0? fan = null;
-            HvacFrame_54F_AZE0? power = null;
-            HvacFrame_54A_AZE0? ambient = null;
-
-            try
+            // Warm cache: instant. Cold: wait briefly for the broadcast frames to appear;
+            // partial data is acceptable (mirrors the previous per-call collection window).
+            var deadline = Environment.TickCount64 + (long)WarmupTimeout.TotalMilliseconds;
+            while (Environment.TickCount64 < deadline &&
+                   !(_monitor.TryGetLatest(0x54C, out _) &&
+                     _monitor.TryGetLatest(0x54B, out _) &&
+                     _monitor.TryGetLatest(0x54F, out _)))
             {
-                await foreach (var frame in _session.MonitorFramesAsync(timeoutCts.Token))
-                {
-                    if (frame.Data.Length != 8)
-                        continue;
-
-                    // Use generated router for cleaner, type-safe frame parsing
-                    if (CanFrameRouter.TryParseHvacFrame_54A_AZE0(frame.CanId, frame.Data.Span, out var parsed54A))
-                    {
-                        ambient = parsed54A;
-                    }
-                    else if (CanFrameRouter.TryParseHvacFrame_54B_AZE0(frame.CanId, frame.Data.Span, out var parsed54B))
-                    {
-                        fan = parsed54B;
-                    }
-                    else if (CanFrameRouter.TryParseHvacFrame_54C_AZE0(frame.CanId, frame.Data.Span, out var parsed54C))
-                    {
-                        status = parsed54C;
-                    }
-                    else if (CanFrameRouter.TryParseHvacFrame_54F_AZE0(frame.CanId, frame.Data.Span, out var parsed54F))
-                    {
-                        power = parsed54F;
-                    }
-
-                    // Exit early if we have all required frames
-                    if (status != null && fan != null && power != null)
-                        break;
-                }
-            }
-            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
-            {
-                // Timeout - return partial data
-            }
-            finally
-            {
-                await _session.ExitMonitoringModeAsync(ct);
+                await Task.Delay(10, ct);
             }
 
-            // Map to generic interface
+            _monitor.TryGetLatest<HvacFrame_54A_AZE0>(out var ambient);
+            _monitor.TryGetLatest<HvacFrame_54B_AZE0>(out var fan);
+            _monitor.TryGetLatest<HvacFrame_54C_AZE0>(out var status);
+            _monitor.TryGetLatest<HvacFrame_54F_AZE0>(out var power);
+
             return new HvacStatus
             {
                 ClimateControlOn = status?.ClimateControlOn ?? false,

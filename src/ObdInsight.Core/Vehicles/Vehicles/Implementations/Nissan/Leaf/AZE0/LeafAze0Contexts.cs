@@ -200,6 +200,25 @@ public static class LeafAze0Contexts
         EnableAutoFormatting = true
     };
 
+    /// <summary>
+    /// Accept-all monitoring context for the shared <c>CanMonitor</c>: one long-lived
+    /// monitoring pass whose frames are demuxed in software to all broadcast capabilities
+    /// (HVAC 0x54A-F, INVmc 0x1DA/0x55A, battery 0x1DB/..., etc.).
+    /// </summary>
+    public static EcuContext SharedBroadcastMonitor => new()
+    {
+        Name = "Leaf Shared Broadcast Monitor",
+        TxHeader = "",            // unused in monitoring mode
+        RxFilter = "",            // unused in monitoring mode
+        FlowControlHeader = "",   // unused in monitoring mode
+        CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
+        MonitoringCommand = "ATMA",
+        CanFilterMask = null,     // accept all; software demux in CanMonitor
+        CanFilterPattern = null,
+        EnableHeaders = true,
+        EnableAutoFormatting = false // CAF0 preserves frame bytes for parsing
+    };
+
     public static EcuContext Shift => ReqResp("SHIFT", "79D", "7BD");
 
     /// <summary>
