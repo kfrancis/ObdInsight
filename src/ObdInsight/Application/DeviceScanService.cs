@@ -1,6 +1,7 @@
 using Spectre.Console;
 using Serilog;
 using ObdInsight.Core.Communication.Bluetooth;
+using ObdInsight.Transports.WindowsBle;
 using ObdInsight.UI;
 
 namespace ObdInsight.Application;

@@ -1,3 +1,5 @@
+using ObdInsight.Core.Communication.Elm327;
+
 namespace ObdInsight.Telemetry;
 
 /// <summary>
@@ -35,4 +37,14 @@ public interface ITelemetrySession : IAsyncDisposable
     /// subscription. Serialized against the scheduler — safe to call while running.
     /// </summary>
     ValueTask<TelemetrySnapshot> GetSnapshotAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Current link state, when a resilient transport was wired in
+    /// (<see cref="IConnectionStateSource"/>); null otherwise.
+    /// </summary>
+    ConnectionState? ConnectionState { get; }
+
+    /// <summary>Re-exposed link-state transitions for UI binding (B10). Never fires
+    /// when no state source was wired.</summary>
+    event EventHandler<ConnectionStateChangedEventArgs>? ConnectionStateChanged;
 }

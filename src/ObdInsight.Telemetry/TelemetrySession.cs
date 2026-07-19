@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Vehicles;
 
 namespace ObdInsight.Telemetry;
@@ -17,6 +18,7 @@ public sealed class TelemetrySession : ITelemetrySession
     private readonly IReadOnlyList<ITelemetryProvider> _providers;
     private readonly IVehicleIdentification? _identification;
     private readonly IDiagnosticTroubleCodes? _dtc;
+    private readonly IConnectionStateSource? _connectionState;
     private readonly TelemetrySubscription _subscription;
     private readonly TelemetrySessionOptions _options;
     private readonly ILogger<TelemetrySession> _logger;
@@ -35,6 +37,7 @@ public sealed class TelemetrySession : ITelemetrySession
         TelemetrySessionOptions? options = null,
         IVehicleIdentification? identification = null,
         IDiagnosticTroubleCodes? dtc = null,
+        IConnectionStateSource? connectionState = null,
         ILogger<TelemetrySession>? logger = null)
     {
         _providers = providers;
@@ -42,6 +45,12 @@ public sealed class TelemetrySession : ITelemetrySession
         _options = options ?? new TelemetrySessionOptions();
         _identification = identification;
         _dtc = dtc;
+        _connectionState = connectionState;
+        if (_connectionState is not null)
+        {
+            _connectionState.StateChanged += OnConnectionStateChanged;
+        }
+
         _logger = logger ?? NullLogger<TelemetrySession>.Instance;
 
         foreach (var signal in _subscription.Map.Keys)
@@ -59,6 +68,7 @@ public sealed class TelemetrySession : ITelemetrySession
         IVehicleCommandSet commands,
         TelemetrySubscription? subscription = null,
         TelemetrySessionOptions? options = null,
+        IConnectionStateSource? connectionState = null,
         ILogger<TelemetrySession>? logger = null)
     {
         commands.TryGet<IVehicleIdentification>(out var identification);
@@ -69,6 +79,7 @@ public sealed class TelemetrySession : ITelemetrySession
             options,
             identification,
             dtc,
+            connectionState,
             logger);
     }
 
@@ -84,6 +95,13 @@ public sealed class TelemetrySession : ITelemetrySession
     }
 
     public event EventHandler<TelemetrySampleBatch>? BatchAvailable;
+
+    public event EventHandler<ConnectionStateChangedEventArgs>? ConnectionStateChanged;
+
+    public ConnectionState? ConnectionState => _connectionState?.State;
+
+    private void OnConnectionStateChanged(object? sender, ConnectionStateChangedEventArgs e) =>
+        ConnectionStateChanged?.Invoke(this, e);
 
     public async ValueTask StartAsync(CancellationToken ct = default)
     {
@@ -267,6 +285,11 @@ public sealed class TelemetrySession : ITelemetrySession
     public async ValueTask DisposeAsync()
     {
         await StopAsync(CancellationToken.None);
+        if (_connectionState is not null)
+        {
+            _connectionState.StateChanged -= OnConnectionStateChanged;
+        }
+
         _busGate.Dispose();
     }
 

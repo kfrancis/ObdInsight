@@ -1,0 +1,114 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using ObdInsight.Core.Protocols;
+
+namespace ObdInsight.Core.Communication.Elm327;
+
+/// <summary>Per-request retry behavior for <see cref="RetryingElmSession"/>.</summary>
+public sealed record QueryRetryOptions
+{
+    /// <summary>Total attempts per query, including the first (default 3).</summary>
+    public int MaxAttempts { get; init; } = 3;
+
+    /// <summary>Delay between attempts (default 250 ms).</summary>
+    public TimeSpan RetryDelay { get; init; } = TimeSpan.FromMilliseconds(250);
+}
+
+/// <summary>
+/// <see cref="IElmSession"/> decorator adding per-request retry to <c>QueryAsync</c>
+/// (roadmap B10): each attempt already includes the inner session's
+/// recover-then-retry-once ladder, so 3 attempts = up to 3 recovery cycles. Only
+/// <see cref="IOException"/> is retried — cancellation and protocol-level errors
+/// propagate untouched. Compose <em>inside</em> the monitor-suspension decorator so a
+/// suspension spans all attempts (the Leaf command set does this when handed a
+/// retrying session).
+/// </summary>
+public sealed class RetryingElmSession : IElmSession
+{
+    private readonly IElmSession _inner;
+    private readonly QueryRetryOptions _options;
+    private readonly ILogger<RetryingElmSession> _logger;
+
+    public RetryingElmSession(
+        IElmSession inner,
+        QueryRetryOptions? options = null,
+        ILogger<RetryingElmSession>? logger = null)
+    {
+        _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+        _options = options ?? new QueryRetryOptions();
+        _logger = logger ?? NullLogger<RetryingElmSession>.Instance;
+    }
+
+    public TimeSpan CommandTimeout
+    {
+        get => _inner.CommandTimeout;
+        set => _inner.CommandTimeout = value;
+    }
+
+    public EcuCommunicationMode CurrentMode => _inner.CurrentMode;
+
+    public bool EnableDebugLogging
+    {
+        get => _inner.EnableDebugLogging;
+        set => _inner.EnableDebugLogging = value;
+    }
+
+    public int MaxConsecutiveFailures
+    {
+        get => _inner.MaxConsecutiveFailures;
+        set => _inner.MaxConsecutiveFailures = value;
+    }
+
+    public TimeSpan ProtocolDetectionTimeout
+    {
+        get => _inner.ProtocolDetectionTimeout;
+        set => _inner.ProtocolDetectionTimeout = value;
+    }
+
+    public MonitoringEndReason LastMonitoringEndReason => _inner.LastMonitoringEndReason;
+
+    public ValueTask<bool> ActivateSessionAsync(EcuContext context, CancellationToken ct) =>
+        _inner.ActivateSessionAsync(context, ct);
+
+    public ValueTask<bool> SendKeepAliveAsync(EcuContext context, CancellationToken ct) =>
+        _inner.SendKeepAliveAsync(context, ct);
+
+    public ValueTask EnterMonitoringModeAsync(EcuContext context, CancellationToken ct) =>
+        _inner.EnterMonitoringModeAsync(context, ct);
+
+    public ValueTask ExitMonitoringModeAsync(CancellationToken ct) =>
+        _inner.ExitMonitoringModeAsync(ct);
+
+    public ValueTask InitializeAndLockAsync(CancellationToken ct) =>
+        _inner.InitializeAndLockAsync(ct);
+
+    public IAsyncEnumerable<RawCanFrame> MonitorFramesAsync(CancellationToken ct) =>
+        _inner.MonitorFramesAsync(ct);
+
+    public ValueTask<string[]> QueryAsync(string obdCommand, CancellationToken ct) =>
+        RetryAsync(() => _inner.QueryAsync(obdCommand, ct), obdCommand, ct);
+
+    public ValueTask<string[]> QueryAsync(string obdCommand, EcuContext context, CancellationToken ct) =>
+        RetryAsync(() => _inner.QueryAsync(obdCommand, context, ct), obdCommand, ct);
+
+    public ValueTask SetEcuContextAsync(EcuContext context, CancellationToken ct) =>
+        _inner.SetEcuContextAsync(context, ct);
+
+    private async ValueTask<string[]> RetryAsync(
+        Func<ValueTask<string[]>> query, string command, CancellationToken ct)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await query();
+            }
+            catch (IOException ex) when (attempt < _options.MaxAttempts)
+            {
+                _logger.LogDebug(ex, "Query '{Command}' attempt {Attempt}/{Max} failed - retrying",
+                    command, attempt, _options.MaxAttempts);
+                await Task.Delay(_options.RetryDelay, ct);
+            }
+        }
+    }
+}

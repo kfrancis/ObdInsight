@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\ObdInsight\ObdInsight.csproj" />
     <ProjectReference Include="..\..\src\ObdInsight.Telemetry\ObdInsight.Telemetry.csproj" />
+    <ProjectReference Include="..\..\src\ObdInsight.Transports.Ble\ObdInsight.Transports.Ble.csproj" />
     <ProjectReference Include="..\..\src\ObdInsight.Simulation\ObdInsight.Simulation.csproj" />
   </ItemGroup>
 

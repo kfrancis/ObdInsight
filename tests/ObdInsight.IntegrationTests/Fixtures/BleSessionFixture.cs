@@ -1,3 +1,4 @@
+using ObdInsight.Transports.WindowsBle;
 using ObdInsight;
 using ObdInsight.Core.Communication.Elm327;
 using TUnit.Core.Interfaces;

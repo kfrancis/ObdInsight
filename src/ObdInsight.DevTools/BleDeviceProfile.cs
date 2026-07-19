@@ -72,9 +72,12 @@ public sealed class BleDeviceProfile
     public static readonly BleDeviceProfile OBDLink = new()
     {
         Name = "OBDLink",
-        ServiceUuid = Guid.Parse("fff0"),
-        WriteCharacteristicUuid = Guid.Parse("fff1"),
-        NotifyCharacteristicUuid = Guid.Parse("fff2"),
+        // Full 128-bit form required — Guid.Parse("fff0") throws FormatException,
+        // which as a static-field initializer would take down the whole profile
+        // table with a TypeInitializationException on first touch.
+        ServiceUuid = Guid.Parse("0000fff0-0000-1000-8000-00805f9b34fb"),
+        WriteCharacteristicUuid = Guid.Parse("0000fff1-0000-1000-8000-00805f9b34fb"),
+        NotifyCharacteristicUuid = Guid.Parse("0000fff2-0000-1000-8000-00805f9b34fb"),
         WriteWithResponse = true,
         MaxWriteSize = 20
     };

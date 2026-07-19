@@ -22,7 +22,7 @@ namespace ObdInsight.Simulation;
 /// Reads block until data is available or the caller's <see cref="CancellationToken"/> fires —
 /// never returning 0 immediately, which would busy-spin the framer's read loop.
 /// </summary>
-public sealed class ReplayElmTransport : IElmTransport
+public sealed class ReplayElmTransport : IConnectionAwareTransport
 {
     private readonly object _gate = new();
     private readonly Queue<byte> _rx = new();
@@ -31,6 +31,30 @@ public sealed class ReplayElmTransport : IElmTransport
     private readonly Dictionary<string, string> _autoResponses = new();
     private readonly List<string> _sent = [];
     private readonly StringBuilder _txBuffer = new();
+    private volatile bool _connectionDead;
+
+    /// <summary>Raised by <see cref="SimulateConnectionLost"/> (resilience testing).</summary>
+    public event EventHandler? ConnectionLost;
+
+    /// <summary>
+    /// Failure injection (roadmap B10): marks the link dead — every subsequent read
+    /// and write throws <see cref="IOException"/>, blocked readers wake to observe the
+    /// failure, and <see cref="ConnectionLost"/> fires once. A
+    /// <c>ReconnectingElmTransport</c> reacts by disposing this instance and asking
+    /// its factory for a replacement.
+    /// </summary>
+    public void SimulateConnectionLost()
+    {
+        if (_connectionDead)
+        {
+            return;
+        }
+
+        _connectionDead = true;
+        IsOpen = false;
+        _dataSignal.Release();
+        ConnectionLost?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>When true (default), unscripted AT commands get <see cref="DefaultAtResponse"/>.</summary>
     public bool AutoRespondToAtCommands { get; init; } = true;
@@ -87,6 +111,11 @@ public sealed class ReplayElmTransport : IElmTransport
     {
         while (true)
         {
+            if (_connectionDead)
+            {
+                throw new IOException("Simulated connection loss.");
+            }
+
             lock (_gate)
             {
                 if (_rx.Count > 0)
@@ -108,6 +137,11 @@ public sealed class ReplayElmTransport : IElmTransport
 
     public ValueTask WriteAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
     {
+        if (_connectionDead)
+        {
+            throw new IOException("Simulated connection loss.");
+        }
+
         var text = Encoding.ASCII.GetString(data.Span);
         lock (_gate)
         {

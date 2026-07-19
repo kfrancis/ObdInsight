@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ObdInsight.Core.Communication.Bluetooth;
 
@@ -53,7 +54,8 @@ public sealed class DevicePreferences
         try
         {
             var json = File.ReadAllText(path);
-            var dto = JsonSerializer.Deserialize<DevicePreferencesModel>(json);
+            var dto = JsonSerializer.Deserialize(
+                json, DevicePreferencesJsonContext.Default.DevicePreferencesModel);
             return new DevicePreferences(
                 path,
                 new HashSet<string>(dto?.Favorites ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase),
@@ -162,13 +164,21 @@ public sealed class DevicePreferences
             _favoriteAddresses.OrderBy(a => a, StringComparer.OrdinalIgnoreCase).ToArray(),
             _savedOrder.ToArray());
 
-        var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions
-        {
-            WriteIndented = true
-        });
+        var json = JsonSerializer.Serialize(
+            dto, DevicePreferencesJsonContext.Default.DevicePreferencesModel);
 
         File.WriteAllText(_storagePath, json);
     }
 
-    private sealed record DevicePreferencesModel(string[] Favorites, string[] Saved);
+    internal sealed record DevicePreferencesModel(string[] Favorites, string[] Saved);
+}
+
+/// <summary>
+/// Source-generated JSON metadata — keeps preference persistence trim/AOT safe
+/// (reflection-based System.Text.Json is IL2026 under trimming; roadmap B12).
+/// </summary>
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(DevicePreferences.DevicePreferencesModel))]
+internal sealed partial class DevicePreferencesJsonContext : JsonSerializerContext
+{
 }

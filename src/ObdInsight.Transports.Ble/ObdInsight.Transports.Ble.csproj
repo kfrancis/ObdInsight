@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Cross-platform BLE ELM327 transport (roadmap B9, docs/BLE_TRANSPORT_DESIGN.md):
+    IElmTransport on Plugin.BLE with a GATT profile table + auto-probe
+    (Vgate iCar Pro FFE0/FFE1, Veepeak FFF0, Nordic UART). The plain net9.0 target
+    compiles for reference/tests; runtime BLE needs the android/ios targets.
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net9.0-android;net9.0-ios</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net9.0-android'">21.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net9.0-ios'">12.2</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Plugin.BLE" Version="3.2.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ObdInsight.Core\ObdInsight.Core.csproj" />
+  </ItemGroup>
+
+</Project>

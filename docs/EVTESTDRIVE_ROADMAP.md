@@ -171,40 +171,58 @@ Milestones: **M-A** pre-check · **M-B** live drive · **M-C** post-check/report
 
 ## Phase 2 — live drive on phones (M-B)
 
-- [ ] **B9 — Cross-platform BLE transport.** (M/L; design doc first)
-  New `src/ObdInsight.Transports.Ble` on Plugin.BLE (or Shiny.BluetoothLE) implementing
-  `IElmTransport`. GATT profile table: **FFE0/FFE1 single-characteristic (Vgate iCar
-  Pro) + FFF0/FFF1/FFF2 (Veepeak) + Nordic UART**, with auto-probe on connect. Port
-  profile knowledge from DevTools `BleDeviceProfile.cs`; fold in the namespace-masquerade
-  cleanup (audit A5/M3.3) so WinRT transports stop claiming `ObdInsight.Core.*`.
-  *Acceptance:* compiles for net9.0-android + net9.0-ios; profile auto-probe unit-tested
-  against fake GATT layers; hardware check with a real iCar Pro flagged pending.
-  *Unblocks:* M-B on Android, most of iOS. *Deps:* B4 recommended first.
+- [x] **B9 — Cross-platform BLE transport.** (M/L) — **DONE 2026-07-19 (hardware check
+  pending)** (design doc `docs/BLE_TRANSPORT_DESIGN.md`).
+  New `src/ObdInsight.Transports.Ble` (net9.0;net9.0-android;net9.0-ios — all three
+  compile with the installed workloads) on Plugin.BLE 3.2.0: `BleAdapterProfile` table
+  (Vgate iCar Pro FFE0/FFE1 single-characteristic first, Veepeak FFF0/FFF1/FFF2,
+  Nordic UART), **pure** `BleProfileResolver` (topology records in → resolution out;
+  rules: exact match by priority → single-characteristic fallback within a known
+  service → generic write/notify pair; 16-bit short-form UUID equivalence), and a thin
+  `PluginBleElmTransport` (notification-fed reads, MaxWriteSize chunking,
+  `IConnectionAwareTransport.ConnectionLost` for B10). Folded in: WinRT transports
+  moved to `src/ObdInsight/Transports/` under honest `ObdInsight.Transports.WindowsBle`
+  namespaces (audit A5 masquerade ended; full consolidation stays M3.3); DevTools
+  `BleDeviceProfile.OBDLink` latent crash fixed (`Guid.Parse("fff0")` invalid format →
+  TypeInitializationException on first touch). Tests: `BleProfileResolverTests` (9 —
+  every probe rule + UUID forms + chunking); 93/93. **Hardware check pending:** real
+  iCar Pro connect on Android/iOS. *Unblocked:* M-B transport path.
 
-- [ ] **B10 — Resilience layer.** (L; design doc first)
-  (a) Connection-state event stream (`Connecting/Connected/Degraded/Reconnecting/Lost`)
-  surfaced from transport through B1's session for UI binding. (b) Reconnect with
-  continuity: supervisor re-opens transport, re-runs init + protocol lock (existing
-  recovery ladder covers the adapter side), restarts `CanMonitor`, keeps B1 subscriber
-  streams alive across the gap (samples pause, resume; no resubscribe required).
-  (c) Injectable per-request retry policy (≤3 attempts + timeout) replacing the
-  recover-then-retry-once behavior for consumer-facing queries.
-  *Acceptance:* replay test simulating transport death mid-drive → session reconnects,
-  telemetry stream resumes, state events fired in order; retry policy unit-tested.
-  *Unblocks:* M-B in a moving car. *Deps:* B1, B9.
+- [x] **B10 — Resilience layer.** (L) — **DONE 2026-07-19**
+  (design doc `docs/RESILIENCE_DESIGN.md`).
+  (a) `ConnectionState` (`Connecting/Connected/Reconnecting/Lost` — `Degraded` folded
+  into `Reconnecting`) + `IConnectionStateSource`, re-exposed on `ITelemetrySession`
+  (`ConnectionState` + `ConnectionStateChanged`) for UI binding. (b)
+  `ReconnectingElmTransport`: transport-factory decorator — reconnect on inner
+  `ConnectionLost` or link-level `IOException`, exponential backoff ≤ MaxAttempts,
+  I/O **blocks** during the outage so the session/monitor/capability graph never tears
+  down; monitor continuity falls out of the existing filter rotation (re-enters
+  monitoring every dwell window — no `CanMonitor` change needed; documented in the
+  design doc). Exhausted → `Lost`, I/O throws. (c) `RetryingElmSession` decorator:
+  per-query retry ≤3 on `IOException` only (OCE never retried), composing inside the
+  monitor-suspension wrapper. `ReplayElmTransport` gained `SimulateConnectionLost()`
+  failure injection (shippable — EvTestDrive's own tests can use it).
+  Tests: `ResilienceTests` (reconnect I/O resumption + state ordering, give-up →
+  Lost + throw, retry success/exhaustion/OCE) and `TelemetryResilienceTests` —
+  the acceptance scenario: transport killed mid-drive over the fully composed stack,
+  same batch subscription resumes, `Reconnecting → Connected` surfaces through the
+  telemetry session. 99/99 ×6 Debug + Release. *Unblocked:* M-B in a moving car.
 
 - [ ] **B11 — Speed factor verification.** (S; hardware)
   One driving capture; confirm 0x284 speed factor ×0.01 vs OVMS ~/98; lock with captured
   bytes in `GeneratedFrameDecodingTests`.
   *Unblocks:* M-B data trust. *Deps:* hardware session.
 
-- [ ] **B12 — iOS hygiene.** (M)
-  Replace `VehicleProfileRegistry` reflection scan with explicit registration; trim/AOT
-  test pass of Core + generated code on net9.0-ios; document scoped-per-connection
-  lifetime guidance (ElmSession not thread-safe) for MauiProgram registration.
-  *Acceptance:* Core + Telemetry + Ble transport build with trimming enabled for iOS
-  without warnings from our assemblies.
-  *Unblocks:* M-B on iOS. *Deps:* B9.
+- [x] **B12 — iOS hygiene.** (M) — **DONE 2026-07-19 (device AOT publish pending Mac).**
+  `VehicleProfileRegistry` reflection scan replaced with explicit registration
+  (`BuildDefaultProfiles` one-liner per vehicle + `RegisterProfile` for plugins;
+  `Activator.CreateInstance`/`GetTypes` gone). All five shippable libs (Core,
+  Annotations, Telemetry, Simulation, Transports.Ble) build `IsTrimmable` +
+  `EnableTrimAnalyzer` with **zero IL warnings** — the two IL2026s found
+  (`DevicePreferences` reflection JSON) fixed via source-generated
+  `JsonSerializerContext`. Lifetime guidance + DI wiring sketch + platform notes in
+  `docs/MAUI_INTEGRATION.md`. Remaining: an actual net9.0-ios AOT publish smoke test
+  needs a Mac build host — flagged. *Unblocked:* M-B on iOS.
 
 ## Phase 3 — post-check / report (M-C)
 

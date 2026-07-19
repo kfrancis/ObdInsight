@@ -4,6 +4,7 @@ using ObdInsight.Core.Protocols;
 using ObdInsight.UI;
 using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Communication.Bluetooth;
+using ObdInsight.Transports.WindowsBle;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Spectre.Console;

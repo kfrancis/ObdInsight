@@ -1,9 +1,10 @@
+using ObdInsight.Core.Communication.Elm327;
 using Serilog;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using Windows.Storage.Streams;
 
-namespace ObdInsight.Core.Communication.Elm327
+namespace ObdInsight.Transports.WindowsBle
 {
     public sealed class BleElmTransport : IElmTransport
     {

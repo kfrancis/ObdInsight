@@ -1,8 +1,9 @@
+using ObdInsight.Core.Communication.Bluetooth;
 using System.Collections.Concurrent;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
 
-namespace ObdInsight.Core.Communication.Bluetooth;
+namespace ObdInsight.Transports.WindowsBle;
 
 public sealed class BleScanner : IBleScanner
 {

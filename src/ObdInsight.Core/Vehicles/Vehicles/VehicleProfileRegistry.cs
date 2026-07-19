@@ -1,17 +1,45 @@
-using System.Reflection;
 using ObdInsight.Core.Vehicles.Implementations;
+using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf;
 
 namespace ObdInsight.Core.Vehicles;
 
 /// <summary>
-/// Registry for discovering and managing available vehicle profiles.
+/// Registry of available vehicle profiles.
+/// Explicit registration (roadmap B12) — the previous reflection scan
+/// (<c>Assembly.GetTypes()</c> + <c>Activator.CreateInstance</c>) was iOS trim/AOT
+/// hostile and silently swallowed instantiation failures. New profiles are added to
+/// <see cref="BuildDefaultProfiles"/> (one line), or injected at runtime via
+/// <see cref="RegisterProfile"/> for out-of-assembly vehicles.
 /// </summary>
 public static class VehicleProfileRegistry
 {
-    private static readonly Lazy<IReadOnlyList<IVehicleProfile>> s_profiles = 
-        new(DiscoverProfiles);
+    private static readonly object s_gate = new();
+    private static readonly List<IVehicleProfile> s_registered = [];
+    private static readonly Lazy<IReadOnlyList<IVehicleProfile>> s_defaults =
+        new(BuildDefaultProfiles);
 
-    public static IReadOnlyList<IVehicleProfile> AllProfiles => s_profiles.Value;
+    public static IReadOnlyList<IVehicleProfile> AllProfiles
+    {
+        get
+        {
+            lock (s_gate)
+            {
+                return s_registered.Count == 0
+                    ? s_defaults.Value
+                    : [.. s_defaults.Value, .. s_registered];
+            }
+        }
+    }
+
+    /// <summary>Adds a profile beyond the built-in set (e.g. from a plugin assembly).</summary>
+    public static void RegisterProfile(IVehicleProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        lock (s_gate)
+        {
+            s_registered.Add(profile);
+        }
+    }
 
     /// <summary>
     /// Gets a list of unique vehicle makes and models.
@@ -31,7 +59,7 @@ public static class VehicleProfileRegistry
     /// </summary>
     public static IVehicleProfile? FindProfile(string make, string model)
     {
-        return AllProfiles.FirstOrDefault(p => 
+        return AllProfiles.FirstOrDefault(p =>
             p.Make.Equals(make, StringComparison.OrdinalIgnoreCase) &&
             p.Model.Equals(model, StringComparison.OrdinalIgnoreCase));
     }
@@ -44,46 +72,9 @@ public static class VehicleProfileRegistry
         return FindProfile(make, model)?.Variants;
     }
 
-    private static IReadOnlyList<IVehicleProfile> DiscoverProfiles()
-    {
-        var profiles = new List<IVehicleProfile>();
-
-        try
-        {
-            // Get the assembly containing vehicle implementations
-            var assembly = typeof(HondaCrv).Assembly;
-
-            // Find all types that implement IVehicleProfile (but not abstract base classes)
-            var profileTypes = assembly.GetTypes()
-                .Where(t => 
-                    !t.IsAbstract && 
-                    !t.IsInterface && 
-                    typeof(IVehicleProfile).IsAssignableFrom(t) &&
-                    t.GetConstructor(Type.EmptyTypes) != null) // Has parameterless constructor
-                .ToList();
-
-            // Instantiate each profile
-            foreach (var type in profileTypes)
-            {
-                try
-                {
-                    if (Activator.CreateInstance(type) is IVehicleProfile profile)
-                    {
-                        profiles.Add(profile);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Log or handle instantiation errors
-                    System.Diagnostics.Debug.WriteLine($"Failed to instantiate {type.Name}: {ex.Message}");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Error discovering vehicle profiles: {ex.Message}");
-        }
-
-        return profiles.OrderBy(p => p.Make).ThenBy(p => p.Model).ToList();
-    }
+    private static IReadOnlyList<IVehicleProfile> BuildDefaultProfiles() =>
+    [
+        new NissanLeaf(),
+        new HondaCrv(),
+    ];
 }
