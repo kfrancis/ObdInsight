@@ -159,10 +159,23 @@ public partial class BatteryFrame_55B_AZE0
         MinValue = 0, MaxValue = 3)]
     public partial int SleepEnabled { get; init; }
 
-    [CanSignal(7, 10, Unit = "%",
-                                    Description = "State of charge (0.1% resolution, used on startup by Leaf Spy Pro)",
-        MinValue = 0, MaxValue = 1000)]
-    public partial int Soc { get; init; }
+    [CanSignal(0, 8,
+        Description = "State of charge, raw high 8 bits (byte 0; Motorola DBC start-bit 7)",
+        MinValue = 0, MaxValue = 255)]
+    public partial int SocRawHigh { get; init; }
+
+    [CanSignal(14, 2,
+        Description = "State of charge, raw low 2 bits (byte 1 bits 7-6)",
+        MinValue = 0, MaxValue = 3)]
+    public partial int SocRawLow { get; init; }
+
+    /// <summary>
+    /// State of charge in 0.1% units (e.g. 928 = 92.8%). The DBC source is a Motorola-order
+    /// 10-bit field starting at bit 7 (byte0[7..0] + byte1[7..6]), which cannot be expressed
+    /// as a single Intel signal — recombined from the two raw parts.
+    /// Hardware-verified 2026-07-18: raw E8 00 → 928 with pack near full (~96%).
+    /// </summary>
+    public int Soc => (SocRawHigh << 2) | SocRawLow;
 }
 
 /// <summary>
@@ -185,6 +198,22 @@ public partial class BatteryFrame_59E_AZE0
 /// <summary>
 /// Battery capacity and charge status frame for Nissan Leaf AZE0 platform (0x5BC)
 /// </summary>
+/// <remarks>
+/// Partially multiplexed on 30 kWh AZE0. Reviewed in the 2026-07-18 frame-layout audit
+/// (single capture 5D C0 F0 64 82 12 BF FF, parked, charging, ~96%):
+/// <list type="bullet">
+/// <item>GIDS fixed from a Motorola transcription error (decoded 384; now 375). Mux
+/// semantics confirmed against OVMS vehicle_nissanleaf.cpp: <see cref="MaxGids"/> (byte 5
+/// bit 4) selects the gids content — 0 = remaining gids, 1 = maximum gids / pack capacity
+/// (30 kWh+ only). The capture had it set, so 375 = full capacity (375 × 80 Wh = 30.0 kWh).
+/// 1023 (0x3FF) = invalid-during-startup sentinel.</item>
+/// <item>RemainChargeTime fixed from a 12-bit misread (decoded 4091; now the documented
+/// 13-bit field whose 0x1FFF sentinel = unavailable, matching this capture).</item>
+/// <item>CapacityDeteriorationRate decoded 65% — plausible for an aged 30 kWh pack, but
+/// unconfirmed (dash bars are not SOH%). Note it overlaps Mux/RemainCapSegmentSwitchFlag
+/// in byte 4; which bits are valid may depend on mux state.</item>
+/// </list>
+/// </remarks>
 [CanFrame(0x5BC, Description = "Battery remaining capacity in GIDS, charge bars, and temperature")]
 public partial class BatteryFrame_5BC_AZE0
 {
@@ -204,7 +233,8 @@ public partial class BatteryFrame_5BC_AZE0
     public partial int ChargeBars { get; init; }
 
     [CanSignal(44, 1,
-        Description = "Max GIDS flag (only 30kWh AZE0, indicates GIDS is at maximum)",
+        Description = "GIDS mux selector (byte 5 bit 4): 0 = RemainCapacityGids holds remaining gids, " +
+                      "1 = it holds maximum gids / pack capacity (only broadcast on 30kWh+; confirmed vs OVMS)",
         MinValue = 0, MaxValue = 1)]
     public partial bool MaxGids { get; init; }
 
@@ -218,20 +248,52 @@ public partial class BatteryFrame_5BC_AZE0
         MinValue = 0, MaxValue = 7)]
     public partial int OutputPowerLimitReason { get; init; }
 
-    [CanSignal(7, 10, Unit = "gids",
-                                Description = "Remaining capacity in GIDS (80Wh per GID). 0-281 for 24kWh, 0-363 for 30kWh, 0-498 for 40kWh, 0-775 for 62kWh",
-        MinValue = 0, MaxValue = 500)]
-    public partial int RemainCapacityGids { get; init; }
+    [CanSignal(0, 8,
+        Description = "Remaining capacity GIDS, raw high 8 bits (byte 0; Motorola DBC start-bit 7)",
+        MinValue = 0, MaxValue = 255)]
+    public partial int RemainCapacityGidsRawHigh { get; init; }
+
+    [CanSignal(14, 2,
+        Description = "Remaining capacity GIDS, raw low 2 bits (byte 1 bits 7-6)",
+        MinValue = 0, MaxValue = 3)]
+    public partial int RemainCapacityGidsRawLow { get; init; }
+
+    /// <summary>
+    /// Capacity in GIDS (80Wh per GID). Motorola-order 10-bit field
+    /// (byte0[7..0] + byte1[7..6]) recombined from the raw parts.
+    /// Muxed by <see cref="MaxGids"/>: false = remaining gids, true = maximum gids
+    /// (pack capacity, 30kWh+ only). 1023 (0x3FF) = invalid (startup) — check
+    /// <see cref="GidsValid"/>.
+    /// </summary>
+    public int RemainCapacityGids => (RemainCapacityGidsRawHigh << 2) | RemainCapacityGidsRawLow;
+
+    /// <summary>False while <see cref="RemainCapacityGids"/> holds the 0x3FF startup-invalid sentinel.</summary>
+    public bool GidsValid => RemainCapacityGids != 0x3FF;
 
     [CanSignal(32, 1,
         Description = "Remaining capacity segment switch flag (0=Remaining capacity, 1=Full capacity)",
         MinValue = 0, MaxValue = 1)]
     public partial bool RemainCapSegmentSwitchFlag { get; init; }
 
-    [CanSignal(52, 13, Unit = "minutes",
-        Description = "Remaining charge time (1FFFh=Unavailable)",
-        MinValue = 0, MaxValue = 8190)]
-    public partial int RemainChargeTime { get; init; }
+    [CanSignal(48, 5,
+        Description = "Remaining charge time, raw high 5 bits (byte 6 bits 4-0; Motorola DBC start-bit 52)",
+        MinValue = 0, MaxValue = 31)]
+    public partial int RemainChargeTimeRawHigh { get; init; }
+
+    [CanSignal(56, 8,
+        Description = "Remaining charge time, raw low 8 bits (byte 7)",
+        MinValue = 0, MaxValue = 255)]
+    public partial int RemainChargeTimeRawLow { get; init; }
+
+    /// <summary>
+    /// Remaining charge time in minutes. Motorola-order 13-bit field
+    /// (byte6[4..0] + byte7[7..0]) recombined from the raw parts.
+    /// 0x1FFF (8191) = unavailable sentinel — check <see cref="RemainChargeTimeAvailable"/>.
+    /// </summary>
+    public int RemainChargeTime => (RemainChargeTimeRawHigh << 8) | RemainChargeTimeRawLow;
+
+    /// <summary>False when <see cref="RemainChargeTime"/> holds the 0x1FFF unavailable sentinel.</summary>
+    public bool RemainChargeTimeAvailable => RemainChargeTime != 0x1FFF;
 
     [CanSignal(41, 5,
         Description = "Remaining charge time condition/mode (00000b=Quick charge, 01001b=Normal 200V SOC100%, etc.)",

@@ -283,3 +283,85 @@ Approach: single job on `windows-latest` (the `net9.0-windows10.0.19041.0` TFMs 
 4. **Public-repo comfort:** personal adapter MAC and real VIN appear in source, launch settings, and committed session captures. Fine for a private repo; scrub before any OSS publication?
 5. **Endianness roadmap:** any target vehicle whose signals are documented in Motorola byte order? If yes, `ByteOrder` support moves from "documented limitation" into Theme 1's scope.
 6. **Honda CR-V profile** (`HondaCrv.cs:174` throws `NotImplementedException`): active intent or placeholder to remove?
+
+---
+
+## 7. Frame bit-layout audit — executed 2026-07-18 (see docs/FRAME_LAYOUT_AUDIT.md)
+
+Hardware evidence: raw CAR-CAN captures from the 2017 AZE0 (parked in READY, charging,
+ambient ~22 °C, pack ~96%). Root cause of every confirmed-broken signal: community DBC
+layouts are Motorola bit order; the generator is Intel-only, and start bits were transcribed
+verbatim. Motorola fields that cross byte boundaries are **not expressible** as a single
+Intel `[CanSignal]`, so fixes declare byte-aligned raw part signals and recombine them in
+computed properties on the partial class (capability-facing property names unchanged; the
+generator was not modified).
+
+Fixed (each locked with the exact captured bytes in `GeneratedFrameDecodingTests`):
+
+- **0x284 `AbsFrame_284_AZE0`** — `VehicleSpeedFromAbs` (39,16) actually decoded the
+  bytes-6/7 free-running message counter (61–496 km/h while parked). Now: wheel speeds =
+  big-endian byte pairs 0-1/2-3 (×0.005), vehicle speed = bytes 4-5 (×0.01), bytes 6-7
+  exposed as `MessageCounter1/2`. Factors verified only at the zero point (parked capture).
+  Duplicate resolved: `VcmFrame_284_AZE0` (unused, conflicting layout) **deleted**;
+  `AbsFrame_284_AZE0` is canonical. `AbsFrame_285_AZE0` given the same treatment (identical
+  layout family, capture `…35BC`).
+- **0x55B `BatteryFrame_55B_AZE0.Soc`** — was Intel (7,10) → decoded 1. True field is
+  Motorola 7|10 (byte0 + byte1[7..6]); recombined from raw parts: `E8 00 → 928` = 92.8%
+  (pack ~96%, matches expectation ~928–960).
+- **0x245 `AbsFrame_245_AZE0`** — all three 12-bit torque fields were Motorola-transcribed
+  (decoded 3720/232.5 Nm parked). True fields: byte0+byte1[7..4], byte1[3..0]+byte2,
+  byte6+byte7[7..4]; center-offset 0x800 = 0 Nm, est. 0.5 Nm/bit (only the neutral point is
+  hardware-verified: capture decodes −1.0/+1.0/−1.0 Nm). `TorqueDownRequestType` moved
+  (31,3)→(29,3) (within-byte Motorola→Intel). Byte 4 and byte-7 low nibble confirmed as
+  per-frame counters.
+- **0x5BC `BatteryFrame_5BC_AZE0`** — GIDS fixed from Intel (7,10) (decoded 384) to the
+  Motorola 7|10 recombination → 375. Caveat documented in the class remarks: 375 exceeds the
+  typical 30 kWh max (~363) and `MaxGids` was set in the same frame — the field may carry
+  full capacity in some mux states; needs a multi-frame capture across mux values.
+  `RemainChargeTime` fixed from a 12-bit misread (4091) to the documented 13-bit field
+  (byte6[4..0]+byte7) → decodes the 0x1FFF "unavailable" sentinel correctly; new
+  `RemainChargeTimeAvailable` helper. SOH (33,7) left as-is (decoded 65% — plausible for an
+  aged 30 kWh pack but unconfirmed; overlaps `Mux`/`RemainCapSegmentSwitchFlag` in byte 4 —
+  flagged in doc comments).
+
+Regression-locked confirmed-correct decodes (exact captured bytes): 0x292 lead-acid 12.70 V /
+brake pressure 0 · 0x510 ambient 22.5 °C / ChargeMode 2 / climate off · 0x5A9 range 179.2 km ·
+0x354 speed 0 / ESP enabled · 0x180 motor amps 0 / throttle 0 · 0x60D doors closed / signals
+off / VehicleState READY.
+
+**EV-CAN architecture fact documented** (CLAUDE.md gotcha, capability doc comments on
+`LeafAze0MotorController`/`LeafAze0Vcm.GetGearPositionAsync`/`LeafAze0Brake`,
+`SharedBroadcastRotation` comment): 0x1DB/0x1DC/0x1DA/0x11A/0x1CA/0x55A/0x59E were absent
+from passive monitoring all session. Precision (refined 2026-07-18 after review): stock
+ELM327 adapters wire OBD pins 6/14 = CAR-CAN; EV-CAN is physically present on OBD pins
+12/13 and a rewired/modified adapter can monitor it — the frames are "unreachable" only for
+unmodified adapters in passive mode. EV-CAN-sourced data (SOC, pack V/I, cells) remains
+reachable on stock adapters via active UDS queries over CAR-CAN (BMS 79B→7BB, proven live
+13/13) — this is how LeafSpy-class apps work. Affected broadcast capabilities time out on
+data-absence until UDS alternatives exist; SOC cross-checks go through 0x55B (now fixed) or
+0x5BC. This also answers Open Question 5: yes — the current vehicle's own DBC sources are
+Motorola-order, so generator `ByteOrder` support would eliminate the raw-part/computed-
+property workaround and belongs in Theme 1 scope.
+
+Verification: `ObdInsight.Tests` 48/48 green ×3 runs (12 new tests);
+`ObdInsight.SourceGeneration.Tests` 42/42 (generator untouched); DevTools + console app
+compile. Not done (needs hardware/multi-frame data): 0x5BC mux cycle capture, torque-field
+factor confirmation while driving, 0x54A ambient offset (+41?) verification.
+
+**Addendum 2026-07-18 — cross-checked against OVMS `vehicle_nissanleaf.cpp`** (openvehicles
+OVMS.V3, taps EV-CAN and CAR-CAN directly): confirms the 55B SOC, 5BC gids, 5BC 13-bit
+charge time (0x1FFF sentinel), and 284 bytes-4/5 speed fixes bit-for-bit. **Resolved the
+5BC 375-gids caveat**: byte5 bit4 (`MaxGids`) is the gids mux selector — 0 = remaining,
+1 = maximum gids/pack capacity (30 kWh+ only); the capture had it set, so 375 = 30.0 kWh
+full capacity, exactly right. Sentinels added: gids 0x3FF and 55B SOC 0x3FF = invalid
+(`GidsValid` helper added; class docs updated). One conflict: OVMS decodes 5A9 range as
+`(d1<<4|d2>>4)/5` → 124 km on our capture; our layout gives 179.2 km matching the dash
+ground truth (~179) — kept ours for 2017 AZE0. New follow-up work identified from OVMS
+(not yet applied): (1) our EV-CAN frames 1DB (Current/Voltage), 1DC (power limits), 1DA
+(torque/RPM), 59E (capacity), 5C0 (pack temp) are also Motorola-mistranscribed — OVMS gives
+authoritative layouts; existing 1DB/1DA unit tests are synthetic/self-consistent and lock
+in the wrong wire layout; (2) CAR-CAN 0x421 gear map `(d0>>3)&7` (1=P,2=R,3=N,4=D,7=B) —
+enables stock-adapter gear position for `LeafAze0Vcm`; (3) CAR-CAN 0x5B3 SOH `d1>>1`
+(OVMS trusts 5BC byte-4 SOH only on 24 kWh ZE0 — our 65% read is suspect); (4) 0x355
+odometer-units bit, 0x385 TPMS pressures; (5) 284 speed divisor: OVMS uses ~/98
+(GPS-calibrated) vs our ×0.01.

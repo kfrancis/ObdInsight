@@ -224,8 +224,11 @@ public static class LeafAze0Contexts
     /// adapters within ~100ms on a busy EV bus (hardware session 2026-07-18), so the monitor
     /// time-slices the bus with mask 0x700: one window per 0xN00 block that carries frames we
     /// decode. Full cycle ≈ 3s — cache-view data is at most that stale.
-    /// 0x1xx: 11A,130,1CA,1D4,1DA,1DB,1DC + CAR-CAN 174,176,180 · 0x2xx: 245,260,284,285,292
-    /// 0x3xx: 354,390,393 · 0x5xx: 50A-D,510,54A-F,55A,55B,5A9,5BC,5C0 · 0x6xx: 603,60D,625
+    /// Expected per window (CAR-CAN only — EV-CAN IDs 11A,1CA,1DA,1DB,1DC,55A,59E don't
+    /// appear because stock ELM327 adapters wire OBD pins 6/14 = CAR-CAN; EV-CAN is on pins
+    /// 12/13 and needs a modified adapter; hardware-confirmed 2026-07-18):
+    /// 0x1xx: 130,174,176,180,1D4 · 0x2xx: 245,284,285,292 (260 is 4 bytes; decoders skip)
+    /// 0x3xx: 354,390,393 · 0x5xx: 50A-D,510,54A-F,55B,5A9,5BC,5C0 · 0x6xx: 603,60D
     /// </summary>
     public static IReadOnlyList<Communication.Elm327.CanFilterWindow> SharedBroadcastRotation { get; } =
     [

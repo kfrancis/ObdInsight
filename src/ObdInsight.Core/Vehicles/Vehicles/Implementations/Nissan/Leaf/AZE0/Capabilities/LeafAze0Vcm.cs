@@ -26,6 +26,14 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         /// Reads current gear position from EV-CAN broadcast frame 0x11A
         /// (JoystickGearPosition: 0=Park, 2=Reverse, 3=Neutral, 4=Drive/B).
         /// </summary>
+        /// <remarks>
+        /// LIMITATION (hardware-confirmed 2026-07-18): 0x11A is an EV-CAN broadcast frame.
+        /// Stock ELM327 adapters wire OBD pins 6/14 (CAR-CAN); EV-CAN sits on pins 12/13
+        /// and needs a rewired/modified adapter to monitor. On stock adapters the warmup
+        /// times out and this returns <see cref="GearPosition.Unknown"/>. CAR-CAN
+        /// 0x174/0x421 (shifter relays) are candidate stock-adapter alternatives once their
+        /// value maps are decoded; see docs/FRAME_LAYOUT_AUDIT.md.
+        /// </remarks>
         public async ValueTask<GearPosition> GetGearPositionAsync(CancellationToken ct = default)
         {
             await _monitor.StartAsync(ct);

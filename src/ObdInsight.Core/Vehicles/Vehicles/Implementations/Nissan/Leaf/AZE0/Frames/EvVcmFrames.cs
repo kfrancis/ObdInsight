@@ -168,37 +168,9 @@ public partial class VcmFrame_1F2_AZE0
     public partial int VcmMode { get; init; }
 }
 
-/// <summary>
-/// VCM wheel speed sensor frame for Nissan Leaf AZE0 platform (0x284)
-/// </summary>
-[CanFrame(0x284, Description = "ABS module wheel speed sensors relayed via VCM (20ms)")]
-public partial class VcmFrame_284_AZE0
-{
-    [CanSignal(39, 16, Unit = "pulses",
-        Description = "Average rear speed sensor or vehicle speed from ABS",
-        MinValue = 0, MaxValue = 65535)]
-    public partial int AverageRearSpeedSensor { get; init; }
-
-    [CanSignal(48, 8,
-        Description = "Distance traveled counter 1 (wraps ~360 times in 25 mile drive)",
-        MinValue = 0, MaxValue = 255)]
-    public partial int DistanceTraveled1 { get; init; }
-
-    [CanSignal(56, 8,
-        Description = "Distance traveled counter 2 (wraps ~360 times in 25 mile drive)",
-        MinValue = 0, MaxValue = 255)]
-    public partial int DistanceTraveled2 { get; init; }
-
-    [CanSignal(7, 16, Unit = "pulses",
-                    Description = "Left wheel speed sensor (2's complement)",
-        MinValue = 0, MaxValue = 65535)]
-    public partial int LeftWheelSpeedSensor { get; init; }
-
-    [CanSignal(23, 16, Unit = "pulses",
-        Description = "Right wheel speed sensor (2's complement)",
-        MinValue = 0, MaxValue = 65535)]
-    public partial int RightWheelSpeedSensor { get; init; }
-}
+// NOTE: VcmFrame_284_AZE0 was removed in the 2026-07-18 frame-layout audit. It duplicated
+// CAN 0x284 with a conflicting layout; AbsFrame_284_AZE0 (Leaf.AZE0.Frames namespace) is
+// the canonical decoder for 0x284.
 
 /// <summary>
 /// VCM A/C and climate sensor relay frame for Nissan Leaf AZE0 platform (0x50A)

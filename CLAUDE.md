@@ -134,6 +134,15 @@ public partial class BatteryFrame_1DB_AZE0
 
 - ELM327: commands CR-terminated; responses end with `>`; monitoring mode streams without
   prompts; `BUFFER FULL` means the adapter exited monitoring itself.
+- **EV-CAN broadcast frames don't appear in passive monitoring with stock ELM327 adapters**
+  (hardware-confirmed 2026-07-18, Veepeak BLE): 0x1DB, 0x1DC, 0x1DA, 0x11A, 0x1CA, 0x55A,
+  0x59E were absent all session. Stock adapters wire OBD pins 6/14 = CAR-CAN only; EV-CAN
+  is present on OBD pins 12/13 and needs a rewired/modified adapter to monitor. EV-CAN
+  *data* is still reachable on stock adapters via active UDS queries over CAR-CAN (BMS
+  79B→7BB works — how LeafSpy-style apps and our BMS capability get SOC/cells). Broadcast
+  capabilities that depend on those IDs (MotorController 1DA/55A, Vcm gear 11A, Brake 1CA)
+  time out on data-absence until UDS alternatives exist; their frame definitions stay for
+  tests/modified-adapter transports. See `docs/FRAME_LAYOUT_AUDIT.md`.
 - `ElmSession` is not thread-safe; query and monitoring modes are mutually exclusive
   (`QueryAsync` throws while monitoring — arbitration is design-doc P3, not built yet).
 - Test fixtures/launchSettings contain a hardcoded adapter MAC + a real VIN (audit M3.5:

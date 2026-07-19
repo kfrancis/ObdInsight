@@ -8,6 +8,14 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 /// Reads brake broadcast frame 0x1CA (pressure sensors + regen level, 20ms cadence) from the
 /// monitor's latest-frame cache.
 /// </summary>
+/// <remarks>
+/// LIMITATION (hardware-confirmed 2026-07-18): 0x1CA is an EV-CAN broadcast frame. Stock
+/// ELM327 adapters wire OBD pins 6/14 (CAR-CAN); EV-CAN sits on pins 12/13 and needs a
+/// rewired/modified adapter to monitor. On stock adapters the warmup times out and this
+/// capability reports BrakePressed=false. CAR-CAN 0x292 (FrictionBrakePressure via
+/// <see cref="IAntilockBrakingSystem"/>) is the stock-adapter alternative; see
+/// docs/FRAME_LAYOUT_AUDIT.md.
+/// </remarks>
 internal sealed class LeafAze0Brake : IBrake
 {
     private static readonly TimeSpan WarmupTimeout = TimeSpan.FromSeconds(4);
