@@ -30,7 +30,7 @@ public class LeafChargerVinParsingTests
 
         var vin = await ident.GetVinAsync(token);
 
-        await Assert.That(vin).IsEqualTo("1N4AZ0CP7HC308656");
+        await Assert.That(vin).IsEqualTo("1N4AZ0CP7HC000001");
     }
 
     [Test]

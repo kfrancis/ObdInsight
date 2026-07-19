@@ -236,12 +236,24 @@ Milestones: **M-A** pre-check · **M-B** live drive · **M-C** post-check/report
   decode + add to `BatteryStatus`. Golden-capture test once located.
   *Unblocks:* M-C. *Deps:* B3 learnings.
 
-- [ ] **B15 — Packaging + scrub.** (S/M)
-  NuGet pack for Core + Annotations + Telemetry + Simulation + Ble transport (analyzer
-  packs to `analyzers/dotnet/cs`), versioning, CI pack step — or documented project-ref
-  consumption. Scrub personal adapter MAC + real VIN from fixtures/launchSettings
-  (audit M3.5) before anything ships.
-  *Unblocks:* EvTestDrive CI. *Deps:* B4.
+- [x] **B15 — Packaging + scrub.** (S/M) — **DONE 2026-07-19, pulled forward from
+  Phase 3** (docs/RELEASING.md).
+  Six NuGet packages: Core, Annotations, Telemetry, Simulation, Transports.Ble
+  (all three TFMs in one package) + SourceGeneration (analyzer-only,
+  `analyzers/dotnet/cs`, `DevelopmentDependency`, `IncludeBuildOutput=false`). Shared
+  metadata in `src/Directory.Build.props` (MIT — matches the repo LICENSE — repo URL,
+  SourceLink, snupkg symbols); packing is opt-in per project so apps/tools stay
+  unpackable. Verified locally: all six pack; Core's dependency closure is exactly
+  Annotations + Logging.Abstractions (no Roslyn — B4 payoff). Release path:
+  `.github/workflows/release.yml` on `v*` tags — tests → pack with tag-derived
+  version → **NuGet Trusted Publishing** (OIDC via `NuGet/login@v1`, `id-token:
+  write`, zero stored API keys); needs the one-time nuget.org policy + `NUGET_USER`
+  repo variable (steps in RELEASING.md). **M3.5 scrub complete in the working tree:**
+  personal MAC + real VIN removed from launchSettings, fixtures, docs, and golden data
+  (VIN replaced by check-digit-valid synthetic `1N4AZ0CP7HC000001`; golden ISO-TP hex
+  re-encoded); three tracked DevTools session captures deleted. **Git history still
+  contains the old values** — filter/squash before making the repo public; NuGet
+  packages don't expose history. *Unblocked:* EvTestDrive consuming real packages.
 
 ## Phase 4 — vehicle breadth (M-D; only after Phases 0–3)
 

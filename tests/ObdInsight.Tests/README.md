@@ -9,7 +9,7 @@ Tests specific to the Nissan Leaf AZE0 (2016-2017 30kWh) vehicle:
 
 #### LeafBmsParsingHelpers.cs
 - Shared parsing utilities extracted from `LeafAze0Bms`
-- Golden sample data captured from real Leaf: `66:1E:87:02:C2:DB`
+- Golden sample data captured from real Leaf: `<scrubbed-adapter-mac>`
 - ISO-TP frame parsing and reassembly logic
 - BMS Group 01 parsing for voltage, current, SOH (Hx), and capacity
 
@@ -48,7 +48,7 @@ Tests specific to the Nissan Leaf AZE0 (2016-2017 30kWh) vehicle:
   - Tests ISO-TP frame parsing from VIN query
   - Validates 17-character VIN format
   - Tests handling of invalid/null responses
-  - Uses golden sample: `1N4AZ0CP7HC308656`
+  - Uses golden sample: `1N4AZ0CP7HC000001`
 
 **Integration tests** - Requires BLE:
 - `LeafChargerIntegrationTests`: Tests VIN query against real vehicle
@@ -66,7 +66,7 @@ Tests specific to the Nissan Leaf AZE0 (2016-2017 30kWh) vehicle:
 - Shared across multiple test classes using `SharedType.Keyed`
 - Configure device address via environment variable:
   ```bash
-  $env:LEAF_BLE_ADDRESS = "66:1E:87:02:C2:DB"
+  $env:LEAF_BLE_ADDRESS = "<scrubbed-adapter-mac>"
   ```
 
 ## Running Tests
@@ -82,7 +82,7 @@ dotnet test --filter "FullyQualifiedName~ParsingTests"
 ```
 
 ### Run integration tests (requires BLE adapter)
-1. Set environment variable for your device (optional, defaults to 66:1E:87:02:C2:DB):
+1. Set environment variable for your device (optional, defaults to <scrubbed-adapter-mac>):
    ```bash
    $env:LEAF_BLE_ADDRESS = "YOUR:MAC:ADDRESS"
    ```
@@ -97,7 +97,7 @@ dotnet test --filter "FullyQualifiedName~ParsingTests"
 ### Golden Samples
 The golden sample data in `LeafBmsParsingHelpers.GoldenGroup01Lines` was captured from:
 - **Vehicle**: Nissan Leaf AZE0-2 (2016-2017 30kWh)
-- **Device**: 66:1E:87:02:C2:DB
+- **Device**: <scrubbed-adapter-mac>
 - **Date**: 2026-01-18
 - **Command**: Mode 21, PID 01 (BMS Group 01)
 - **Format**: ISO-TP multi-frame response (43 bytes total)

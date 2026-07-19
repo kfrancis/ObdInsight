@@ -1,0 +1,43 @@
+<Project>
+
+  <!--
+    Shared NuGet metadata for the shippable libraries (roadmap B15).
+    Packing is OPT-IN: each packable csproj sets <IsPackable>true</IsPackable> and its
+    own <Description>; apps/tools under src (console, DevTools, MAUI shell) stay
+    unpackable by default.
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <Authors>Kori Francis</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/kfrancis/ObdInsight</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/kfrancis/ObdInsight</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>obd;obd2;elm327;can;ev;nissan-leaf;ble;telemetry</PackageTags>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!--
+    Versioning: MinVer computes the version from git tags (prefix "v", e.g.
+    v0.1.0-preview.1). On a tagged commit the version IS the tag; between tags it's
+    the last tag + commit height with the preview pre-release identifier. Requires
+    full git history at build time (CI checkouts use fetch-depth: 0).
+    Applied only to packable projects — apps/tools keep default versioning.
+  -->
+  <!-- Unconditional: Directory.Build.props properties evaluate before the csproj
+       body sets IsPackable, so a condition here would never see 'true'. These are
+       inert in projects that don't reference MinVer (the ItemGroup below is
+       item-phase and CAN see IsPackable). -->
+  <PropertyGroup>
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+    <MinVerDefaultPreReleaseIdentifiers>preview.0</MinVerDefaultPreReleaseIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsPackable)' == 'true'">
+    <PackageReference Include="MinVer" Version="6.0.0" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

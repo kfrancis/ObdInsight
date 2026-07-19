@@ -4,6 +4,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <Description>Core OBD-II/CAN communication for EVs: ELM327 session with recovery, shared CAN monitor with typed streams, ISO-TP/UDS, vehicle capabilities (Nissan Leaf AZE0), VIN-driven vehicle resolution, DTC reading, resilience decorators.</Description>
     <IsTrimmable>true</IsTrimmable>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
   </PropertyGroup>

@@ -27,7 +27,7 @@ public class VehicleResolverTests
         var result = await VehicleResolver.ResolveAsync(session, Profiles, token);
 
         await Assert.That(result.Status).IsEqualTo(VehicleDetectionStatus.Detected);
-        await Assert.That(result.Vin).IsEqualTo("1N4AZ0CP7HC308656");
+        await Assert.That(result.Vin).IsEqualTo("1N4AZ0CP7HC000001");
         await Assert.That(result.VariantId!.Value.Value).IsEqualTo("AZE0-2-2016-2017");
         await Assert.That(result.Commands).IsTypeOf<LeafAze0CommandSet>();
     }

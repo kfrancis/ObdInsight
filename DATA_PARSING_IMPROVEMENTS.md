@@ -124,7 +124,7 @@ All parsing logic is based on the **Leaf2018-CAN.md** reference document in the 
 
 Next time you run:
 ```bash
-ObdTestApp.exe --device=66:1E:87:02:C2:DB --auto
+ObdTestApp.exe --device=<scrubbed-adapter-mac> --auto
 ```
 
 You'll see the improved output both on console and in the detailed log file with all the parsed CAN frame data.

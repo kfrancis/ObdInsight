@@ -92,14 +92,14 @@ public static class LeafGoldenData
 
     /// <summary>
     /// Charger/IDENT VIN response (Mode 21 PID 81, TX 797 / RX 79A).
-    /// Fake/generated VIN: 1N4AZ0CP7HC308656. Payload: 21 bytes, header [61 81].
+    /// Fake/generated VIN: 1N4AZ0CP7HC000001. Payload: 21 bytes, header [61 81].
     /// </summary>
     [SuppressMessage("ReSharper", "StringLiteralTypo")]
     public static readonly string[] GoldenVinLines =
     [
         "79A10156181314E3441",  // FF: len=0x15 (21), [61 81] + "1N4A"
         "79A215A304350374843",  // CF1: "Z0CP7HC"
-        "79A2233303836353600",  // CF2: "308656" + 00 padding
+        "79A2230303030303100",  // CF2: "308656" + 00 padding
         "79A230000000000000",   // CF3: padding
     ];
 

@@ -88,7 +88,7 @@ Tests for motor controller and HVAC capabilities:
 
 Set the BLE device MAC address via environment variable:
 ```bash
-set LEAF_BLE_ADDRESS=66:1E:87:02:C2:DB
+set LEAF_BLE_ADDRESS=<scrubbed-adapter-mac>
 ```
 
 Or modify the default in `BleSessionFixture.cs`.

@@ -16,11 +16,11 @@ public class BleSessionFixture : IAsyncInitializer, IAsyncDisposable
     private ElmFramer? _framer;
 
     /// <summary>
-    /// The MAC address of the BLE device to connect to.
-    /// Default: 66:1E:87:02:C2:DB (captured in golden samples)
-    /// Set via environment variable: LEAF_BLE_ADDRESS
+    /// The MAC address of the BLE device to connect to. No baked-in default (audit
+    /// M3.5 scrub) — hardware tests only run when the LEAF_BLE_ADDRESS environment
+    /// variable is set, and that value is applied during initialization.
     /// </summary>
-    public string DeviceAddress { get; private set; } = "66:1E:87:02:C2:DB";
+    public string DeviceAddress { get; private set; } = "";
 
     /// <summary>
     /// Gets the active ELM session for sending commands.

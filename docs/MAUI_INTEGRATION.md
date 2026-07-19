@@ -1,13 +1,15 @@
 # MAUI Integration Guide (EvTestDrive)
 
-**Date:** 2026-07-19 (roadmap B12). How to consume ObdInsight from a .NET MAUI app
+**Date:** 2026-07-19 (roadmap B12/B15). How to consume ObdInsight from a .NET MAUI app
 (Android + iOS), including the lifetime rules that matter.
 
-## Projects to reference
+## Packages to reference
 
-| Project | Why |
+NuGet packages (see `docs/RELEASING.md`; project references work identically):
+
+| Package | Why |
 |---|---|
-| `ObdInsight.Core` | Session, protocols, capabilities, `VehicleResolver` |
+| `ObdInsight.Core` | Session, protocols, capabilities, `VehicleResolver`, resilience decorators |
 | `ObdInsight.Telemetry` | `ITelemetrySession` — the only surface app code should touch during a drive |
 | `ObdInsight.Transports.Ble` | `PluginBleElmTransport` (Plugin.BLE) for Android/iOS |
 | `ObdInsight.Simulation` | `SimulatedLeafAze0Transport` for development/tests without hardware |

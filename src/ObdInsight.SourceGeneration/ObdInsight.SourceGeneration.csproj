@@ -6,6 +6,12 @@
     <Nullable>enable</Nullable>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     <IsRoslynComponent>true</IsRoslynComponent>
+    <IsPackable>true</IsPackable>
+    <Description>Roslyn incremental generators for ObdInsight: CAN signal decoders from [CanFrame]/[CanSignal] and UDS query methods from [UdsService]/[UdsPid] definitions. Analyzer-only package — pair with ObdInsight.Annotations for the attribute types.</Description>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,0 +1,72 @@
+name: Release
+
+# Publishes the ObdInsight packages to NuGet.org via Trusted Publishing (OIDC) —
+# no stored API keys. One-time setup lives in docs/RELEASING.md.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write # required for NuGet Trusted Publishing
+
+jobs:
+  pack-and-publish:
+    # Windows runner: test projects target net9.0-windows10.0.19041.0.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # MinVer derives the package version from git tags — needs full history.
+          fetch-depth: 0
+
+      - name: Setup .NET (from global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # ObdInsight.Transports.Ble packs net9.0-android + net9.0-ios.
+      - name: Install mobile workloads
+        run: dotnet workload install android ios
+
+      - name: Run unit tests
+        run: dotnet run --project tests/ObdInsight.Tests -c Release
+
+      - name: Run source generator tests
+        run: dotnet run --project tests/ObdInsight.SourceGeneration.Tests -c Release
+
+      - name: Pack
+        shell: pwsh
+        run: |
+          $projects = @(
+            'ObdInsight.Annotations',
+            'ObdInsight.SourceGeneration',
+            'ObdInsight.Core',
+            'ObdInsight.Simulation',
+            'ObdInsight.Telemetry',
+            'ObdInsight.Transports.Ble'
+          )
+          foreach ($p in $projects) {
+            # Version comes from MinVer (the pushed tag) — no explicit -p:Version.
+            dotnet pack "src/$p" -c Release -o artifacts/packages `
+              -p:ContinuousIntegrationBuild=true
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      # Exchanges the workflow's OIDC token for a short-lived NuGet API key.
+      # Requires a Trusted Publishing policy on nuget.org (docs/RELEASING.md) and the
+      # NUGET_USER repository variable (the nuget.org profile name the policy lives on).
+      - name: NuGet login (trusted publishing)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Push packages
+        shell: pwsh
+        run: |
+          dotnet nuget push "artifacts/packages/*.nupkg" `
+            --api-key ${{ steps.login.outputs.NUGET_API_KEY }} `
+            --source https://api.nuget.org/v3/index.json `
+            --skip-duplicate

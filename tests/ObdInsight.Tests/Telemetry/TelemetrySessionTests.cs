@@ -115,7 +115,7 @@ public class TelemetrySessionTests
         pumpCts.Cancel();
         try { await pump; } catch (OperationCanceledException) { }
 
-        await Assert.That(snapshot.Vin).IsEqualTo("1N4AZ0CP7HC308656");
+        await Assert.That(snapshot.Vin).IsEqualTo("1N4AZ0CP7HC000001");
         await Assert.That(snapshot.SocPercent!.Value).IsEqualTo(41.921m);
         await Assert.That(snapshot.PackVoltageV!.Value).IsEqualTo(361.78m);
         await Assert.That(snapshot.CellVoltagesV!.Count).IsEqualTo(96);

@@ -10,6 +10,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <Description>Hardware-free development for ObdInsight consumers: scripted replay transport with failure injection, golden captured vehicle data, and a time-driven simulated Nissan Leaf AZE0.</Description>
     <IsTrimmable>true</IsTrimmable>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
   </PropertyGroup>

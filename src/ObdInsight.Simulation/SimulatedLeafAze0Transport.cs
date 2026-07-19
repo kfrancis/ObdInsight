@@ -17,7 +17,7 @@ namespace ObdInsight.Simulation;
 /// </summary>
 public sealed class SimulatedLeafAze0Transport : IElmTransport
 {
-    public const string SimulatedVin = "1N4AZ0CP7HC308656";
+    public const string SimulatedVin = "1N4AZ0CP7HC000001";
 
     private readonly LeafDriveProfile _profile;
     private readonly object _gate = new();

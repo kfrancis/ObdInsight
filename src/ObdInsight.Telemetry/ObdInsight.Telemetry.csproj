@@ -9,6 +9,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <Description>Consumer telemetry facade for ObdInsight: cadence-tiered polling session with normalized decimal DTOs (km, km/h, C, kW, V), availability reporting, snapshots, and connection-state surfacing.</Description>
     <IsTrimmable>true</IsTrimmable>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
   </PropertyGroup>

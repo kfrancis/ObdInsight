@@ -108,7 +108,7 @@ Verify snapshot baselines contain the buggy `uint ReadSigned` (`tests/ObdInsight
 Concrete `BleElmTransport` (327 lines) and `BleScanner` (150 lines) live in the console app but declare `ObdInsight.Core.*` namespaces (paths/lines in Repo Map). DevTools carries a parallel ~2,200-line BLE stack implementing the same `IElmTransport` (`WindowsBleTransport.cs` 784 lines, `WindowsBinaryBleTransport.cs` 479, `WindowsBleScanner.cs` 166, plus profiles/factories). Two Windows BLE implementations to maintain; neither reusable by the MAUI app.
 
 **A6 — `Program.cs` god-file with a hardcoded vehicle. [Medium] [Fact]**
-`src/ObdInsight/Program.cs` is 1,074 lines; `RunElm327SessionAsync` spans lines 307–963 with ten copy-pasted diagnostic blocks. A literal VIN `"1N4AZ0CP7HC308656"` and `new NissanLeaf()` are baked in (`Program.cs:276-278`); the generic vehicle-selection path is commented out (`Program.cs:253-274`), making `Application/VehicleSelector.cs` dead code. Two competing VIN parsers exist in the same file (`DecodeVin` at 20–112, `TryParseVin` at 971–1072, the latter writing UI output from inside parsing).
+`src/ObdInsight/Program.cs` is 1,074 lines; `RunElm327SessionAsync` spans lines 307–963 with ten copy-pasted diagnostic blocks. A literal VIN `"<scrubbed-vin>"` and `new NissanLeaf()` are baked in (`Program.cs:276-278`); the generic vehicle-selection path is commented out (`Program.cs:253-274`), making `Application/VehicleSelector.cs` dead code. Two competing VIN parsers exist in the same file (`DecodeVin` at 20–112, `TryParseVin` at 971–1072, the latter writing UI output from inside parsing).
 
 **A7 — Smaller design debts. [Low] [Fact + judgment]**
 - "Generic" records drifting Leaf-specific: `VcmStatus.EcoTree`, `EcoIndicator`, `ChargeMode` (`src/ObdInsight.Core/Vehicles/Vehicles/VehicleCapabilities.cs:294-301`). Vehicle #2 will strain these; keep generic records physics-only.
@@ -133,7 +133,7 @@ Tautological assertions (`IsTypeOf<bool>()` on a bool field, `LeafAze0PassiveMon
 
 ### 3.4 Security
 
-Healthy for the domain — this is a local tool talking to a BLE dongle; there are no secrets, no injection surfaces, no network services, and no tracked credentials (verified repo-wide). One note: a personal BLE adapter MAC `66:1E:87:02:C2:DB` is hardcoded as the default in ~11 places (`src/ObdInsight/Properties/launchSettings.json:5`, both `BleSessionFixture.cs:22` files, `LeafBmsParsingHelpers.cs:14`, committed DevTools session captures) and a real VIN is embedded in `Program.cs:277` and captured reports. Mild privacy leak for a public repo, not a security hole. **[Low]**
+Healthy for the domain — this is a local tool talking to a BLE dongle; there are no secrets, no injection surfaces, no network services, and no tracked credentials (verified repo-wide). One note: a personal BLE adapter MAC `<scrubbed-adapter-mac>` is hardcoded as the default in ~11 places (`src/ObdInsight/Properties/launchSettings.json:5`, both `BleSessionFixture.cs:22` files, `LeafBmsParsingHelpers.cs:14`, committed DevTools session captures) and a real VIN is embedded in `Program.cs:277` and captured reports. Mild privacy leak for a public repo, not a security hole. **[Low]**
 
 ### 3.5 Performance
 
