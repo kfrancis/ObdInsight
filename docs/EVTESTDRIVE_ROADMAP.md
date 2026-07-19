@@ -58,48 +58,66 @@ Milestones: **M-A** pre-check · **M-B** live drive · **M-C** post-check/report
 
 ## Phase 0 — contract + dev unblock
 
-- [ ] **B1 — `ITelemetrySession` API + normalized DTOs.** (L; design doc first)
-  New consumer facade (new project `src/ObdInsight.Telemetry` or Core namespace):
-  caller registers signal set with cadence tier (high 1–2 s / medium 5–10 s / low
-  30–60 s) → scheduler serves broadcast signals from the `CanMonitor` latest-frame cache
-  (no I/O) and batches UDS queries through existing `CanMonitor.SuspendAsync`
-  arbitration → per-sample event or `IAsyncEnumerable<TelemetrySample>`. DTOs use
-  `decimal`, km / km/h / °C / kW / kWh / V, every field nullable (null = unavailable),
-  range-validated against `[CanSignal]` Min/Max (out-of-range → null, never a bogus
-  report value). Include one-shot `GetSnapshotAsync` (pre/post-check) and a per-signal
-  availability report probed at connect.
-  *Acceptance:* design doc in `docs/`; replay test drives a 3-tier session over scripted
-  Leaf data end-to-end (cache signals + UDS signals interleaved, monitor running
-  throughout); consumer never touches `ElmSession`/`CanMonitor` directly.
-  *Unblocks:* M-A, M-B. *Deps:* none (composes on P3 arbitration).
+- [x] **B1 — `ITelemetrySession` API + normalized DTOs.** (L) — **DONE 2026-07-19**
+  (design doc `docs/TELEMETRY_SESSION_DESIGN.md` — flagged for review; API can still move).
+  New `src/ObdInsight.Telemetry` (net9.0, refs Core only): `ITelemetrySession` /
+  `TelemetrySession` with three cadence tiers (`TelemetrySubscription.Default` = the
+  EvTestDrive spec), batch-shaped `ITelemetryProvider` adapters over capabilities
+  (one UDS exchange serves SOC+V+A+kW+SoH), cache-only reads bounded by
+  `CacheReadTimeout` (cold cache can't stall a tier), per-batch event +
+  `IAsyncEnumerable`, live `Availability` map (UDS-miss = Unavailable, cold broadcast =
+  Unknown until data appears), `GetSnapshotAsync` incl. VIN, decimal DTOs (km/km-h/°C/
+  kW/V, all nullable), static plausibility validation (out-of-range → null; in the
+  facade because `[CanSignal]` Min/Max is doc-only + reflection is iOS-AOT-hostile).
+  Provider-less signals (odometer, cycles, DTCs) degrade to null. Tests:
+  `Telemetry/TelemetrySessionTests` — 3-tier replay end-to-end (UDS + cache interleaved,
+  monitor running throughout), snapshot shape, absent-broadcast degradation; green ×6
+  Debug + Release. *Unblocked:* M-A, M-B app-side work.
 
-- [ ] **B2 — Simulated transport package.** (M)
-  Promote the `ReplayElmTransport` pattern into a shipping `src/ObdInsight.Simulation`:
-  lenient auto-respond mode, time-driven scripted "drive profiles" (reuse
-  `LeafGoldenData` + DevTools `Reports/leaf_session_*.txt` captures), a simulated Leaf
-  AZE0 that answers BMS/VIN UDS and streams CAR-CAN broadcast frames continuously for
-  30+ min with evolving values (SOC drain, temp rise, speed curve).
-  *Acceptance:* a console or test harness runs a full simulated pre-check → drive →
-  post-check through the B1 API with zero hardware; EvTestDrive can reference the
-  package without touching test assemblies.
-  *Unblocks:* app development day 1. *Deps:* B1 API sketch (sim should exercise the real contract).
+- [x] **B8 — Range capability (0x5A9), pulled forward from Phase 1.** — **DONE 2026-07-19.**
+  `VcmStatus.RangeKm` filled from `VcmFrame_5A9_AZE0.RangeInstrumentCluster`
+  independently of 0x510 presence; 0xFFF charging sentinel → null. Rotation already
+  covers 0x5xx. Replay tests: capture value 179.2 km, sentinel → null, frame-absent →
+  null (`LeafAze0VcmRangeTests`).
 
-- [ ] **B3 — SOC for the 30 kWh AZE0.** (S/M)
-  Decode SOC from BMS Group 01 at AZE0 offsets (LeafSpy proves the field exists in this
-  response; research LeafSpy/OVMS layouts). Also expose GIDS-derived energy (kWh) where
-  available. Add `AppliesTo` coverage so the supported variant stops returning null.
-  *Acceptance:* replay test with golden Group01 capture yields plausible SOC%;
-  hardware-verify against dash on next live session (flag pending).
-  *Unblocks:* M-A, M-B flagship signal. *Deps:* none.
+- [x] **B2 — Simulated transport package.** (M) — **DONE 2026-07-19.**
+  New `src/ObdInsight.Simulation` (net9.0, refs Core, zero test-framework deps):
+  `ReplayElmTransport` + `LeafGoldenData` moved in from the former
+  `tests/ObdInsight.Tests.Base` (project deleted; tests now reference Simulation), plus
+  `SimulatedLeafAze0Transport` + `LeafDriveProfile` — a time-driven fake 30 kWh Leaf
+  behind a fake ELM327: answers the real init/protocol sequence, BMS/VIN UDS with
+  state-accurate ISO-TP payloads (SOC at the B3 offset, 96 cells, Group04 thermistors,
+  shunts), streams CAR-CAN broadcast (0x284/0x54x/0x510/0x5A9/0x421/0x5B3) with evolving
+  values (SOC drain, speed cycles, pack warming), `TimeScale` compression for tests.
+  Deliberate limits documented: AT CM/CF filters ignored; EV-CAN broadcast absent (like
+  a stock adapter). *Acceptance met:* `SimulatedDriveTests` runs pre-check → 20 s
+  compressed drive → post-check purely through `ITelemetrySession` (SOC drained, pack
+  warmed, range shrank, VIN read); `SimulatedLeafTransportTests` covers init, cold/
+  running-monitor UDS, cells, VIN, scheduler, stop-then-snapshot. Suite 71/71 ×4 + 42/42.
+  Found while testing: sim clock now starts on first adapter traffic (session stack
+  never calls `OpenAsync`).
+  *Unblocked:* EvTestDrive development day 1.
 
-- [ ] **B4 — Annotations split (audit QW4).** (S)
-  Remove the duplicate runtime `ProjectReference` to `ObdInsight.SourceGeneration` from
-  Core and the console app; move attribute types + `CanBits` to a tiny annotations
-  assembly or linked source. Generator stays analyzer-only for consumers.
-  *Acceptance:* no Roslyn/`Microsoft.CodeAnalysis` in Core's runtime closure
-  (`dotnet build` + inspect); both test suites green; snapshots unchanged (or accepted
-  deliberately).
-  *Unblocks:* clean MAUI/AOT consumption. *Deps:* none.
+- [x] **B3 — SOC for the 30 kWh AZE0.** (S/M) — **DONE 2026-07-19 (hardware check pending).**
+  `Group01Response.SocPercent` gained a 24/30 kWh field: payload offset 29, UInt24BE,
+  0.0001 %/bit, `ValidRange 0..100`, `AppliesTo="24kWh,30kWh"`. Offset derived from the
+  consistent ZE1 = AZE0 + 2 shift of this response (Hx 26→28, AHR 33→35, documented ZE1
+  SOC at 31) and validated against the 2026-01-18 golden capture: `06 65 8A` → 41.92 %
+  at pack 361.78 V (≈3.77 V/cell — consistent). Replay test
+  `GetStatus_ExtractsSoc_For30kWhLeaf` replaces the old SOC-is-null test; 57/57 green.
+  **Needs hardware check:** compare against dash SOC next live session. GIDS-derived kWh
+  skipped — GIDS lives on EV-CAN 0x5BC, unreachable on stock adapters; revisit if a UDS
+  source is identified (B14 research).
+  *Unblocks:* M-A, M-B flagship signal.
+
+- [x] **B4 — Annotations split (audit QW4).** (S) — **DONE 2026-07-19.**
+  New `src/ObdInsight.Annotations` (net9.0, dependency-free) owns the attribute sources +
+  hand-written `CanBits` (namespaces unchanged — generator matches by full name). The
+  generator compiles them as linked source (analyzer stays self-contained; a
+  ProjectReference would not load in the analyzer context). Duplicate runtime refs removed
+  from Core and the console app; Core now references Annotations. Verified: Core bin =
+  Core + Annotations only (no Roslyn); 57/57 + 42/42 green, snapshots untouched; DevTools
+  compiles. Follow-up unlocked: M1.2 single-source CanBits (test-project copy deletable).
 
 ## Phase 1 — pre-check complete (M-A)
 
@@ -129,12 +147,8 @@ Milestones: **M-A** pre-check · **M-B** live drive · **M-C** post-check/report
   in capability implementations.
   *Unblocks:* M-A graceful degradation. *Deps:* B1 (availability report consumes this).
 
-- [ ] **B8 — Range capability (0x5A9).** (S)
-  Wire `VcmFrame_5A9_AZE0.RangeInstrumentCluster` (CAR-CAN, capture-locked 179.2 km)
-  into a capability field (likely `IVcm.VcmStatus` or new). Add the 0x5xx window to the
-  filter rotation if not already covered.
-  *Acceptance:* replay test through monitor cache; field null when frame absent.
-  *Unblocks:* M-B medium tier. *Deps:* none.
+- [x] **B8 — Range capability (0x5A9).** (S) — **DONE 2026-07-19, pulled into Phase 0**
+  (see the entry under B1 above).
 
 ## Phase 2 — live drive on phones (M-B)
 

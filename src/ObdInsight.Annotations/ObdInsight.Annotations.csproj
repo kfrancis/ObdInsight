@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Runtime annotations consumed by frame/UDS definitions: [CanFrame]/[CanSignal]/[Uds*]
+    attribute types plus the hand-written CanBits helper. Kept dependency-free.
+
+    The source generator (ObdInsight.SourceGeneration) compiles these same files as
+    linked source so its attribute-matching enum casts resolve without a runtime
+    assembly reference — do not rename the ObdInsight.SourceGeneration.* namespaces
+    here without updating the generator's full-name match strings.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

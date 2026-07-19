@@ -13,6 +13,15 @@
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
   </ItemGroup>
 
+  <!-- Attribute types + CanBits live in ObdInsight.Annotations (runtime assembly for
+       consumers); compiled here as linked source so the analyzer stays self-contained
+       (a ProjectReference dependency would not load in the analyzer context). -->
+  <ItemGroup>
+    <Compile Include="..\ObdInsight.Annotations\**\*.cs"
+             Exclude="..\ObdInsight.Annotations\obj\**;..\ObdInsight.Annotations\bin\**"
+             Link="Annotations\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <!-- Make this package a source generator -->
   <ItemGroup>
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />

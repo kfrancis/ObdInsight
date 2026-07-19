@@ -1,7 +1,7 @@
 using System.Text;
 using ObdInsight.Core.Communication.Elm327;
 
-namespace ObdInsight.Tests.Base;
+namespace ObdInsight.Simulation;
 
 /// <summary>
 /// Deterministic in-memory <see cref="IElmTransport"/> for testing <c>ElmFramer</c>/<c>ElmSession</c>

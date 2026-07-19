@@ -1,5 +1,5 @@
 using ObdInsight.Core.Protocols;
-using ObdInsight.Tests.Base;
+using ObdInsight.Simulation;
 
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 

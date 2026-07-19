@@ -1,7 +1,7 @@
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
-using ObdInsight.Tests.Base;
+using ObdInsight.Simulation;
 
 namespace OdbTestApp.Tests.Elm327;
 

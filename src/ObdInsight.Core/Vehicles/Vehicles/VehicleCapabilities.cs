@@ -312,5 +312,11 @@ public sealed record VcmStatus
 
     /// <summary>Throttle position (0-100%) - from frame 0x180</summary>
     public double? ThrottlePositionPercent { get; init; }
+
+    /// <summary>
+    /// Remaining range estimate as displayed on the instrument cluster (km).
+    /// Null when the source frame is absent or reports the "charging" sentinel.
+    /// </summary>
+    public double? RangeKm { get; init; }
 }
 

@@ -12,8 +12,9 @@ BLE OBD-II adapters. The actively developed artifact is a **Windows console app*
 no project references — do not assume the MAUI app works.
 
 `AUDIT.md` (repo root) tracks the improvement plan and what has been fixed;
-`docs/STREAMING_MONITOR_DESIGN.md` is the streaming-API design (P1 + P2 typed layer
-implemented; capability migration pending).
+`docs/STREAMING_MONITOR_DESIGN.md` is the streaming-API design (P1–P3 implemented:
+shared monitor, typed layer, capability migration, `SuspendAsync` UDS arbitration,
+hardware filter rotation); `docs/EVTESTDRIVE_ROADMAP.md` is the consumer-app readiness plan.
 
 ## Solution layout
 
@@ -21,11 +22,13 @@ implemented; capability migration pending).
 |---|---|
 | `src/ObdInsight.Core` | The library: ELM327 session, protocols, vehicle capabilities, Leaf implementation. net9.0, no UI/platform deps, logging via `ILogger` (never Serilog/Console here) |
 | `src/ObdInsight` | Windows console app: BLE transports (`BleElmTransport`, `BleScanner`), Spectre UI, Serilog wiring. NOTE: its transport files declare `ObdInsight.Core.*` namespaces but live in this project |
-| `src/ObdInsight.SourceGeneration` | Roslyn incremental generators (netstandard2.0): CAN signal decoders + UDS query methods. Referenced by Core both as analyzer AND runtime lib (runtime ref exists for attribute types + `CanBits`) |
+| `src/ObdInsight.SourceGeneration` | Roslyn incremental generators (netstandard2.0): CAN signal decoders + UDS query methods. Analyzer-only reference from Core; compiles the Annotations sources as linked source |
+| `src/ObdInsight.Annotations` | Runtime annotations (net9.0, dependency-free): `[CanFrame]`/`[CanSignal]`/`[Uds*]` attribute types + `CanBits`. Namespaces stay `ObdInsight.SourceGeneration.*` (generator matches by full name) |
+| `src/ObdInsight.Telemetry` | Consumer telemetry facade (net9.0, refs Core): `ITelemetrySession` — cadence-tiered polling, decimal DTOs, availability report, snapshots. See `docs/TELEMETRY_SESSION_DESIGN.md` |
+| `src/ObdInsight.Simulation` | Shippable sim package (net9.0, refs Core, no test deps): `ReplayElmTransport` (scripted, test workhorse), `LeafGoldenData` (golden captures), `SimulatedLeafAze0Transport` + `LeafDriveProfile` (time-driven fake Leaf for zero-hardware dev) |
 | `src/ObdInsight.DevTools` | Windows diagnostic console. Partially ported to current architecture; several commands stubbed; `*.cs.broken` files are dead old code |
 | `src/ObdInsight.Maui` | Empty MAUI template. `src/ObdInsight.Drivers` is an empty leftover folder |
-| `tests/ObdInsight.Tests` | Deterministic unit tests (TUnit) — run these |
-| `tests/ObdInsight.Tests.Base` | Shared test infra: `ReplayElmTransport`, `LeafGoldenData` |
+| `tests/ObdInsight.Tests` | Deterministic unit tests (TUnit) — run these. Test infra (`ReplayElmTransport`, `LeafGoldenData`) comes from `src/ObdInsight.Simulation` (the former `tests/ObdInsight.Tests.Base` was folded into it 2026-07-19) |
 | `tests/ObdInsight.IntegrationTests` | Hardware tests — auto-skip unless `LEAF_BLE_ADDRESS` env var set (needs a real Leaf + BLE adapter) |
 | `tests/ObdInsight.SourceGeneration.Tests` | Generator snapshot tests (Verify) |
 
@@ -107,7 +110,7 @@ public partial class BatteryFrame_1DB_AZE0
 
 - Unit tests must exercise **production code** — never re-implement parsers test-side. Drive
   `ElmSession`/capabilities through `ReplayElmTransport`
-  (`tests/ObdInsight.Tests.Base/ReplayElmTransport.cs`): scripted `Expect(cmd, response)`
+  (`src/ObdInsight.Simulation/ReplayElmTransport.cs`): scripted `Expect(cmd, response)`
   exchanges (responses include the `\r\r>` prompt), lenient auto-`OK` for unscripted AT
   commands, `EnqueueIncoming()` for monitoring frames, scripted `Expect("ATMA", "")` keeps
   monitoring silent.
@@ -144,7 +147,8 @@ public partial class BatteryFrame_1DB_AZE0
   time out on data-absence until UDS alternatives exist; their frame definitions stay for
   tests/modified-adapter transports. See `docs/FRAME_LAYOUT_AUDIT.md`.
 - `ElmSession` is not thread-safe; query and monitoring modes are mutually exclusive
-  (`QueryAsync` throws while monitoring — arbitration is design-doc P3, not built yet).
+  (`QueryAsync` throws while monitoring). Arbitration exists: `CanMonitor.SuspendAsync` +
+  `MonitorSuspendingElmSession` decorator let UDS capabilities coexist with a running monitor.
 - Test fixtures/launchSettings contain a hardcoded adapter MAC + a real VIN (audit M3.5:
   scrub before making the repo public).
 - Stale docs exist: `README.md` (old architecture diagram), `tests/ObdInsight.Tests/README.md`.

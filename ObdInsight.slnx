@@ -18,18 +18,20 @@
     <File Path="vehicle_nissanleaf.cpp" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/ObdInsight.Annotations/ObdInsight.Annotations.csproj" />
     <Project Path="src/ObdInsight.Core/ObdInsight.Core.csproj" />
     <Project Path="src/ObdInsight.DevTools/ObdInsight.DevTools.csproj" Id="c764fe8b-9a9f-4720-8bd1-4e8023ed8334" />
     <Project Path="src/ObdInsight.Maui/ObdInsight.Maui.csproj">
       <Deploy Solution="Debug|*" />
     </Project>
+    <Project Path="src/ObdInsight.Simulation/ObdInsight.Simulation.csproj" />
     <Project Path="src/ObdInsight.SourceGeneration/ObdInsight.SourceGeneration.csproj" Id="31a510ba-88f2-4d38-b601-005c0acfd9aa" />
+    <Project Path="src/ObdInsight.Telemetry/ObdInsight.Telemetry.csproj" />
     <Project Path="src/ObdInsight/ObdInsight.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ObdInsight.IntegrationTests/ObdInsight.IntegrationTests.csproj" Id="1ba1ea61-402b-4cd0-8a1e-5c0fb02037f8" />
     <Project Path="tests/ObdInsight.SourceGeneration.Tests/ObdInsight.SourceGeneration.Tests.csproj" />
-    <Project Path="tests/ObdInsight.Tests.Base/ObdInsight.Tests.Base.csproj" Id="290f2336-73dc-4781-963f-7c3f9471b098" />
     <Project Path="tests/ObdInsight.Tests/ObdInsight.Tests.csproj" />
   </Folder>
 </Solution>

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Consumer telemetry facade (roadmap B1, docs/TELEMETRY_SESSION_DESIGN.md):
+    cadence-tiered polling session with normalized decimal DTOs over the Core
+    capability surface. Plain net9.0, no platform or UI dependencies.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ObdInsight.Core\ObdInsight.Core.csproj" />
+  </ItemGroup>
+
+</Project>

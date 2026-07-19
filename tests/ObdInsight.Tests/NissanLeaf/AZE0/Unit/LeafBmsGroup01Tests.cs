@@ -1,7 +1,7 @@
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
-using ObdInsight.Tests.Base;
+using ObdInsight.Simulation;
 
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
@@ -66,12 +66,16 @@ public class LeafBmsGroup01ParsingTests
     }
 
     [Test]
-    public async Task GetStatus_SocIsNull_For24And30kWhLeaf(CancellationToken token)
+    public async Task GetStatus_ExtractsSoc_For30kWhLeaf(CancellationToken token)
     {
         var result = await QueryGoldenStatusAsync(token);
 
-        // SOC field only exists in the 40kWh/ZE1 response layout (must use passive CAN otherwise)
-        await Assert.That(result.SocPercent).IsNull();
+        // 24/30 kWh layout: SOC at payload offset 29-31, UInt24BE, 0.0001 %/bit
+        // (ZE1 = AZE0 + 2 shift; see Group01Response remarks). 41.92 % at pack
+        // 361.78 V ≈ 3.77 V/cell — plausible mid-charge. Hardware dash check pending.
+        var expectedSoc = 0x06658A / 10000.0; // 41.92 %
+        await Assert.That(result.SocPercent).IsNotNull();
+        await Assert.That(Math.Abs(result.SocPercent!.Value - expectedSoc)).IsLessThan(0.01);
     }
 
     [Test]

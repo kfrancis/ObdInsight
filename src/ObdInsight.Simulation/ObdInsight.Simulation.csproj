@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Shippable simulation package (roadmap B2): scripted replay transport
+    (ReplayElmTransport — also the unit-test workhorse), golden captured vehicle data,
+    and a time-driven simulated Leaf AZE0 for developing consumers (EvTestDrive) with
+    zero hardware. Plain net9.0, Core only — no test-framework dependencies.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ObdInsight.Core\ObdInsight.Core.csproj" />
+  </ItemGroup>
+
+</Project>

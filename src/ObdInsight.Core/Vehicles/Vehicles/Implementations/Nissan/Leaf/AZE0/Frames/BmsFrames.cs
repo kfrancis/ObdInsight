@@ -153,7 +153,15 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
             [UdsField(Offset = 28, Length = 2, Type = UdsFieldType.UInt16BE, Scale = 1.0 / 102.4, AppliesTo = "40kWh_ZE1")]
             public double HealthPercent { get; set; }
 
-            // SOC: Only available in ZE1/40kWh+ models
+            // SOC (0.0001 %/bit, UInt24BE). ZE1 offset 31 is documented (OVMS
+            // PollReply_Battery, Leaf2018-CAN). The 24/30 kWh offset 29 follows the
+            // consistent ZE1 = AZE0 + 2 shift of this response's fields (Hx 26→28,
+            // AHR 33→35) and validates against the 2026-01-18 golden capture:
+            // payload[29..31] = 06 65 8A → 41.92 % at pack 361.78 V (≈3.77 V/cell,
+            // consistent for NMC at ~40-50 %). Reference-derived — hardware
+            // cross-check against the dash still pending.
+            [UdsField(Offset = 29, Length = 3, Type = UdsFieldType.UInt24BE, Scale = 0.0001,
+                ValidRange = "0..100", AppliesTo = "24kWh,30kWh")]
             [UdsField(Offset = 31, Length = 3, Type = UdsFieldType.UInt24BE, Scale = 0.0001, AppliesTo = "40kWh_ZE1")]
             public double? SocPercent { get; set; }
 

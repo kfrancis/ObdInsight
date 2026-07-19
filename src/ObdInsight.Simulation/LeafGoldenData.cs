@@ -1,6 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
-namespace ObdInsight.Tests.Base;
+namespace ObdInsight.Simulation;
 
 /// <summary>
 /// Golden ELM327 response lines captured from a real Nissan Leaf AZE0.

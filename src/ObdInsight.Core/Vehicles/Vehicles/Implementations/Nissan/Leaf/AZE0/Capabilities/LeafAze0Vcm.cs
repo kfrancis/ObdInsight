@@ -85,9 +85,10 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
             await _monitor.StartAsync(ct);
             await _monitor.WaitForCacheAsync(StatusWarmupTimeout, ct, 0x510);
 
+            VcmStatus status;
             if (_monitor.TryGetLatest<VcmFrame_510_AZE0>(out var frame510))
             {
-                return new VcmStatus
+                status = new VcmStatus
                 {
                     ClimateControlActive = frame510.ClimateControlActive,
                     ClimateControlPowerKw = frame510.ClimateControlPowerConsumption,
@@ -101,17 +102,28 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
                     ChargeMode = frame510.ChargeMode
                 };
             }
-
-            if (_monitor.TryGetLatest<VcmFrame_180_AZE0>(out var frame180))
+            else if (_monitor.TryGetLatest<VcmFrame_180_AZE0>(out var frame180))
             {
-                return new VcmStatus
+                status = new VcmStatus
                 {
                     MotorCurrentAmps = frame180.MotorAmp,
                     ThrottlePositionPercent = frame180.ThrottlePosition
                 };
             }
+            else
+            {
+                status = new VcmStatus();
+            }
 
-            return new VcmStatus();
+            // Range rides 0x5A9 (CAR-CAN, hardware-locked 179.2 km capture) independently
+            // of 0x510 presence. Raw 0xFFF = "charging" sentinel → 819.0 after ×0.2 scaling.
+            if (_monitor.TryGetLatest<VcmFrame_5A9_AZE0>(out var frame5A9) &&
+                frame5A9.RangeInstrumentCluster < 819.0)
+            {
+                status = status with { RangeKm = frame5A9.RangeInstrumentCluster };
+            }
+
+            return status;
         }
     }
 }

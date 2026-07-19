@@ -1,6 +1,6 @@
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
-using ObdInsight.Tests.Base;
+using ObdInsight.Simulation;
 
 namespace OdbTestApp.Tests.Elm327;
 
@@ -76,7 +76,7 @@ public class ElmSessionReplayTests
         // Wakeup broadcast probe fails...
         transport.Expect("0100", "NO DATA\r\r>");
         // ...then the strategy's BMS probe (AT setup is auto-OK'd) gets a 7BB response.
-        transport.Expect("2101", ObdInsight.Tests.Base.LeafGoldenData.GoldenGroup01Lines.AsElmResponse());
+        transport.Expect("2101", ObdInsight.Simulation.LeafGoldenData.GoldenGroup01Lines.AsElmResponse());
 
         await session.InitializeAndLockAsync(token);
 
