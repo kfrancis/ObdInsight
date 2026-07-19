@@ -365,3 +365,18 @@ enables stock-adapter gear position for `LeafAze0Vcm`; (3) CAR-CAN 0x5B3 SOH `d1
 (OVMS trusts 5BC byte-4 SOH only on 24 kWh ZE0 — our 65% read is suspect); (4) 0x355
 odometer-units bit, 0x385 TPMS pressures; (5) 284 speed divisor: OVMS uses ~/98
 (GPS-calibrated) vs our ×0.01.
+
+**Addendum 2 (2026-07-18) — third-party app log confirms the EV-CAN finding.** Reviewed an
+exported log from a commercial OBD app (Veepeak BLE, 2025-12-06 session, "Leaf ZE1" profile)
+on the same car: the app sources effectively all data via active UDS polling (ATSH79B/
+ATCRA7BB, groups 2101 ×32k / 2102 ×29k / 210E/210F/2104/210C, plus ATSH7DF standard OBD and
+a one-shot ~100-header ECU enumeration). It attempted accept-all ATMA exactly once → hit
+BUFFER FULL within one burst → never retried. The burst's frame set (002, 174, 176, 1CB,
+1CC, 1D5, 1D6, 215, 216, 245, 284, 285, 292, 2DE, 50A, 50D, 510, 551, 5A9, 5B3, 6F6) is
+CAR-CAN-only — no 1DB/1DC/1DA/11A/1CA/55A — independently confirming the stock-adapter
+EV-CAN-broadcast absence. Bonus samples consistent with our fixes: 284/285 bytes 6-7
+counter (…76FC/…76FD, speed bytes 4-5 = 0), 245 neutral 0x7FE/0x802 pattern with byte-4
+counter, and a live 0x5B3 (`5084…` → SOH = d1>>1 = 66%) agreeing with our 5BC byte-4 SOH
+read of 65% — raising confidence that 5BC SOH is valid on AZE0. Note: the app's ZE1 profile
+mis-matches this AZE0 (BMS reply len 0x2B = 30 kWh variant), so its displayed battery values
+may use wrong offsets/scales.
