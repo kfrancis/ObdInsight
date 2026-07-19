@@ -3,8 +3,15 @@ name: Release
 # Publishes the ObdInsight packages to NuGet.org via Trusted Publishing (OIDC) —
 # no stored API keys. One-time setup lives in docs/RELEASING.md.
 on:
+  workflow_dispatch: # Allow running the workflow manually from the GitHub UI
   push:
     tags: ['v*']
+
+env:
+  DOTNET_MULTILEVEL_LOOKUP: 0
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
+  DOTNET_NOLOGO: true
 
 permissions:
   contents: read
