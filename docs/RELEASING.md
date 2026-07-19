@@ -12,7 +12,7 @@
 | `ObdInsight.SourceGeneration` | Analyzer-only package (`analyzers/dotnet/cs`); needed only by projects that define their own frames |
 | `ObdInsight.Telemetry` | `ITelemetrySession` consumer facade |
 | `ObdInsight.Simulation` | Replay transport + simulated Leaf for hardware-free dev |
-| `ObdInsight.Transports.Ble` | Plugin.BLE transport, `net9.0` + `net9.0-android` + `net9.0-ios` |
+| `ObdInsight.Transports.Ble` | Plugin.BLE transport, `net10.0` + `net10.0-android` + `net10.0-ios` |
 
 Shared metadata (license, repo URL) lives in `src/Directory.Build.props`. Every
 package ships its own `README.md` (lives next to each csproj; rendered on nuget.org —

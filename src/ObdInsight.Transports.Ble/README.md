@@ -2,7 +2,7 @@
 
 Cross-platform BLE ELM327 transport for ObdInsight on
 [Plugin.BLE](https://github.com/dotnet-bluetooth-le/dotnet-bluetooth-le)
-(`net9.0-android` / `net9.0-ios`, plus a plain `net9.0` reference target):
+(`net10.0-android` / `net10.0-ios`, plus a plain `net10.0` reference target):
 
 - **GATT profile auto-probe** — Vgate iCar Pro (FFE0 with a single dual-role FFE1
   characteristic), Veepeak (FFF0/FFF1/FFF2), Nordic UART, with single-characteristic
