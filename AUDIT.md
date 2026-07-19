@@ -396,3 +396,27 @@ had no 0x4xx window, so 0x421 could never reach the cache — added mask 700/pat
 decode test, and a capability-level replay test (`LeafAze0VcmGearFallbackTests`) driving
 the 1-byte frame through ElmSession/CanMonitor into the fallback. Suite 51/51 green ×3;
 DevTools compiles.
+
+**Addendum 4 (2026-07-18) — EV-CAN frame layouts fixed against OVMS.** Completed the
+follow-up from addendum 2: `BatteryFrame_1DB_AZE0` Current (byte0+byte1[7..5], 11-bit two's
+complement, 0.5 A/bit; wire sign convention flagged unverified — OVMS negates it) and
+Voltage (byte2+byte3[7..6], 0.5 V/bit); `BatteryFrame_1DC_AZE0` discharge/charge/charger-max
+power limits; `InvMcFrame_1DA_AZE0` torque (byte2[2..0]+byte3, 11-bit signed, 0.5 Nm/bit)
+and RPM (byte4[6..0]+byte5, 15-bit signed, /2 — byte4 bit7 undocumented, excluded);
+`BatteryFrame_5C0_AZE0` temperatures ((17,7)→(16,8) — the old def halved twice). All use
+the raw-part + computed-property pattern; capability-facing names unchanged (`MotorStatus`
+untouched). Deliberate deviations from OVMS, documented in code: 1DC charge-limit packing
+uses <<4 (10-bit field per DBC; OVMS's <<2 self-overlaps and contradicts its neighboring
+fields — judged an OVMS bug), and 1DC MaxPowerForCharger keeps the DBC −10 kW offset that
+OVMS omits (unresolved; flagged for hardware verification). 0x59E left unfixed: only weak/
+conflicting references (OVMS reads a 12-bit field where the DBC says 9, and ignores it on
+30 kWh) — not worth locking a guess into tests. The synthetic 1DB/1DA unit tests that
+enshrined the old wrong layouts (C1b pattern) were rewritten with OVMS-derived bytes, and
+the two CanMonitor typed-decode tests re-encoded. New 1DC and 5C0 decode tests. Also added
+UsableSocValid (0x7F sentinel, per OVMS). Found + fixed during test bring-up: first draft
+placed VoltageRawLow at (22,2) (byte2 bits) instead of (30,2) (byte3 bits) — caught by the
+rewritten tests failing, which is the coverage working as intended. Suite 53/53 green ×3;
+generator suite 42/42 untouched; DevTools compiles. Remaining EV-CAN caveat: everything
+here is reference-verified only (no hardware can see these frames on stock adapters);
+first modified-adapter or CAN-shield session should spot-check 1DB voltage/current against
+the BMS UDS values.

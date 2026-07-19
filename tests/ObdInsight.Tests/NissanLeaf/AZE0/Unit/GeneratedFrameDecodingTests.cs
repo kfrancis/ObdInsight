@@ -11,21 +11,20 @@ namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 /// </summary>
 public class GeneratedFrameDecodingTests
 {
-    /// <summary>Builds an 8-byte little-endian CAN frame from a raw 64-bit value.</summary>
-    private static byte[] Frame(ulong raw) => BitConverter.GetBytes(raw);
-
-    /// <summary>Encodes a signed value as two's complement in <paramref name="bitLen"/> bits at <paramref name="bitPos"/>.</summary>
-    private static ulong SignedField(long value, int bitPos, int bitLen)
-        => (((ulong)value) & ((1ul << bitLen) - 1)) << bitPos;
+    // ------------------------------------------------------------------------------------
+    // EV-CAN frame layouts (1DB/1DC/1DA/5C0): no hardware captures exist — these frames are
+    // invisible on stock ELM327 adapters (see CLAUDE.md gotcha). Byte encodings below are
+    // hand-computed from the OVMS vehicle_nissanleaf.cpp reference decoders (repo root),
+    // which read EV-CAN directly. Guards both the signed-decode defect (AUDIT.md C1) and
+    // the Motorola-transcription defect (AUDIT.md §7 addendum 2).
+    // ------------------------------------------------------------------------------------
 
     [Test]
     public async Task BatteryFrame1db_NegativeCurrent_DecodesAsCharge()
     {
-        // Current: bit 13, 11 bits, signed, Factor 0.5 A/bit.
-        // Raw -200 => -100.0 A (charging). The defect decoded this as ~2.1e9 A.
-        var data = Frame(SignedField(-200, 13, 11));
-
-        var frame = BatteryFrame_1DB_AZE0.Parse(data);
+        // Current = 11-bit two's complement (byte0 + byte1[7..5]), 0.5 A/bit.
+        // Raw -200 = 0x738 => byte0 0xE7, byte1 0x00 => -100.0 A.
+        var frame = BatteryFrame_1DB_AZE0.Parse(Captured("E700000000000000"));
 
         await Assert.That(frame.Current).IsEqualTo(-100.0);
     }
@@ -33,10 +32,8 @@ public class GeneratedFrameDecodingTests
     [Test]
     public async Task BatteryFrame1db_PositiveCurrent_DecodesAsDischarge()
     {
-        // Raw 100 => 50.0 A discharge.
-        var data = Frame(SignedField(100, 13, 11));
-
-        var frame = BatteryFrame_1DB_AZE0.Parse(data);
+        // Raw 100 = 0x064 => byte0 0x0C, byte1 0x80 => 50.0 A.
+        var frame = BatteryFrame_1DB_AZE0.Parse(Captured("0C80000000000000"));
 
         await Assert.That(frame.Current).IsEqualTo(50.0);
     }
@@ -44,27 +41,51 @@ public class GeneratedFrameDecodingTests
     [Test]
     public async Task BatteryFrame1db_VoltageAndCurrent_DecodeTogether()
     {
-        // Voltage: bit 30, 10 bits, unsigned, Factor 0.5 V/bit. Raw 720 => 360.0 V.
-        // Current: raw -32 => -16.0 A.
-        var data = Frame(SignedField(-32, 13, 11) | (720ul << 30));
-
-        var frame = BatteryFrame_1DB_AZE0.Parse(data);
+        // Voltage = 10-bit (byte2 + byte3[7..6]), 0.5 V/bit: raw 720 => byte2 0xB4, byte3 0x00 => 360.0 V.
+        // Current raw -32 = 0x7E0 => byte0 0xFC, byte1 0x00 => -16.0 A.
+        var frame = BatteryFrame_1DB_AZE0.Parse(Captured("FC00B40000000000"));
 
         await Assert.That(frame.Voltage).IsEqualTo(360.0);
         await Assert.That(frame.Current).IsEqualTo(-16.0);
     }
 
     [Test]
+    public async Task BatteryFrame1dc_PowerLimits_DecodePerOvmsLayout()
+    {
+        // Discharge = (byte0<<2 | byte1>>6)/4: 0x6E,0x19 => 440 => 110.0 kW.
+        // Charge = ((byte1&0x3F)<<4 | byte2>>4)/4: 0x19,0x02 => 400 => 100.0 kW.
+        //   (10-bit field per the DBC; OVMS's <<2 is inconsistent with its own
+        //   neighboring 10-bit fields and would overlap the low nibble.)
+        // Charger max = ((byte2&0x0F)<<6 | byte3>>2)*0.1 - 10: 0x02,0x98 => 166 => 6.6 kW.
+        var frame = BatteryFrame_1DC_AZE0.Parse(Captured("6E19029800000000"));
+
+        await Assert.That(frame.DischargePowerLimit).IsEqualTo(110.0);
+        await Assert.That(frame.ChargePowerLimit).IsEqualTo(100.0);
+        await Assert.That(frame.MaxPowerForCharger).IsEqualTo(6.6).Within(1e-9);
+    }
+
+    [Test]
     public async Task InverterFrame1da_NegativeTorqueAndReverseRpm_DecodeSigned()
     {
-        // Effective torque: bit 18, 11 bits, signed, Factor 0.5 Nm/bit. Raw -80 => -40.0 Nm (regen).
-        // Motor RPM: bit 39, 15 bits, signed, unscaled. Raw -1500 => reverse.
-        var data = Frame(SignedField(-80, 18, 11) | SignedField(-1500, 39, 15));
-
-        var frame = InvMcFrame_1DA_AZE0.Parse(data);
+        // Torque = 11-bit two's complement (byte2[2..0] + byte3), 0.5 Nm/bit:
+        //   raw -80 = 0x7B0 => byte2 0x07, byte3 0xB0 => -40.0 Nm (regen).
+        // RPM = 15-bit two's complement (byte4[6..0] + byte5) / 2:
+        //   raw -3000 = 0x7448 => byte4 0x74, byte5 0x48 => -1500 rpm (reverse).
+        var frame = InvMcFrame_1DA_AZE0.Parse(Captured("000007B074480000"));
 
         await Assert.That(frame.EffectiveTorque).IsEqualTo(-40.0);
         await Assert.That(frame.OutputRevolution).IsEqualTo(-1500);
+    }
+
+    [Test]
+    public async Task BatteryFrame5c0_PackTemperature_FullByteHalfDegree()
+    {
+        // Temp = byte2 * 0.5 - 40 (OVMS: d[2]/2 - 40); the pre-fix (17,7) layout halved twice.
+        // byte0 0x80 => HistoricalDataSwitchFlag = 2 (average); byte2 0x5A (90) => 5.0 °C.
+        var frame = BatteryFrame_5C0_AZE0.Parse(Captured("80005A0000000000"));
+
+        await Assert.That(frame.HistoricalDataSwitchFlag).IsEqualTo(2);
+        await Assert.That(frame.HistDataTemperatureAvg).IsEqualTo(5.0);
     }
 
     // ------------------------------------------------------------------------------------

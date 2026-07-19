@@ -5,6 +5,14 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
 /// <summary>
 /// Battery status broadcast frame for Nissan Leaf AZE0 platform (0x1DB)
 /// </summary>
+/// <remarks>
+/// Current/Voltage layouts fixed 2026-07-18 against OVMS vehicle_nissanleaf.cpp
+/// (case 0x1db) — the previous Intel transcriptions of Motorola DBC start bits read the
+/// wrong bytes. Both fields cross byte boundaries, so they're raw-part signals recombined
+/// in computed properties. No hardware capture exists (EV-CAN, not visible on stock ELM327
+/// adapters); OVMS is the reference. The remaining flag/status signals in this frame are
+/// unverified transcriptions — treat with suspicion until checked against a reference.
+/// </remarks>
 [CanFrame(0x1DB, Description = "Real-time battery voltage, current, and SOC")]
 public partial class BatteryFrame_1DB_AZE0
 {
@@ -13,10 +21,31 @@ public partial class BatteryFrame_1DB_AZE0
         MinValue = 0, MaxValue = 255)]
     public partial int Crc { get; init; }
 
-    [CanSignal(13, 11, IsSigned = true, Factor = 0.5, Unit = "A",
-        Description = "Battery current (positive=discharge, negative=charge)",
-        MinValue = -400, MaxValue = 500)]
-    public partial double Current { get; init; }
+    [CanSignal(0, 8,
+        Description = "Battery current, raw high 8 bits (byte 0; bit 7 = sign)",
+        MinValue = 0, MaxValue = 255)]
+    public partial int CurrentRawHigh { get; init; }
+
+    [CanSignal(13, 3,
+        Description = "Battery current, raw low 3 bits (byte 1 bits 7-5)",
+        MinValue = 0, MaxValue = 7)]
+    public partial int CurrentRawLow { get; init; }
+
+    /// <summary>
+    /// Battery current in A. 11-bit two's complement (byte0 + byte1[7..5]), 0.5 A/bit,
+    /// per OVMS. Wire sign convention is unverified on hardware: OVMS negates this raw
+    /// value to report discharge as positive — cross-check against the BMS UDS current
+    /// (known-good: negative while charging) before relying on the sign.
+    /// </summary>
+    public double Current
+    {
+        get
+        {
+            var raw = (CurrentRawHigh << 3) | CurrentRawLow;
+            if ((raw & 0x400) != 0) raw -= 0x800;
+            return raw * 0.5;
+        }
+    }
 
     [CanSignal(25, 2,
         Description = "Discharge power status (00b=Reserved, 01b=Normal limit PO, 10b=Below -20degC, 11b=)",
@@ -53,14 +82,28 @@ public partial class BatteryFrame_1DB_AZE0
         MinValue = 0, MaxValue = 3)]
     public partial int RelayCutRequest { get; init; }
     [CanSignal(32, 7,
-        Description = "Usable SOC for dash display (LB_USABLE_SOC)",
+        Description = "Usable SOC for dash display (byte 4 bits 6-0; 0x7F = invalid; confirmed vs OVMS)",
         MinValue = 0, MaxValue = 100)]
     public partial int UsableSoc { get; init; }
 
-    [CanSignal(30, 10, Factor = 0.5, Unit = "V",
-        Description = "Battery pack total voltage (0.5V/bit)",
-        MinValue = 0, MaxValue = 450)]
-    public partial double Voltage { get; init; }
+    /// <summary>False while <see cref="UsableSoc"/> holds the 0x7F invalid sentinel (always the case on ZE1).</summary>
+    public bool UsableSocValid => UsableSoc != 0x7F;
+
+    [CanSignal(16, 8,
+        Description = "Battery pack voltage, raw high 8 bits (byte 2)",
+        MinValue = 0, MaxValue = 255)]
+    public partial int VoltageRawHigh { get; init; }
+
+    [CanSignal(30, 2,
+        Description = "Battery pack voltage, raw low 2 bits (byte 3 bits 7-6)",
+        MinValue = 0, MaxValue = 3)]
+    public partial int VoltageRawLow { get; init; }
+
+    /// <summary>
+    /// Battery pack total voltage in V. 10-bit unsigned (byte2 + byte3[7..6]), 0.5 V/bit,
+    /// per OVMS.
+    /// </summary>
+    public double Voltage => ((VoltageRawHigh << 2) | VoltageRawLow) * 0.5;
 
     [CanSignal(24, 1,
                 Description = "Cell voltage latch flag (0->1: Cell Voltage Latch1->0: Cell Voltage)",
@@ -71,6 +114,15 @@ public partial class BatteryFrame_1DB_AZE0
 /// <summary>
 /// Battery power limits frame for Nissan Leaf AZE0 platform (0x1DC)
 /// </summary>
+/// <remarks>
+/// Power-limit layouts fixed 2026-07-18 against OVMS vehicle_nissanleaf.cpp (case 0x1dc):
+/// discharge = (byte0&lt;&lt;2 | byte1&gt;&gt;6)/4, charge = ((byte1&amp;0x3F)&lt;&lt;2 | byte2&gt;&gt;4)/4,
+/// charger max = ((byte2&amp;0x0F)&lt;&lt;6 | byte3&gt;&gt;2)/10. All cross byte boundaries →
+/// raw-part signals + computed properties. No hardware capture (EV-CAN). The −10 kW offset
+/// on MaxPowerForCharger comes from the original DBC source; OVMS applies no offset —
+/// unresolved, verify on hardware before trusting absolute values.
+/// The remaining status signals are unverified transcriptions.
+/// </remarks>
 [CanFrame(0x1DC, Description = "Battery charge/discharge power limits and status codes")]
 public partial class BatteryFrame_1DC_AZE0
 {
@@ -79,10 +131,20 @@ public partial class BatteryFrame_1DC_AZE0
         MinValue = 0, MaxValue = 7)]
     public partial int BpcMaxUprate { get; init; }
 
-    [CanSignal(20, 10, Factor = 0.25, Unit = "kW",
-        Description = "Max power that battery can be charged with",
-        MinValue = 0, MaxValue = 254)]
-    public partial double ChargePowerLimit { get; init; }
+    [CanSignal(8, 6,
+        Description = "Charge power limit, raw high 6 bits (byte 1 bits 5-0)",
+        MinValue = 0, MaxValue = 63)]
+    public partial int ChargePowerLimitRawHigh { get; init; }
+
+    [CanSignal(20, 4,
+        Description = "Charge power limit, raw low 4 bits (byte 2 bits 7-4)",
+        MinValue = 0, MaxValue = 15)]
+    public partial int ChargePowerLimitRawLow { get; init; }
+
+    /// <summary>Max power the battery can be charged with, in kW
+    /// (byte1[5..0]+byte2[7..4], 0.25 kW/bit, per OVMS).</summary>
+    public double ChargePowerLimit =>
+        ((ChargePowerLimitRawHigh << 4) | ChargePowerLimitRawLow) * 0.25;
 
     [CanSignal(24, 2,
         Description = "Charge power status (00b=Reserved, 01b=Normal limit PIN, 10b=High rate limit PIN, 11b=Immediate limit PIN)",
@@ -104,14 +166,36 @@ public partial class BatteryFrame_1DC_AZE0
         MinValue = 0, MaxValue = 255)]
     public partial int Crc { get; init; }
 
-    [CanSignal(14, 10, Factor = 0.25, Unit = "kW",
-                                Description = "Max available power that can be pulled from battery",
-        MinValue = 0, MaxValue = 254)]
-    public partial double DischargePowerLimit { get; init; }
-    [CanSignal(26, 10, Factor = 0.1, Offset = -10.0, Unit = "kW",
-        Description = "Maximum power for charger (LB_BPCMAX)",
-        MinValue = -10, MaxValue = 90)]
-    public partial double MaxPowerForCharger { get; init; }
+    [CanSignal(0, 8,
+        Description = "Discharge power limit, raw high 8 bits (byte 0)",
+        MinValue = 0, MaxValue = 255)]
+    public partial int DischargePowerLimitRawHigh { get; init; }
+
+    [CanSignal(14, 2,
+        Description = "Discharge power limit, raw low 2 bits (byte 1 bits 7-6)",
+        MinValue = 0, MaxValue = 3)]
+    public partial int DischargePowerLimitRawLow { get; init; }
+
+    /// <summary>Max available power that can be pulled from the battery, in kW
+    /// (byte0+byte1[7..6], 0.25 kW/bit, per OVMS).</summary>
+    public double DischargePowerLimit =>
+        ((DischargePowerLimitRawHigh << 2) | DischargePowerLimitRawLow) * 0.25;
+
+    [CanSignal(16, 4,
+        Description = "Max power for charger, raw high 4 bits (byte 2 bits 3-0)",
+        MinValue = 0, MaxValue = 15)]
+    public partial int MaxPowerForChargerRawHigh { get; init; }
+
+    [CanSignal(26, 6,
+        Description = "Max power for charger, raw low 6 bits (byte 3 bits 7-2)",
+        MinValue = 0, MaxValue = 63)]
+    public partial int MaxPowerForChargerRawLow { get; init; }
+
+    /// <summary>Maximum power for charger (LB_BPCMAX) in kW
+    /// (byte2[3..0]+byte3[7..2], 0.1 kW/bit, offset −10 per the DBC source; OVMS applies
+    /// no offset — see class remarks).</summary>
+    public double MaxPowerForCharger =>
+        ((MaxPowerForChargerRawHigh << 6) | MaxPowerForChargerRawLow) * 0.1 - 10.0;
     [CanSignal(48, 2,
         Description = "Detection of frozen data (Message-PRUN-Diag)",
         MinValue = 0, MaxValue = 3)]
@@ -402,19 +486,22 @@ public partial class BatteryFrame_5C0_AZE0
         MinValue = -76.2, MaxValue = 76.2)]
     public partial double HistDataIntegratedCurrentMin { get; init; }
 
-    [CanSignal(17, 7, Factor = 0.5, Offset = -40, Unit = "degC",
+    // Temperature is the full byte 2 at 0.5 °C/bit − 40 (bottom bit always 0, so effective
+    // 7-bit precision) — confirmed vs OVMS (case 0x5c0: d[2]/2 − 40). The previous (17,7)
+    // definition halved the value a second time.
+    [CanSignal(16, 8, Factor = 0.5, Offset = -40, Unit = "degC",
         Description = "Historical data: Temperature (AVG when mux=2)",
-        MinValue = -40, MaxValue = 86)]
+        MinValue = -40, MaxValue = 87.5)]
     public partial double HistDataTemperatureAvg { get; init; }
 
-    [CanSignal(17, 7, Factor = 0.5, Offset = -40, Unit = "degC",
+    [CanSignal(16, 8, Factor = 0.5, Offset = -40, Unit = "degC",
         Description = "Historical data: Temperature (MAX when mux=1)",
-        MinValue = -40, MaxValue = 86)]
+        MinValue = -40, MaxValue = 87.5)]
     public partial double HistDataTemperatureMax { get; init; }
 
-    [CanSignal(17, 7, Factor = 0.5, Offset = -40, Unit = "degC",
+    [CanSignal(16, 8, Factor = 0.5, Offset = -40, Unit = "degC",
         Description = "Historical data: Temperature (MIN when mux=3)",
-        MinValue = -40, MaxValue = 86)]
+        MinValue = -40, MaxValue = 87.5)]
     public partial double HistDataTemperatureMin { get; init; }
 
     [CanSignal(9, 7, Factor = 0.5, Offset = -40, Unit = "degC",

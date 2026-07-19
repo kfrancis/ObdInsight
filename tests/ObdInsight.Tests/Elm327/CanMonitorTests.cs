@@ -294,10 +294,10 @@ public class CanMonitorTests
             await foreach (var f in monitor.Subscribe<BatteryFrame_1DB_AZE0>(token)) decoded.Add(f);
         }, token);
 
-        // Battery current: bit 13, 11 bits signed, Factor 0.5. Raw -32 => -16.0 A (charging).
-        // Voltage: bit 30, 10 bits, Factor 0.5. Raw 720 => 360.0 V.
-        var raw = ((ulong)(-32 & 0x7FF) << 13) | (720ul << 30);
-        transport.EnqueueIncoming($"1DB {string.Join(" ", BitConverter.GetBytes(raw).Select(b => b.ToString("X2")))}\r");
+        // OVMS layout: current = 11-bit two's complement (byte0 + byte1[7..5]), 0.5 A/bit —
+        // raw -32 = 0x7E0 => FC 00 => -16.0 A. Voltage = byte2 + byte3[7..6], 0.5 V/bit —
+        // raw 720 => B4 00 => 360.0 V.
+        transport.EnqueueIncoming("1DB FC 00 B4 00 00 00 00 00\r");
         transport.EnqueueIncoming("1DA 00 00 00 00 00 00 00 00\r"); // different ID — must not reach the typed stream
 
         await WaitForLatestAsync(monitor, 0x1DA, token);
@@ -317,8 +317,8 @@ public class CanMonitorTests
         await Assert.That(monitor.TryGetLatest<BatteryFrame_1DB_AZE0>(out _)).IsFalse();
 
         await monitor.StartAsync(token);
-        var raw = 720ul << 30; // 360.0 V, zero current
-        transport.EnqueueIncoming($"1DB {string.Join(" ", BitConverter.GetBytes(raw).Select(b => b.ToString("X2")))}\r");
+        // OVMS layout: voltage raw 720 in byte2 + byte3[7..6] => 360.0 V, zero current.
+        transport.EnqueueIncoming("1DB 00 00 B4 00 00 00 00 00\r");
         await WaitForLatestAsync(monitor, 0x1DB, token);
         await monitor.StopAsync(token);
 
