@@ -380,3 +380,19 @@ counter, and a live 0x5B3 (`5084…` → SOH = d1>>1 = 66%) agreeing with our 5B
 read of 65% — raising confidence that 5BC SOH is valid on AZE0. Note: the app's ZE1 profile
 mis-matches this AZE0 (BMS reply len 0x2B = 30 kWh variant), so its displayed battery values
 may use wrong offsets/scales.
+
+**Addendum 3 (2026-07-18) — stock-adapter gear + SOH landed.** Implemented the CAR-CAN
+alternatives identified from OVMS: (1) `VcmFrame_421_AZE0` fixed to the real map (byte 0
+bits 3-5: 0/1=P, 2=R, 3=N, 4=D, 7=Drive/B) with a static `ShifterPositionFromByte0` raw
+decoder — the frame is 1 byte on the wire, so the generated 8-byte `Parse` can't run and
+consumers read the monitor's raw cache (which stores any length; only the typed layer
+filters to 8 bytes). (2) `LeafAze0Vcm.GetGearPositionAsync` now waits for either 0x11A
+(EV-CAN, modified adapters) or 0x421 (CAR-CAN) and falls back to the raw 0x421 decode —
+gear works on stock adapters for the first time. (3) New `VcmFrame_5B3_AZE0` with SOH =
+byte1>>1 (0 = invalid; `SohValid` helper), locked with the 2025-12-06 third-party-app
+capture (`5084FFFB20B5A18A` → 66%). (4) Production gap fixed: `SharedBroadcastRotation`
+had no 0x4xx window, so 0x421 could never reach the cache — added mask 700/pattern 400
+(cycle now ~3.6 s; needs the usual hardware dwell check). Tests: 421 map unit test, 5B3
+decode test, and a capability-level replay test (`LeafAze0VcmGearFallbackTests`) driving
+the 1-byte frame through ElmSession/CanMonitor into the fallback. Suite 51/51 green ×3;
+DevTools compiles.

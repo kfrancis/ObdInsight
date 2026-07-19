@@ -23,35 +23,56 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         }
 
         /// <summary>
-        /// Reads current gear position from EV-CAN broadcast frame 0x11A
-        /// (JoystickGearPosition: 0=Park, 2=Reverse, 3=Neutral, 4=Drive/B).
+        /// Reads current gear position — preferring EV-CAN broadcast frame 0x11A
+        /// (JoystickGearPosition), falling back to the CAR-CAN 0x421 dashboard shifter relay.
         /// </summary>
         /// <remarks>
-        /// LIMITATION (hardware-confirmed 2026-07-18): 0x11A is an EV-CAN broadcast frame.
-        /// Stock ELM327 adapters wire OBD pins 6/14 (CAR-CAN); EV-CAN sits on pins 12/13
-        /// and needs a rewired/modified adapter to monitor. On stock adapters the warmup
-        /// times out and this returns <see cref="GearPosition.Unknown"/>. CAR-CAN
-        /// 0x174/0x421 (shifter relays) are candidate stock-adapter alternatives once their
-        /// value maps are decoded; see docs/FRAME_LAYOUT_AUDIT.md.
+        /// 0x11A is an EV-CAN broadcast frame: stock ELM327 adapters wire OBD pins 6/14
+        /// (CAR-CAN); EV-CAN sits on pins 12/13 and needs a rewired adapter
+        /// (hardware-confirmed 2026-07-18). On stock adapters the 0x421 fallback is the
+        /// path that actually fires. 0x421 is 1 byte on the wire, so it's decoded from the
+        /// raw cache (typed decode skips short frames); value map per OVMS
+        /// vehicle_nissanleaf.cpp: 0/1=Park, 2=Reverse, 3=Neutral, 4=Drive, 7=Drive/B.
         /// </remarks>
         public async ValueTask<GearPosition> GetGearPositionAsync(CancellationToken ct = default)
         {
             await _monitor.StartAsync(ct);
-            await _monitor.WaitForCacheAsync(GearWarmupTimeout, ct, 0x11A);
 
-            if (!_monitor.TryGetLatest<VcmFrame_11A_AZE0>(out var frame11A))
+            // Wait until either source shows up; on stock adapters only 0x421 ever will.
+            var deadline = Environment.TickCount64 + (long)GearWarmupTimeout.TotalMilliseconds;
+            while (Environment.TickCount64 < deadline &&
+                   !_monitor.TryGetLatest(0x11A, out _) &&
+                   !_monitor.TryGetLatest(0x421, out _))
             {
-                return GearPosition.Unknown;
+                await Task.Delay(10, ct);
             }
 
-            return frame11A.JoystickGearPosition switch
+            if (_monitor.TryGetLatest<VcmFrame_11A_AZE0>(out var frame11A))
             {
-                0 => GearPosition.Park,
-                2 => GearPosition.Reverse,
-                3 => GearPosition.Neutral,
-                4 => GearPosition.Drive,
-                _ => GearPosition.Unknown
-            };
+                return frame11A.JoystickGearPosition switch
+                {
+                    0 => GearPosition.Park,
+                    2 => GearPosition.Reverse,
+                    3 => GearPosition.Neutral,
+                    4 => GearPosition.Drive,
+                    _ => GearPosition.Unknown
+                };
+            }
+
+            if (_monitor.TryGetLatest(0x421, out var raw421) && raw421.Data.Length >= 1)
+            {
+                return VcmFrame_421_AZE0.ShifterPositionFromByte0(raw421.Data.Span[0]) switch
+                {
+                    0 or 1 => GearPosition.Park,
+                    2 => GearPosition.Reverse,
+                    3 => GearPosition.Neutral,
+                    4 => GearPosition.Drive,
+                    7 => GearPosition.Eco,
+                    _ => GearPosition.Unknown
+                };
+            }
+
+            return GearPosition.Unknown;
         }
 
         /// <summary>

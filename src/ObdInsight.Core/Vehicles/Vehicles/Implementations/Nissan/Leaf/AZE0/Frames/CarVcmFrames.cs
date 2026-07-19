@@ -221,15 +221,44 @@ public partial class VcmFrame_260_AZE0
 /// </summary>
 /// <remarks>
 /// VCM relays shifter position to instrument panel and VSP for dashboard display.
-/// Single byte frame.
+/// Single-byte frame on the wire, so the generated 8-byte <c>Parse</c> is unusable for
+/// live traffic (decoders skip short frames) — consumers read the raw cached frame and
+/// call <see cref="ShifterPositionFromByte0"/>. Value map confirmed against OVMS
+/// vehicle_nissanleaf.cpp (case 0x421): 0/1=Park, 2=Reverse, 3=Neutral, 4=Drive,
+/// 7=Drive/B (Eco), 5/6=undefined.
 /// </remarks>
 [CanFrame(0x421, Description = "VCM dashboard shifter position (CAR-CAN, 1 byte)")]
 public partial class VcmFrame_421_AZE0
 {
-    [CanSignal(7, 5,
-        Description = "Dashboard shifter position display",
-        MinValue = 0, MaxValue = 31)]
+    [CanSignal(3, 3,
+        Description = "Shifter position (byte 0 bits 3-5): 0/1=Park, 2=Reverse, 3=Neutral, 4=Drive, 7=Drive/B",
+        MinValue = 0, MaxValue = 7)]
     public partial int DashShifterPosition { get; init; }
+
+    /// <summary>Decodes the shifter position from raw byte 0 of the 1-byte wire frame.</summary>
+    public static int ShifterPositionFromByte0(byte byte0) => (byte0 >> 3) & 0x07;
+}
+
+/// <summary>
+/// Battery state-of-health relay frame for Nissan Leaf AZE0 platform (0x5B3)
+/// Transmitted on CAR-CAN bus
+/// </summary>
+/// <remarks>
+/// Layout from OVMS vehicle_nissanleaf.cpp (case 0x5b3): SOH% = byte1 &gt;&gt; 1, 0 = invalid.
+/// OVMS treats this as the SOH source on non-ZE1 cars (it only trusts the 0x5BC byte-4 SOH
+/// on 24 kWh ZE0). Hardware sample 2025-12-06 (third-party app log, same 2017 30 kWh AZE0):
+/// 50 84 FF FB 20 B5 A1 8A → SOH 66%, consistent with the 0x5BC read of 65%.
+/// </remarks>
+[CanFrame(0x5B3, Description = "Battery SOH relay from LBC (CAR-CAN)")]
+public partial class VcmFrame_5B3_AZE0
+{
+    [CanSignal(9, 7, Unit = "%",
+        Description = "Battery state of health (byte 1 bits 1-7; 0 = invalid)",
+        MinValue = 0, MaxValue = 100)]
+    public partial int Soh { get; init; }
+
+    /// <summary>False while <see cref="Soh"/> is 0 (sender has no valid SOH yet).</summary>
+    public bool SohValid => Soh != 0;
 }
 
 /// <summary>

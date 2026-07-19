@@ -200,6 +200,31 @@ public class GeneratedFrameDecodingTests
     }
 
     [Test]
+    public async Task VcmFrame5b3_AppLogCapture_SohDecodes66Percent()
+    {
+        // Captured 2025-12-06 by a third-party app on the same car (see AUDIT.md addendum 2).
+        // OVMS layout: SOH = byte1 >> 1. 0x84 >> 1 = 66%.
+        var frame = VcmFrame_5B3_AZE0.Parse(Captured("5084FFFB20B5A18A"));
+
+        await Assert.That(frame.Soh).IsEqualTo(66);
+        await Assert.That(frame.SohValid).IsTrue();
+    }
+
+    [Test]
+    public async Task VcmFrame421_ShifterMap_DecodesAllGears()
+    {
+        // 0x421 is a 1-byte frame — decoded from raw byte 0, not the generated 8-byte Parse.
+        // Map per OVMS: 0/1=P, 2=R, 3=N, 4=D, 7=Drive/B.
+        await Assert.That(VcmFrame_421_AZE0.ShifterPositionFromByte0(0x08)).IsEqualTo(1); // Park
+        await Assert.That(VcmFrame_421_AZE0.ShifterPositionFromByte0(0x10)).IsEqualTo(2); // Reverse
+        await Assert.That(VcmFrame_421_AZE0.ShifterPositionFromByte0(0x18)).IsEqualTo(3); // Neutral
+        await Assert.That(VcmFrame_421_AZE0.ShifterPositionFromByte0(0x20)).IsEqualTo(4); // Drive
+        await Assert.That(VcmFrame_421_AZE0.ShifterPositionFromByte0(0x38)).IsEqualTo(7); // Drive/B
+        // Bits outside 3-5 must not bleed in.
+        await Assert.That(VcmFrame_421_AZE0.ShifterPositionFromByte0(0xC7)).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task BcmFrame60d_ParkedCapture_DoorsClosedSignalsOffReady()
     {
         var frame = BcmFrame_60D_AZE0.Parse(Captured("0606000000000000"));
