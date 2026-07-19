@@ -420,3 +420,35 @@ generator suite 42/42 untouched; DevTools compiles. Remaining EV-CAN caveat: eve
 here is reference-verified only (no hardware can see these frames on stock adapters);
 first modified-adapter or CAN-shield session should spot-check 1DB voltage/current against
 the BMS UDS values.
+
+**Addendum 5 (2026-07-18) — BMS UDS group expansion (04 temps, 06 balancing).**
+Correction to addendum 2 first: the app log's "210E ×4.9k / 210F ×7.7k" counts were an
+artifact — those strings are cell-voltage data bytes (0x0E/0x0F high bytes) inside 2102
+responses. Prompt-anchored recount of actual commands: 2101 ×31,712, 2102 ×6,050,
+2104 ×3,813, 2106 ×255, 2103 ×63; ">210E"/">210F" were sent only 4/6 times and got no
+ISO-TP response (groups absent on this car). Real expansion implemented:
+- `Group04Response` (pack temperatures): 14-byte AZE0/ZE0 layout per OVMS
+  PollReply_BMS_Temp — four [u16 thermistor ADC][u8 integer °C] slots (slot 3 = 0xFFFF
+  absent on AZE0) + fifth °C byte; precise °C = −0.102×(ADC−710). Verified against the
+  app-log capture (December): ADC 691/686/697 → 1.9/2.4/1.3 °C, agreeing with the integer
+  bytes 2/3/2. `LeafAze0Bms.GetStatusAsync` now fills
+  `TemperatureC`/`MinTemperatureC`/`MaxTemperatureC` via a best-effort second query
+  (failure → nulls, never throws; OCE still propagates).
+- `Group06Response` (cell shunts): 24 bytes, 4 cells/byte, bit order 8421 per OVMS
+  PollReply_BMS_Shunt. OVMS inverts the bits for "balancing" (set bit = NOT balancing) —
+  followed but flagged unverified; both raw (`IsShuntBitSet`) and OVMS-convention
+  (`GetBalancingCells`) exposed. `GetCellVoltagesAsync` now returns
+  `CellVoltageData.BalancingCells`/`BalancingCellCount` best-effort.
+- Golden data added from the 2025-12-06 app-log captures (same car): `GoldenGroup02Lines`
+  (real 96-cell response, 3899-3911 mV, trailing pack-voltage-like u16s 374.82/374.00 —
+  semantics unconfirmed, documented), `GoldenGroup04Lines`, `GoldenGroup06Lines`.
+- Tests: 4 new production-path replay tests (temps populated, temps-absent graceful,
+  balancing populated incl. count=18 from the real bytes, balancing-absent graceful).
+  Existing Group01 tests unaffected (unscripted 2104 throws in replay → swallowed by the
+  best-effort path — which those tests now implicitly exercise).
+- Flake fixed in passing: `CanMonitorTests.Subscribers_WithDisjointIds` and
+  `TypedSubscribe_DecodesProductionFrames` called `Subscribe` inside `Task.Run`, racing
+  registration against frame delivery (~1-in-10 failure). Subscriptions now created
+  eagerly before frames are enqueued. Suite 57/57 green ×10 consecutive runs; generator
+  42/42; DevTools compiles.
+Group 03 (×63 in log, 26-byte payload) left undecoded: no reference layout in OVMS.

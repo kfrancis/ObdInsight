@@ -164,6 +164,98 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
         }
 
         /// <summary>
+        /// PID 0x04 - Battery pack temperatures.
+        /// AZE0/ZE0 payload is 14 bytes (ZE1 responds with 29 — those offsets are NOT
+        /// supported here). Layout per OVMS vehicle_nissanleaf.cpp PollReply_BMS_Temp:
+        /// four sensor slots of [2-byte thermistor ADC][1-byte integer °C]; slot 3 is
+        /// absent (0xFFFF) on AZE0/30kWh; byte 12 is a fifth integer-°C reading.
+        /// Precise temperature = −0.102 × (ADC − 710).
+        /// Hardware sample 2025-12-06 (this car, winter): ADC 691/686/—/697 →
+        /// 1.9/2.4/—/1.3 °C, integer bytes 2/3/—/2 — formula and bytes agree.
+        /// </summary>
+        [UdsPid(0x04, Name = "Group04")]
+        [UdsResponse(MinLength = 14, MaxLength = 29)]
+        public partial class Group04Response
+        {
+            [UdsField(Offset = 0, Length = 2, Type = UdsFieldType.UInt16BE)]
+            public int Pack1ThermistorRaw { get; set; }
+
+            [UdsField(Offset = 2, Length = 1, Type = UdsFieldType.UInt8)]
+            public int Pack1TempIntC { get; set; }
+
+            [UdsField(Offset = 3, Length = 2, Type = UdsFieldType.UInt16BE)]
+            public int Pack2ThermistorRaw { get; set; }
+
+            [UdsField(Offset = 5, Length = 1, Type = UdsFieldType.UInt8)]
+            public int Pack2TempIntC { get; set; }
+
+            [UdsField(Offset = 6, Length = 2, Type = UdsFieldType.UInt16BE)]
+            public int Pack3ThermistorRaw { get; set; }
+
+            [UdsField(Offset = 8, Length = 1, Type = UdsFieldType.UInt8)]
+            public int Pack3TempIntC { get; set; }
+
+            [UdsField(Offset = 9, Length = 2, Type = UdsFieldType.UInt16BE)]
+            public int Pack4ThermistorRaw { get; set; }
+
+            [UdsField(Offset = 11, Length = 1, Type = UdsFieldType.UInt8)]
+            public int Pack4TempIntC { get; set; }
+
+            [UdsField(Offset = 12, Length = 1, Type = UdsFieldType.UInt8)]
+            public int Pack5TempIntC { get; set; }
+
+            /// <summary>Precise °C from a thermistor ADC reading; null for the 0xFFFF absent-sensor sentinel.</summary>
+            public static double? TempFromThermistor(int adcRaw) =>
+                adcRaw is 0xFFFF or 0 ? null : -0.102 * (adcRaw - 710);
+
+            public double? Pack1TempC => TempFromThermistor(Pack1ThermistorRaw);
+            public double? Pack2TempC => TempFromThermistor(Pack2ThermistorRaw);
+            public double? Pack3TempC => TempFromThermistor(Pack3ThermistorRaw);
+            public double? Pack4TempC => TempFromThermistor(Pack4ThermistorRaw);
+
+            private IEnumerable<double> ValidTemps =>
+                new[] { Pack1TempC, Pack2TempC, Pack3TempC, Pack4TempC }
+                    .Where(t => t.HasValue).Select(t => t!.Value);
+
+            public double? AverageTempC => ValidTemps.Any() ? ValidTemps.Average() : null;
+            public double? MinTempC => ValidTemps.Any() ? ValidTemps.Min() : null;
+            public double? MaxTempC => ValidTemps.Any() ? ValidTemps.Max() : null;
+        }
+
+        /// <summary>
+        /// PID 0x06 - Cell shunt (balancing) states: 24 bytes, 4 cells per byte in bit
+        /// order 0x08→cell N, 0x04→N+1, 0x02→N+2, 0x01→N+3 ("shunt order 8421", per OVMS
+        /// PollReply_BMS_Shunt). NOTE: OVMS inverts the bits to get "balancing" — i.e. a
+        /// SET bit means the shunt is NOT balancing that cell. That inversion is
+        /// field-tested in OVMS but not independently verified here; both the raw bytes
+        /// and the OVMS-convention view are exposed.
+        /// </summary>
+        [UdsPid(0x06, Name = "Group06")]
+        [UdsResponse(MinLength = 24)]
+        public partial class Group06Response
+        {
+            [UdsArrayField(Offset = 0, ElementCount = 24, ElementLength = 1,
+                Type = UdsFieldType.UInt8)]
+            public int[] ShuntBytes { get; set; } = [];
+
+            /// <summary>Raw wire bit for a cell (0-95), before the OVMS inversion.</summary>
+            public bool IsShuntBitSet(int cellIndex)
+            {
+                if (cellIndex is < 0 or > 95 || ShuntBytes.Length < 24) return false;
+                var mask = 0x08 >> (cellIndex & 3);
+                return (ShuntBytes[cellIndex / 4] & mask) != 0;
+            }
+
+            /// <summary>Per-cell balancing flags (96 entries) using the OVMS convention (inverted wire bit).</summary>
+            public bool[] GetBalancingCells()
+            {
+                var result = new bool[96];
+                for (var i = 0; i < 96; i++) result[i] = !IsShuntBitSet(i);
+                return result;
+            }
+        }
+
+        /// <summary>
         /// PID 0x02 - Individual cell pair voltages.
         /// Nissan Leaf has 96 cell pairs, each reported as 2 bytes in millivolts.
         /// </summary>

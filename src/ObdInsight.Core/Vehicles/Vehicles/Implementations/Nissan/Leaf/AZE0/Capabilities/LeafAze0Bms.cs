@@ -24,12 +24,24 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
             if (response == null || response?.CellVoltagesMv?.Length == 0)
                 return null;
 
+            // Best-effort: shunt states (group 06) enrich the result but must not fail it.
+            LeafBmsDiagnostics.Group06Response? shunts = null;
+            try
+            {
+                shunts = await _diagnostics.QueryGroup06Async(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Group unsupported / transient adapter noise — voltages alone are still valid.
+            }
+
             return new CellVoltageData
             {
                 CellVoltagesMv = response!.CellVoltagesMv,
                 MinVoltageMv = response.MinVoltageMv,
                 MaxVoltageMv = response.MaxVoltageMv,
-                AvgVoltageMv = response.AvgVoltageMv
+                AvgVoltageMv = response.AvgVoltageMv,
+                BalancingCells = shunts?.GetBalancingCells()
             };
         }
 
@@ -38,6 +50,17 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
             // Use the generated query method
             var response = await _diagnostics.QueryGroup01Async(ct) ?? throw new InvalidOperationException("Failed to query BMS Group 01 data");
 
+            // Best-effort: pack temperatures (group 04) enrich the status but must not fail it.
+            LeafBmsDiagnostics.Group04Response? temps = null;
+            try
+            {
+                temps = await _diagnostics.QueryGroup04Async(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Group unsupported / transient adapter noise — core status is still valid.
+            }
+
             return new BatteryStatus
             {
                 SocPercent = response.SocPercent,
@@ -45,7 +68,9 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
                 CurrentAmps = response.CurrentAmps,
                 CapacityAh = response.CapacityAh,
                 HealthPercent = response.HealthPercent,
-                TemperatureC = null
+                TemperatureC = temps?.AverageTempC,
+                MinTemperatureC = temps?.MinTempC,
+                MaxTemperatureC = temps?.MaxTempC
             };
         }
 

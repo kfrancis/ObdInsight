@@ -153,6 +153,13 @@ public sealed record CellVoltageData
     public int MaxVoltageMv { get; init; }
     public int AvgVoltageMv { get; init; }
     public int DeltaVoltageMv => MaxVoltageMv - MinVoltageMv;
+
+    /// <summary>Per-cell balancing flags, parallel to <see cref="CellVoltagesMv"/>;
+    /// null when the vehicle doesn't report shunt states.</summary>
+    public bool[]? BalancingCells { get; init; }
+
+    /// <summary>Number of cells currently balancing, or null when unreported.</summary>
+    public int? BalancingCellCount => BalancingCells?.Count(b => b);
 }
 
 /// <summary>

@@ -52,13 +52,17 @@ public class CanMonitorTests
 
         var batteryFrames = new List<RawCanFrame>();
         var inverterFrames = new List<RawCanFrame>();
+        // Subscribe eagerly (registration happens in the Subscribe call) BEFORE any frame
+        // is enqueued — calling Subscribe inside Task.Run raced frame delivery and flaked.
+        var batteryStream = monitor.Subscribe(new[] { 0x1DB }, token);
+        var inverterStream = monitor.Subscribe(new[] { 0x1DA }, token);
         var batteryTask = Task.Run(async () =>
         {
-            await foreach (var f in monitor.Subscribe(new[] { 0x1DB }, token)) batteryFrames.Add(f);
+            await foreach (var f in batteryStream) batteryFrames.Add(f);
         }, token);
         var inverterTask = Task.Run(async () =>
         {
-            await foreach (var f in monitor.Subscribe(new[] { 0x1DA }, token)) inverterFrames.Add(f);
+            await foreach (var f in inverterStream) inverterFrames.Add(f);
         }, token);
 
         transport.EnqueueIncoming("1DB 01 02 03 04 05 06 07 08\r");
@@ -289,9 +293,11 @@ public class CanMonitorTests
         await monitor.StartAsync(token);
 
         var decoded = new List<BatteryFrame_1DB_AZE0>();
+        // Subscribe before enqueueing frames — in-Task.Run subscription races delivery.
+        var typedStream = monitor.Subscribe<BatteryFrame_1DB_AZE0>(token);
         var readTask = Task.Run(async () =>
         {
-            await foreach (var f in monitor.Subscribe<BatteryFrame_1DB_AZE0>(token)) decoded.Add(f);
+            await foreach (var f in typedStream) decoded.Add(f);
         }, token);
 
         // OVMS layout: current = 11-bit two's complement (byte0 + byte1[7..5]), 0.5 A/bit —
