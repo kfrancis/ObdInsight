@@ -328,6 +328,51 @@ public class CanMonitorTests
     }
 
     [Test]
+    public async Task FilterRotation_CyclesHardwareFilters_AndAccumulatesCache(CancellationToken token)
+    {
+        var transport = new ReplayElmTransport();
+        var session = new ElmSession(new ElmFramer(transport));
+        var monitor = new CanMonitor(session, EcuContext.NissanLeafHvbatMonitor)
+        {
+            RestartDelay = TimeSpan.Zero,
+            FilterRotation =
+            [
+                new CanFilterWindow("700", "100", TimeSpan.FromMilliseconds(150)),
+                new CanFilterWindow("700", "500", TimeSpan.FromMilliseconds(150)),
+            ],
+        };
+        transport.AutoRespond("ATMA", ""); // one enter per window, unbounded
+
+        await monitor.StartAsync(token);
+
+        // Window 1 (0x1xx): hardware filter applied, battery frame arrives.
+        while (!transport.SentCommands.Contains("AT CF 100"))
+            await Task.Delay(10, token);
+        while (!monitor.TryGetLatest(0x1DB, out _))
+        {
+            transport.EnqueueIncoming("1DB 01 00 00 00 00 00 00 00\r");
+            await Task.Delay(20, token);
+        }
+
+        // Rotation: window 2 (0x5xx) filter applied, HVAC frame arrives; 0x1DB stays cached.
+        while (!transport.SentCommands.Contains("AT CF 500"))
+            await Task.Delay(10, token);
+        while (!monitor.TryGetLatest(0x54C, out _))
+        {
+            transport.EnqueueIncoming("54C 01 00 00 00 00 00 00 00\r");
+            await Task.Delay(20, token);
+        }
+
+        await Assert.That(monitor.TryGetLatest(0x1DB, out _)).IsTrue();
+        await Assert.That(monitor.TryGetLatest(0x54C, out _)).IsTrue();
+        await Assert.That(transport.SentCommands).Contains("AT CM 700");
+        await Assert.That(transport.SentCommands.Count(c => c == "ATMA")).IsGreaterThanOrEqualTo(2);
+
+        await monitor.StopAsync(token);
+        await Assert.That(monitor.EndReason).IsEqualTo(MonitoringEndReason.Stopped);
+    }
+
+    [Test]
     public async Task BufferFull_WithResidualPromptBytes_RestartSurvives(CancellationToken token)
     {
         // Hardware regression (2026-07-18): BUFFER FULL leaves a stray "\r>" in the stream.

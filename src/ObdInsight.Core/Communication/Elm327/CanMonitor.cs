@@ -76,6 +76,18 @@ namespace ObdInsight.Core.Communication.Elm327
         /// <summary>Delay before re-entering monitoring after BUFFER FULL.</summary>
         public TimeSpan RestartDelay { get; set; } = TimeSpan.FromMilliseconds(500);
 
+        /// <summary>
+        ///     Optional hardware-filter rotation. Empty (default): one continuous monitoring pass
+        ///     using the context's own filter. Non-empty: the loop cycles through the windows,
+        ///     applying each window's AT CM/CF filter for its dwell time — the workaround for
+        ///     adapters that overflow on accept-all monitoring. The latest-frame cache accumulates
+        ///     across windows, so cache-view capabilities see data at most one full cycle stale.
+        ///     Set before <see cref="StartAsync" />.
+        /// </summary>
+        public IReadOnlyList<CanFilterWindow> FilterRotation { get; set; } = [];
+
+        private int _windowIndex;
+
         public async ValueTask DisposeAsync()
         {
             try
@@ -121,7 +133,11 @@ namespace ObdInsight.Core.Communication.Elm327
 
         private async ValueTask StartCoreAsync(CancellationToken ct)
         {
-            await _session.EnterMonitoringModeAsync(_context, ct);
+            // With a filter rotation the loop enters monitoring itself, once per window.
+            if (FilterRotation.Count == 0)
+            {
+                await _session.EnterMonitoringModeAsync(_context, ct);
+            }
 
             lock (_lock)
             {
@@ -319,68 +335,110 @@ namespace ObdInsight.Core.Communication.Elm327
         {
             var noProgressRestarts = 0;
             var reason = MonitoringEndReason.Stopped;
+            var rotating = FilterRotation.Count > 0;
 
             try
             {
                 while (true)
                 {
-                    var framesThisRun = 0;
-                    await foreach (var frame in _session.MonitorFramesAsync(ct))
+                    CancellationTokenSource? dwellCts = null;
+                    try
                     {
-                        framesThisRun++;
-                        _latest[frame.CanId] = frame;
-                        Publish(frame);
-                    }
-
-                    if (ct.IsCancellationRequested)
-                    {
-                        reason = MonitoringEndReason.Stopped;
-                        break;
-                    }
-
-                    var sessionReason = _session.LastMonitoringEndReason;
-                    // Both are adapter-initiated exits (overflow, or a stray prompt from
-                    // residual bytes/adapter quirks) — recoverable by re-entering monitoring.
-                    if (sessionReason is MonitoringEndReason.BufferFull or MonitoringEndReason.PromptDetected)
-                    {
-                        if (framesThisRun > 0)
+                        var frameToken = ct;
+                        if (rotating)
                         {
-                            noProgressRestarts = 0;
+                            // Enter monitoring with this window's hardware filter; Enter exits
+                            // any previous window first. The dwell token rotates us out.
+                            var window = FilterRotation[_windowIndex % FilterRotation.Count];
+                            await _session.EnterMonitoringModeAsync(CreateWindowContext(window), ct);
+                            dwellCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                            dwellCts.CancelAfter(window.Dwell);
+                            frameToken = dwellCts.Token;
                         }
 
-                        if (noProgressRestarts >= MaxBufferFullRestarts)
+                        var framesThisRun = 0;
+                        await foreach (var frame in _session.MonitorFramesAsync(frameToken))
                         {
-                            _logger.LogDebug(
-                                "[CanMonitor] {Reason} after {Restarts} no-progress restarts - giving up",
-                                sessionReason, noProgressRestarts);
-                            reason = sessionReason;
-                            break;
+                            framesThisRun++;
+                            _latest[frame.CanId] = frame;
+                            Publish(frame);
                         }
 
-                        noProgressRestarts++;
-                        _logger.LogDebug("[CanMonitor] {Reason} - restarting monitoring (attempt {Attempt}/{Max})",
-                            sessionReason, noProgressRestarts, MaxBufferFullRestarts);
-                        try
-                        {
-                            if (RestartDelay > TimeSpan.Zero)
-                            {
-                                await Task.Delay(RestartDelay, ct);
-                            }
-
-                            await _session.EnterMonitoringModeAsync(_context, ct);
-                        }
-                        catch (OperationCanceledException)
+                        if (ct.IsCancellationRequested)
                         {
                             reason = MonitoringEndReason.Stopped;
                             break;
                         }
 
-                        continue;
-                    }
+                        var sessionReason = _session.LastMonitoringEndReason;
+                        // Both are adapter-initiated exits (overflow, or a stray prompt from
+                        // residual bytes/adapter quirks) — recoverable by re-entering monitoring.
+                        if (sessionReason is MonitoringEndReason.BufferFull or MonitoringEndReason.PromptDetected)
+                        {
+                            if (framesThisRun > 0)
+                            {
+                                noProgressRestarts = 0;
+                            }
 
-                    // PromptDetected or an unexpected end without a recorded reason.
-                    reason = sessionReason == MonitoringEndReason.None ? MonitoringEndReason.Stopped : sessionReason;
-                    break;
+                            if (noProgressRestarts >= MaxBufferFullRestarts)
+                            {
+                                _logger.LogDebug(
+                                    "[CanMonitor] {Reason} after {Restarts} no-progress restarts - giving up",
+                                    sessionReason, noProgressRestarts);
+                                reason = sessionReason;
+                                break;
+                            }
+
+                            noProgressRestarts++;
+                            _logger.LogDebug("[CanMonitor] {Reason} - restarting monitoring (attempt {Attempt}/{Max})",
+                                sessionReason, noProgressRestarts, MaxBufferFullRestarts);
+                            try
+                            {
+                                if (RestartDelay > TimeSpan.Zero)
+                                {
+                                    await Task.Delay(RestartDelay, ct);
+                                }
+
+                                if (!rotating)
+                                {
+                                    await _session.EnterMonitoringModeAsync(_context, ct);
+                                }
+                                // Rotating: the next iteration enters the next window anyway.
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                reason = MonitoringEndReason.Stopped;
+                                break;
+                            }
+
+                            if (rotating)
+                            {
+                                _windowIndex++;
+                            }
+
+                            continue;
+                        }
+
+                        if (rotating)
+                        {
+                            // Dwell expired (or a benign end) — rotate to the next window.
+                            if (framesThisRun > 0)
+                            {
+                                noProgressRestarts = 0;
+                            }
+
+                            _windowIndex++;
+                            continue;
+                        }
+
+                        // Unexpected end without a recorded reason.
+                        reason = sessionReason == MonitoringEndReason.None ? MonitoringEndReason.Stopped : sessionReason;
+                        break;
+                    }
+                    finally
+                    {
+                        dwellCts?.Dispose();
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -419,6 +477,30 @@ namespace ObdInsight.Core.Communication.Elm327
                     _logger.LogDebug(ex, "[CanMonitor] Failed to exit monitoring mode during shutdown");
                 }
             }
+        }
+
+        private EcuContext CreateWindowContext(CanFilterWindow window)
+        {
+            return new EcuContext
+            {
+                Name = $"{_context.Name} [{window.Pattern}/{window.Mask}]",
+                TxHeader = _context.TxHeader,
+                RxFilter = _context.RxFilter,
+                FlowControlHeader = _context.FlowControlHeader,
+                FlowControlData = _context.FlowControlData,
+                FlowControlMode = _context.FlowControlMode,
+                EnableHeaders = _context.EnableHeaders,
+                EnableAutoFormatting = _context.EnableAutoFormatting,
+                CommunicationMode = _context.CommunicationMode,
+                MonitoringCommand = _context.MonitoringCommand,
+                AdapterTimeoutUnits = _context.AdapterTimeoutUnits,
+                SessionActivationCommand = _context.SessionActivationCommand,
+                RequiresSessionActivation = _context.RequiresSessionActivation,
+                KeepAliveCommand = _context.KeepAliveCommand,
+                KeepAliveIntervalMs = _context.KeepAliveIntervalMs,
+                CanFilterMask = window.Mask,
+                CanFilterPattern = window.Pattern
+            };
         }
 
         private void Publish(RawCanFrame frame)

@@ -11,7 +11,7 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
     internal sealed class LeafAze0MotorController : IMotorController
     {
         /// <summary>How long a cold cache is given for the first frames to arrive.</summary>
-        private static readonly TimeSpan WarmupTimeout = TimeSpan.FromMilliseconds(300);
+        private static readonly TimeSpan WarmupTimeout = TimeSpan.FromSeconds(4);
 
         private readonly CanMonitor _monitor;
 

@@ -10,7 +10,7 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 /// </summary>
 internal sealed class LeafAze0Abs : IAntilockBrakingSystem
 {
-    private static readonly TimeSpan WarmupTimeout = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan WarmupTimeout = TimeSpan.FromSeconds(4);
 
     private readonly CanMonitor _monitor;
 

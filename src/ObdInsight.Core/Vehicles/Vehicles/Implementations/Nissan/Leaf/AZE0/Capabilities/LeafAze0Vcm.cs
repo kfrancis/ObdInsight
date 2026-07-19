@@ -12,8 +12,8 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
     /// </summary>
     internal sealed class LeafAze0Vcm : IVcm
     {
-        private static readonly TimeSpan GearWarmupTimeout = TimeSpan.FromMilliseconds(200);
-        private static readonly TimeSpan StatusWarmupTimeout = TimeSpan.FromMilliseconds(300);
+        private static readonly TimeSpan GearWarmupTimeout = TimeSpan.FromSeconds(4);
+        private static readonly TimeSpan StatusWarmupTimeout = TimeSpan.FromSeconds(4);
 
         private readonly CanMonitor _monitor;
 

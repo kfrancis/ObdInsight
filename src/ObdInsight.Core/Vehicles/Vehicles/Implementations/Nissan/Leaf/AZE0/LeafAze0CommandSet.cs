@@ -11,7 +11,11 @@ public sealed class LeafAze0CommandSet : VehicleCommandSet
         // Broadcast capabilities read the monitor's cache/streams; UDS capabilities (BMS, VIN)
         // and Steering (needs session activation + keep-alive — not yet monitor-native) get a
         // decorated session that transparently suspends the monitor around their work.
-        Monitor = new CanMonitor(session, LeafAze0Contexts.SharedBroadcastMonitor);
+        Monitor = new CanMonitor(session, LeafAze0Contexts.SharedBroadcastMonitor)
+        {
+            // Cheap BLE adapters can't drink accept-all ATMA — rotate hardware filters instead.
+            FilterRotation = LeafAze0Contexts.SharedBroadcastRotation,
+        };
         var arbitrated = new MonitorSuspendingElmSession(session, Monitor);
 
         Add<IAntilockBrakingSystem>(new LeafAze0Abs(Monitor));

@@ -11,15 +11,25 @@ namespace ObdInsight.Core.Communication.Elm327
     {
         /// <summary>
         ///     Streams decoded frames of type <typeparamref name="T" /> as they arrive.
-        ///     Frames whose payload is not exactly 8 bytes are skipped (generated decoders
-        ///     require full frames).
+        ///     Registration is immediate (same semantics as the raw Subscribe — frames arriving
+        ///     before the consumer starts iterating are buffered, not lost). Frames whose payload
+        ///     is not exactly 8 bytes are skipped (generated decoders require full frames).
         /// </summary>
-        public static async IAsyncEnumerable<T> Subscribe<T>(
+        public static IAsyncEnumerable<T> Subscribe<T>(
             this CanMonitor monitor,
-            [EnumeratorCancellation] CancellationToken ct = default)
+            CancellationToken ct = default)
             where T : ICanFrame<T>
         {
-            await foreach (var raw in monitor.Subscribe(new[] { T.FrameCanId }, ct))
+            // Register eagerly — an async iterator here would defer registration to the first
+            // MoveNext, silently dropping frames that arrive before iteration starts.
+            var raw = monitor.Subscribe(new[] { T.FrameCanId }, ct);
+            return DecodeAsync<T>(raw);
+        }
+
+        private static async IAsyncEnumerable<T> DecodeAsync<T>(IAsyncEnumerable<RawCanFrame> frames)
+            where T : ICanFrame<T>
+        {
+            await foreach (var raw in frames)
             {
                 if (raw.Data.Length == 8)
                 {

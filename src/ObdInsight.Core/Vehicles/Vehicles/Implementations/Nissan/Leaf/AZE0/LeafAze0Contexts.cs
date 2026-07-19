@@ -219,6 +219,23 @@ public static class LeafAze0Contexts
         EnableAutoFormatting = false // CAF0 preserves frame bytes for parsing
     };
 
+    /// <summary>
+    /// Hardware-filter rotation for the shared monitor. Accept-all ATMA overruns cheap BLE
+    /// adapters within ~100ms on a busy EV bus (hardware session 2026-07-18), so the monitor
+    /// time-slices the bus with mask 0x700: one window per 0xN00 block that carries frames we
+    /// decode. Full cycle ≈ 3s — cache-view data is at most that stale.
+    /// 0x1xx: 11A,130,1CA,1D4,1DA,1DB,1DC + CAR-CAN 174,176,180 · 0x2xx: 245,260,284,285,292
+    /// 0x3xx: 354,390,393 · 0x5xx: 50A-D,510,54A-F,55A,55B,5A9,5BC,5C0 · 0x6xx: 603,60D,625
+    /// </summary>
+    public static IReadOnlyList<Communication.Elm327.CanFilterWindow> SharedBroadcastRotation { get; } =
+    [
+        new("700", "100", TimeSpan.FromMilliseconds(600)),
+        new("700", "200", TimeSpan.FromMilliseconds(600)),
+        new("700", "300", TimeSpan.FromMilliseconds(600)),
+        new("700", "500", TimeSpan.FromMilliseconds(600)),
+        new("700", "600", TimeSpan.FromMilliseconds(600)),
+    ];
+
     public static EcuContext Shift => ReqResp("SHIFT", "79D", "7BD");
 
     /// <summary>
