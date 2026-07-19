@@ -331,19 +331,13 @@ namespace ObdInsight
                     Log.Information("Device selected: {DeviceName} ({Address})", selectedDevice.Name, selectedDevice.Address);
                 }
 
-                // Vehicle selection is currently hardcoded to the development Leaf.
-                // Interactive selection (a VehicleSelector over VehicleProfileRegistry) was
-                // removed as dead code — restore from git history if/when multi-vehicle
-                // support returns (see AUDIT.md M3.7).
-                var vehicleProfile = new NissanLeaf();
-                var vehicleVariantId = vehicleProfile.DetectVariantFromVin("1N4AZ0CP7HC308656");
-                var vehicleVariant = vehicleProfile.Variants.FirstOrDefault(v => v.Id == vehicleVariantId);
-
-                // Run with automatic retry on failure
-                Log.Information("Starting session with device: {DeviceName} ({Address}), vehicle: {Make} {Model}, variant: {Variant}",
-                    selectedDevice.Name, selectedDevice.Address, vehicleProfile.Make, vehicleProfile.Model, "Leaf");
+                // Vehicle selection is VIN-driven (roadmap B6): RunElm327SessionAsync
+                // resolves the profile/variant from the car's own VIN once the session
+                // is up, via VehicleResolver. No hardcoded vehicle.
+                Log.Information("Starting session with device: {DeviceName} ({Address}); vehicle resolved from VIN after connect",
+                    selectedDevice.Name, selectedDevice.Address);
                 var retryService = new SessionRetryService();
-                await retryService.RunWithRetryAsync(selectedDevice, preferences, RunElm327SessionAsync, vehicleProfile, vehicleVariant, cts.Token);
+                await retryService.RunWithRetryAsync(selectedDevice, preferences, RunElm327SessionAsync, null, null, cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -509,12 +503,33 @@ namespace ObdInsight
 
                 AnsiConsole.WriteLine();
 
-                if (vehicleProfile == null || vehicleVariant == null)
+                // VIN-driven vehicle resolution (roadmap B6): the car tells us what it is.
+                var detection = await VehicleResolver.ResolveAsync(session, ct: ct);
+                if (detection.Status != VehicleDetectionStatus.Detected)
                 {
-                    Log.Error("Vehicle profile or variant not selected. Cannot proceed.");
-                    AnsiConsole.MarkupLine("[red]Vehicle profile or variant not selected. Cannot proceed.[/]");
+                    var detail = detection.Status switch
+                    {
+                        VehicleDetectionStatus.VinUnreadable =>
+                            "Could not read a VIN from the vehicle.",
+                        VehicleDetectionStatus.UnsupportedVehicle =>
+                            $"VIN {detection.Vin} does not match any supported vehicle.",
+                        VehicleDetectionStatus.VariantUnsupported =>
+                            $"{detection.Profile?.Make} {detection.Profile?.Model} variant " +
+                            $"'{detection.VariantId?.Value}' (VIN {detection.Vin}) has no command set yet.",
+                        _ => "Unknown detection failure.",
+                    };
+                    Log.Error("Vehicle detection failed: {Status} — {Detail}", detection.Status, detail);
+                    AnsiConsole.MarkupLine($"[red]Vehicle detection failed:[/] {detail.EscapeMarkup()}");
                     return;
                 }
+
+                vehicleProfile = detection.Profile!;
+                vehicleVariant = vehicleProfile.Variants.FirstOrDefault(v => v.Id == detection.VariantId);
+                Log.Information("Detected vehicle: {Make} {Model}, variant {Variant} (VIN {Vin})",
+                    vehicleProfile.Make, vehicleProfile.Model, detection.VariantId?.Value, detection.Vin);
+                AnsiConsole.MarkupLine(
+                    $"[green]✓[/] Detected: {vehicleProfile.Make} {vehicleProfile.Model} " +
+                    $"[grey]{vehicleVariant?.DisplayName.EscapeMarkup()} — VIN {detection.Vin!.EscapeMarkup()}[/]");
 
                 AnsiConsole.MarkupLine($"[cyan]Testing {vehicleProfile.Make} {vehicleProfile.Model} data collection...[/]");
                 AnsiConsole.MarkupLine("[grey]Note: Only testing capabilities that work when vehicle is stationary in READY mode[/]");
@@ -525,7 +540,7 @@ namespace ObdInsight
 
                 try
                 {
-                    var commands = vehicleProfile.GetCommands(vehicleVariant.Id, session);
+                    var commands = detection.Commands!;
 
                     // ===========================================
                     // 1. Battery Management System (BMS) - 5 consecutive reads for stability

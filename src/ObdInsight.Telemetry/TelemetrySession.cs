@@ -16,6 +16,7 @@ public sealed class TelemetrySession : ITelemetrySession
 {
     private readonly IReadOnlyList<ITelemetryProvider> _providers;
     private readonly IVehicleIdentification? _identification;
+    private readonly IDiagnosticTroubleCodes? _dtc;
     private readonly TelemetrySubscription _subscription;
     private readonly TelemetrySessionOptions _options;
     private readonly ILogger<TelemetrySession> _logger;
@@ -33,12 +34,14 @@ public sealed class TelemetrySession : ITelemetrySession
         TelemetrySubscription? subscription = null,
         TelemetrySessionOptions? options = null,
         IVehicleIdentification? identification = null,
+        IDiagnosticTroubleCodes? dtc = null,
         ILogger<TelemetrySession>? logger = null)
     {
         _providers = providers;
         _subscription = subscription ?? TelemetrySubscription.Default;
         _options = options ?? new TelemetrySessionOptions();
         _identification = identification;
+        _dtc = dtc;
         _logger = logger ?? NullLogger<TelemetrySession>.Instance;
 
         foreach (var signal in _subscription.Map.Keys)
@@ -59,11 +62,13 @@ public sealed class TelemetrySession : ITelemetrySession
         ILogger<TelemetrySession>? logger = null)
     {
         commands.TryGet<IVehicleIdentification>(out var identification);
+        commands.TryGet<IDiagnosticTroubleCodes>(out var dtc);
         return new TelemetrySession(
             TelemetryProviderCatalog.FromVehicle(commands),
             subscription,
             options,
             identification,
+            dtc,
             logger);
     }
 
@@ -212,6 +217,23 @@ public sealed class TelemetrySession : ITelemetrySession
                 }
             }
 
+            DtcReadResult? dtcs = null;
+            if (_dtc is not null)
+            {
+                try
+                {
+                    dtcs = await _dtc.GetDtcsAsync(ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "DTC read failed during snapshot");
+                }
+            }
+
             return new TelemetrySnapshot
             {
                 TimestampUtc = DateTimeOffset.UtcNow,
@@ -232,6 +254,8 @@ public sealed class TelemetrySession : ITelemetrySession
                 HvacActive = Boolean(all, TelemetrySignal.HvacActive),
                 OdometerKm = Scalar(all, TelemetrySignal.Odometer),
                 ChargeCycleCount = Scalar(all, TelemetrySignal.ChargeCycleCount),
+                StoredDtcCodes = dtcs?.StoredCodes,
+                PendingDtcCodes = dtcs?.PendingCodes,
             };
         }
         finally

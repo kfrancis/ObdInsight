@@ -18,8 +18,17 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 
         public async ValueTask<CellVoltageData?> GetCellVoltagesAsync(CancellationToken ct = default)
         {
-            // Use the generated query method
-            var response = await _diagnostics.QueryGroup02Async(ct);
+            // Degradation contract (audit B7): data absence — silent ECU, adapter error,
+            // parse failure — yields null, never a throw. Cancellation still propagates.
+            LeafBmsDiagnostics.Group02Response? response;
+            try
+            {
+                response = await _diagnostics.QueryGroup02Async(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return null;
+            }
 
             if (response == null || response?.CellVoltagesMv?.Length == 0)
                 return null;
@@ -47,8 +56,22 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 
         public async ValueTask<BatteryStatus> GetStatusAsync(CancellationToken ct = default)
         {
-            // Use the generated query method
-            var response = await _diagnostics.QueryGroup01Async(ct) ?? throw new InvalidOperationException("Failed to query BMS Group 01 data");
+            // Degradation contract (audit B7): data absence yields an all-null status,
+            // never a throw. Cancellation still propagates.
+            LeafBmsDiagnostics.Group01Response? response;
+            try
+            {
+                response = await _diagnostics.QueryGroup01Async(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                response = null;
+            }
+
+            if (response is null)
+            {
+                return new BatteryStatus();
+            }
 
             // Best-effort: pack temperatures (group 04) enrich the status but must not fail it.
             LeafBmsDiagnostics.Group04Response? temps = null;

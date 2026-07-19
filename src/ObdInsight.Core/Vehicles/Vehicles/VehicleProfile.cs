@@ -11,6 +11,20 @@ public interface IVehicleProfile
     VehicleVariantId? DetectVariantFromVin(string vin);
 
     IVehicleCommandSet GetCommands(VehicleVariantId variantId, IElmSession session);
+
+    /// <summary>
+    /// Attempts to read the VIN using this vehicle family's protocol quirks (e.g. the
+    /// Leaf answers Mode 21 PID 81 on the charger ECU, not standard OBD Mode 09).
+    /// Returns null when this profile's method gets no answer — the resolver then tries
+    /// the next profile. Must not throw for missing data.
+    /// </summary>
+    ValueTask<string?> TryReadVinAsync(IElmSession session, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether <see cref="GetCommands"/> has an implementation for the variant —
+    /// detection can succeed for variants whose command set isn't built yet.
+    /// </summary>
+    bool SupportsVariant(VehicleVariantId variantId);
 }
 
 public abstract class VehicleProfile : IVehicleProfile
@@ -31,6 +45,18 @@ public abstract class VehicleProfile : IVehicleProfile
     }
 
     public abstract IVehicleCommandSet GetCommands(VehicleVariantId variantId, IElmSession session);
+
+    /// <summary>
+    /// Default: no profile-specific VIN read. Override with the family's actual
+    /// mechanism; implementations must return null (not throw) when nothing answers.
+    /// </summary>
+    public virtual ValueTask<string?> TryReadVinAsync(IElmSession session, CancellationToken ct = default)
+    {
+        return ValueTask.FromResult<string?>(null);
+    }
+
+    /// <summary>Default: assume every declared variant has a command set.</summary>
+    public virtual bool SupportsVariant(VehicleVariantId variantId) => true;
 
     /// <summary>
     /// Decodes the model year from VIN position 10 (standard across all manufacturers).

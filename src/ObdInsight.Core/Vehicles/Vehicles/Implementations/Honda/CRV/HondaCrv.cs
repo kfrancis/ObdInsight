@@ -129,6 +129,10 @@ namespace ObdInsight.Core.Vehicles.Implementations
                 //Gen6Key => new HondaCrvGen6CommandSet(session),
                 _ => throw new NotSupportedException($"Unknown/unsupported CR-V variant: {variantId.Value}")
             };
+
+        /// <summary>Keep in sync with <see cref="GetCommands"/> (only Gen5 is wired).</summary>
+        public override bool SupportsVariant(VehicleVariantId variantId) =>
+            variantId.Value == Gen5Key;
     }
 
     public class HondaCrvGen5CommandSet : VehicleCommandSet

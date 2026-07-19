@@ -211,6 +211,17 @@ public sealed class SimulatedLeafAze0Transport : IElmTransport
             return "7E8064100BE3FA813";
         }
 
+        // Functional DTC reads (Mode 03 stored / 07 pending): healthy car, zero codes.
+        if (request == "03")
+        {
+            return "7E8024300";
+        }
+
+        if (request == "07")
+        {
+            return "7E8024700";
+        }
+
         return _header switch
         {
             "79B" => request switch

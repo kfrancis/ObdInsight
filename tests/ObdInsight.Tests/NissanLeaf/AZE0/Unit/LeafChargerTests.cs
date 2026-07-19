@@ -73,13 +73,17 @@ public class LeafChargerVinParsingTests
     }
 
     [Test]
-    public async Task GetVin_AdapterError_ThrowsAfterRetry(CancellationToken token)
+    public async Task GetVin_AdapterError_ReturnsNullAfterRetry(CancellationToken token)
     {
         var (transport, ident) = CreateIdent();
-        // Both the query and its automatic retry return an adapter error.
+        // Both the query and its automatic retry return an adapter error. Under the
+        // B7 degradation contract the capability absorbs the session's IOException
+        // and reports data absence as null.
         transport.Expect("2181", "NO DATA\r\r>");
         transport.Expect("2181", "NO DATA\r\r>");
 
-        await Assert.That(async () => await ident.GetVinAsync(token)).Throws<IOException>();
+        var vin = await ident.GetVinAsync(token);
+
+        await Assert.That(vin).IsNull();
     }
 }

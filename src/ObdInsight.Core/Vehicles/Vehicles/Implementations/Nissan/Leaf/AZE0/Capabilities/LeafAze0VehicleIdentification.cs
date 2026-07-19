@@ -21,8 +21,17 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 
         public async ValueTask<string?> GetVinAsync(CancellationToken ct = default)
         {
-            // Nissan-specific: Query Mode 21 PID 81 from "CHARGER" ECU
-            var lines = await _session.QueryAsync("2181", _context, ct);
+            // Nissan-specific: Query Mode 21 PID 81 from "CHARGER" ECU.
+            // Degradation contract (audit B7): silent ECU / adapter error → null.
+            string[] lines;
+            try
+            {
+                lines = await _session.QueryAsync("2181", _context, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return null;
+            }
 
             Log($"[VehicleID VIN] Received {lines.Length} lines");
             for (var i = 0; i < lines.Length; i++)

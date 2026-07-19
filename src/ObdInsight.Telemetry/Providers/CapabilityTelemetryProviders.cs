@@ -39,8 +39,8 @@ public sealed class BatteryStatusTelemetryProvider : ITelemetryProvider
         }
         catch
         {
-            // Data absence must degrade to nulls, not throw (roadmap B7 will move this
-            // contract into the capability itself; until then it's absorbed here).
+            // Capabilities contract data absence as nulls (B7); this catch is a belt
+            // for third-party implementations that don't honor it.
             status = null;
         }
 

@@ -124,8 +124,10 @@ public class TelemetrySessionTests
         // Pack power sign: golden capture has small positive current (discharge) → positive kW.
         await Assert.That(snapshot.PackPowerKw!.Value).IsGreaterThan(0m);
         await Assert.That(snapshot.PackPowerKw.Value).IsLessThan(1m);
-        // No DTC/odometer support yet — nulls, not exceptions.
-        await Assert.That(snapshot.DiagnosticTroubleCodes).IsNull();
+        // DTCs: replay scripts no Mode 03/07 exchange, so the reader degrades to
+        // empty lists (capability present, nothing readable). Odometer stays null.
+        await Assert.That(snapshot.StoredDtcCodes).IsNotNull();
+        await Assert.That(snapshot.StoredDtcCodes!).IsEmpty();
         await Assert.That(snapshot.OdometerKm).IsNull();
 
         await commands.Monitor.StopAsync(token);

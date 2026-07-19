@@ -92,6 +92,15 @@ public interface IVcm : IVehicleCapability
     ValueTask<VcmStatus> GetStatusAsync(CancellationToken ct = default);
 }
 
+/// <summary>
+/// Marker for vehicle capabilities.
+/// <para><b>Degradation contract (all capabilities):</b> data absence — a silent ECU,
+/// an unreachable bus, an adapter error, or an unparseable response — yields a null
+/// result or a result record whose fields are null/default. Capability methods never
+/// throw for missing data; the only exception that propagates is
+/// <see cref="OperationCanceledException"/> on cancellation. Consumers can therefore
+/// bind results directly without try/catch.</para>
+/// </summary>
 public interface IVehicleCapability
 { }
 
@@ -104,6 +113,30 @@ public interface IVehicleIdentification : IVehicleCapability
     /// Gets the Vehicle Identification Number.
     /// </summary>
     ValueTask<string?> GetVinAsync(CancellationToken ct = default);
+}
+
+/// <summary>
+/// Diagnostic trouble code access (OBD-II Mode 03 stored / Mode 07 pending).
+/// </summary>
+public interface IDiagnosticTroubleCodes : IVehicleCapability
+{
+    /// <summary>
+    /// Reads stored and pending DTCs. Never throws for missing data: ECUs that don't
+    /// answer (or answer NO DATA) simply contribute no codes, so a healthy vehicle and
+    /// an unsupported ECU both yield empty lists. Cancellation propagates as
+    /// <see cref="OperationCanceledException"/>.
+    /// </summary>
+    ValueTask<DtcReadResult> GetDtcsAsync(CancellationToken ct = default);
+}
+
+/// <summary>
+/// Result of a DTC read: standard code strings ("P0A80", "U0155", ...), deduplicated
+/// across responding ECUs. Empty lists mean "no codes readable", never an error.
+/// </summary>
+public sealed record DtcReadResult
+{
+    public required IReadOnlyList<string> StoredCodes { get; init; }
+    public required IReadOnlyList<string> PendingCodes { get; init; }
 }
 
 /// <summary>

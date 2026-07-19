@@ -20,6 +20,7 @@ public sealed class LeafAze0CommandSet : VehicleCommandSet
 
         Add<IAntilockBrakingSystem>(new LeafAze0Abs(Monitor));
         Add<IBatteryManagementSystem>(new LeafAze0Bms(arbitrated, LeafAze0Contexts.LbcBms));
+        Add<IDiagnosticTroubleCodes>(new ObdDtcReader(arbitrated, ObdDtcReader.FunctionalContext));
         Add<IBodyControl>(new LeafAze0BodyControl(Monitor));
         Add<IBrake>(new LeafAze0Brake(Monitor));
         Add<IHvac>(new LeafAze0Hvac(Monitor));

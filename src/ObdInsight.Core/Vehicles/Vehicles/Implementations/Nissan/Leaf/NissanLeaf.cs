@@ -1,5 +1,6 @@
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
+using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities;
 
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf;
 
@@ -81,6 +82,36 @@ public class NissanLeaf : VehicleProfile
         };
 
     /// <summary>
+    /// Keep in sync with <see cref="GetCommands"/> — detection legitimately returns
+    /// ZE0/AZE0-0/AZE0-1 variants that have no command set yet, and callers
+    /// (VehicleResolver) must get a clean "variant unsupported" instead of a throw.
+    /// </summary>
+    public override bool SupportsVariant(VehicleVariantId variantId) =>
+        variantId.Value == "AZE0-2-2016-2017";
+
+    /// <summary>
+    /// Leaf VIN read: Mode 21 PID 81 on the charger/IDENT ECU (0x797/0x79A) — Leafs
+    /// don't answer standard OBD Mode 09. Same mechanism across Leaf generations.
+    /// </summary>
+    public override async ValueTask<string?> TryReadVinAsync(
+        IElmSession session, CancellationToken ct = default)
+    {
+        try
+        {
+            var identification = new LeafAze0VehicleIdentification(session, LeafAze0Contexts.Ident);
+            return await identification.GetVinAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return null; // silent ECU / adapter error — not this vehicle, or not awake
+        }
+    }
+
+    /// <summary>
     /// Identifies the Nissan Leaf vehicle variant based on the provided VIN, if possible.
     /// </summary>
     /// <remarks>If the VIN does not correspond to a Nissan Leaf or cannot be mapped to a known variant, the
@@ -146,18 +177,14 @@ public class NissanLeaf : VehicleProfile
     /// <returns>The identifier of the matched vehicle variant if a match is found; otherwise, null.</returns>
     private static VehicleVariantId? DistinguishVariantByVds(string vds, IReadOnlyList<VehicleVariant> candidates)
     {
-        // VDS position 4-5 often contains model/trim information
-        // This would need actual Nissan VIN decoding tables to be accurate
-        // For now, return first candidate (can be enhanced later)
-
-        // Example logic (requires VIN decoding data):
-        // var modelCode = vds.Substring(0, 2);
-        // return modelCode switch
-        // {
-        //     "AZ" => candidates.FirstOrDefault(c => c.PlatformCode.StartsWith("AZE0"))?.Id,
-        //     _ => candidates[0].Id
-        // };
-
-        return candidates[0].Id;
+        // The only multi-candidate years in the variant list are 2013-2014
+        // (Gen2 AZE0-0 vs Gen2.5 AZE0-1). That mid-cycle split is a trim/feature
+        // change Nissan did NOT encode in the VIN — both use the same "AZ0" VDS —
+        // so it is not VIN-distinguishable. Deliberate decision: return the earlier
+        // platform (AZE0-0) as the conservative baseline; runtime disambiguation of
+        // pack size happens at the UDS layer anyway (Group 01 response length
+        // 39 vs 41 vs 49 bytes selects the 24/30/40 kWh field layout).
+        _ = vds;
+        return candidates.OrderBy(c => c.PlatformCode, StringComparer.Ordinal).First().Id;
     }
 }

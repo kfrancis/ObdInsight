@@ -56,6 +56,9 @@ public class SimulatedDriveTests
         await Assert.That(pre.CellVoltagesV!.Count).IsEqualTo(96);
         await Assert.That(pre.PackTemperatureC).IsNotNull();
         await Assert.That(pre.StateOfHealthPercent).IsNotNull();
+        // DTC pre-check: simulated car is healthy — readable, zero codes.
+        await Assert.That(pre.StoredDtcCodes!).IsEmpty();
+        await Assert.That(pre.PendingDtcCodes!).IsEmpty();
 
         // --- Live drive: collect batches until speed shows movement and SOC streams ---
         await telemetry.StartAsync(token);

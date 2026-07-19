@@ -121,31 +121,50 @@ Milestones: **M-A** pre-check · **M-B** live drive · **M-C** post-check/report
 
 ## Phase 1 — pre-check complete (M-A)
 
-- [ ] **B5 — DTC reading.** (M)
-  Generic OBD-II Mode 03 (stored) + Mode 07 (pending) over functional 7DF, multi-ECU
-  responses; decode to standard `P0xxx`-style codes. UDS 0x19 per-ECU later (separate
-  item if needed). New `IDiagnosticTroubleCodes` capability, registered for Leaf.
-  *Acceptance:* replay tests from synthetic + captured responses; graceful empty result
-  when no codes; no throw on unsupported ECU.
-  *Unblocks:* M-A, M-C. *Deps:* none.
+- [x] **B5 — DTC reading.** (M) — **DONE 2026-07-19.**
+  New `IDiagnosticTroubleCodes` + `DtcReadResult` (VehicleCapabilities.cs) and generic
+  `ObdDtcReader` (Vehicles/): Mode 03 + 07 over functional 7DF with
+  `AT CRA 7EX` wildcard for the 7E8-7EF multi-ECU range (firmware lacking `X` support
+  degrades to prior filter → empty result, documented). Per-header ISO-TP reassembly
+  (SF + FF/CF), J2012 decode incl. hex-nibble codes (P0A80), zero-pair padding skipped,
+  dedupe across ECUs. Degradation contract: NO DATA / adapter error / silent bus →
+  empty lists, never a throw (OCE propagates). Registered for Leaf via arbitrated
+  session; `TelemetrySnapshot` gains `StoredDtcCodes`/`PendingDtcCodes` (null =
+  capability absent, empty = clean); simulator answers 03/07 with zero codes.
+  Tests: `LeafDtcTests` — multi-ECU, multi-frame, pending-independent, NO DATA
+  graceful, functional-addressing asserts; suite 76/76. UDS 0x19 per-ECU remains a
+  future item. *Unblocked:* M-A, M-C.
 
-- [ ] **B6 — VIN-driven vehicle selection.** (S/M)
-  Wire `IVehicleIdentification.GetVinAsync` → `VehicleProfileRegistry` /
-  `DetectVariantFromVin` → command-set construction. Delete the hardcoded literal VIN
-  path in `Program.cs`; finish the `DistinguishVariantByVds` stub for Leaf variants.
-  *Acceptance:* replay test: session connects, reads VIN, resolves AZE0-2 command set
-  with no hardcoded vehicle; unknown VIN → clear "unsupported vehicle" result, not a
-  crash.
-  *Unblocks:* M-A; prerequisite for M-D. *Deps:* none.
+- [x] **B6 — VIN-driven vehicle selection.** (S/M) — **DONE 2026-07-19.**
+  New `VehicleResolver.ResolveAsync` + `VehicleDetectionResult`/`Status` (Detected /
+  VinUnreadable / UnsupportedVehicle / VariantUnsupported — status result, never a
+  crash). `IVehicleProfile` gains `TryReadVinAsync` (per-family VIN mechanism; Leaf
+  overrides with Mode 21 PID 81 on the charger ECU) and `SupportsVariant` (detection
+  can name variants with no command set — Leaf: only AZE0-2; CR-V: only Gen5;
+  `NotSupportedException` from `GetCommands` backstopped to VariantUnsupported).
+  Resolver takes an explicit profile list (DI/AOT-friendly; registry reflection
+  default remains until B12). `DistinguishVariantByVds` stub resolved as a documented
+  decision: the 2013-2014 Gen2/Gen2.5 split is not VIN-encoded (same "AZ0" VDS) →
+  deterministic conservative pick AZE0-0; pack-size disambiguation happens at the UDS
+  layer (Group 01 length) anyway. `Program.cs` hardcoded VIN deleted — session resolves
+  from the car's own VIN after connect, with per-status error output.
+  Tests: `VehicleResolverTests` — golden VIN → AZE0-2 command set; NO DATA →
+  VinUnreadable; VW VIN → UnsupportedVehicle; 2013 VIN → VariantUnsupported. 80/80.
+  *Unblocked:* M-A; M-D prerequisite in place.
 
-- [ ] **B7 — Unified degradation contract.** (S/M)
-  All capabilities: data absence → nullable fields / null result, never throw
-  (`LeafAze0Bms.GetStatusAsync` currently throws on missing Group01). Cancellation
-  still propagates as OCE. Document the contract on the capability interfaces.
-  *Acceptance:* replay tests for each capability with absent data return
-  null/partial-with-nulls; grep finds no `InvalidOperationException` on data absence
-  in capability implementations.
-  *Unblocks:* M-A graceful degradation. *Deps:* B1 (availability report consumes this).
+- [x] **B7 — Unified degradation contract.** (S/M) — **DONE 2026-07-19.**
+  Contract documented on `IVehicleCapability` (data absence → null/all-null result,
+  never a throw; only OCE propagates). Fixed the violators: `LeafAze0Bms.GetStatusAsync`
+  (was `InvalidOperationException` on missing Group01; also absorbs session
+  `IOException` → all-null `BatteryStatus`), `GetCellVoltagesAsync` (→ null),
+  `LeafAze0VehicleIdentification.GetVinAsync` (→ null). Cache-view capabilities and
+  `ObdDtcReader` already conformed. Acceptance grep clean: no data-absence throws in
+  capability implementations (remaining: ctor argument guards, `GetCommands` variant
+  map backstopped by B6, and the CR-V stub's `NotImplementedException` — B19 decision).
+  Old `GetVin_AdapterError_ThrowsAfterRetry` test updated to the new contract.
+  Tests: `LeafDegradationContractTests` (BMS status/cells/VIN absent → null results,
+  cancellation still OCE). 84/84 ×3 Debug + Release; generator 42/42; console app,
+  DevTools, IntegrationTests compile. *Unblocked:* M-A graceful degradation.
 
 - [x] **B8 — Range capability (0x5A9).** (S) — **DONE 2026-07-19, pulled into Phase 0**
   (see the entry under B1 above).

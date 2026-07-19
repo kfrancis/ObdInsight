@@ -62,6 +62,15 @@ public sealed record TelemetrySnapshot
     /// <summary>Charge cycle count. Null until a provider exists (roadmap B14).</summary>
     public decimal? ChargeCycleCount { get; init; }
 
-    /// <summary>Active/pending DTC codes. Null until DTC reading exists (roadmap B5).</summary>
-    public IReadOnlyList<string>? DiagnosticTroubleCodes { get; init; }
+    /// <summary>
+    /// Stored (Mode 03) DTC codes. Null when the vehicle exposes no DTC capability;
+    /// empty when readable and clean.
+    /// </summary>
+    public IReadOnlyList<string>? StoredDtcCodes { get; init; }
+
+    /// <summary>
+    /// Pending (Mode 07) DTC codes. Null when the vehicle exposes no DTC capability;
+    /// empty when readable and clean.
+    /// </summary>
+    public IReadOnlyList<string>? PendingDtcCodes { get; init; }
 }
