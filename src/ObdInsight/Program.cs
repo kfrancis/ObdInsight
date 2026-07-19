@@ -122,6 +122,86 @@ namespace ObdInsight
         }
 
         /// <summary>
+        /// Captures raw broadcast frames + decoded values for hardware verification of the
+        /// monitoring wire format and signal bit layouts. Logs the first samples per CAN ID
+        /// (raw hex + JSON decode), per-ID frame counts, and a 0x1DB voltage/current decode
+        /// for cross-checking against the BMS 2101 query values.
+        /// </summary>
+        private static async Task RunBroadcastDiagnosticAsync(CanMonitor monitor, CancellationToken ct)
+        {
+            await monitor.StartAsync(ct);
+
+            var rawSamplesPerId = new Dictionary<int, int>();
+            var countsPerId = new Dictionary<int, int>();
+            var totalFrames = 0;
+
+            using var window = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            window.CancelAfter(TimeSpan.FromSeconds(20));
+
+            try
+            {
+                await foreach (var frame in monitor.Subscribe(ReadOnlyMemory<int>.Empty, window.Token))
+                {
+                    totalFrames++;
+                    var id = frame.CanId;
+                    countsPerId[id] = countsPerId.GetValueOrDefault(id) + 1;
+
+                    var samples = rawSamplesPerId.GetValueOrDefault(id);
+                    if (samples < 2)
+                    {
+                        rawSamplesPerId[id] = samples + 1;
+                        var hex = Convert.ToHexString(frame.Data.ToArray());
+                        var decoded = TryDecodeForDiagnostic(id, frame.Data.Span);
+                        Log.Information("BROADCAST RAW {CanId:X3} [{Hex}] => {Decoded}", id, hex, decoded ?? "(no decoder)");
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // Diagnostic window elapsed.
+            }
+
+            Log.Information("Broadcast diagnostic: {Total} frames, {Ids} distinct IDs, monitor EndReason={EndReason}",
+                totalFrames, countsPerId.Count, monitor.EndReason);
+            foreach (var kvp in countsPerId.OrderByDescending(k => k.Value))
+            {
+                Log.Information("  ID {CanId:X3}: {Count} frames", kvp.Key, kvp.Value);
+            }
+            AnsiConsole.MarkupLine($"[cyan]Broadcast diagnostic:[/] {totalFrames} frames across {countsPerId.Count} IDs (details in log)");
+
+            // Cross-check: broadcast 0x1DB carries the same physical quantities as the BMS
+            // 2101 query — matching values prove the bit-layout convention end-to-end.
+            if (monitor.TryGetLatest<ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0.BatteryFrame_1DB_AZE0>(out var battery1db))
+            {
+                Log.Information("CROSS-CHECK 1DB: Voltage={Voltage:F2}V Current={Current:F2}A UsableSoc={Soc}% - compare against the BMS 2101 read above",
+                    battery1db.Voltage, battery1db.Current, battery1db.UsableSoc);
+                AnsiConsole.MarkupLine($"[cyan]1DB cross-check:[/] {battery1db.Voltage:F2}V / {battery1db.Current:F2}A (BMS said ~check log)");
+            }
+            else
+            {
+                Log.Information("CROSS-CHECK 1DB: no frame cached during diagnostic window");
+            }
+
+            await monitor.StopAsync(CancellationToken.None);
+        }
+
+        private static string? TryDecodeForDiagnostic(int canId, ReadOnlySpan<byte> data)
+        {
+            if (data.Length != 8)
+            {
+                return $"(len={data.Length}, decoders need 8 bytes)";
+            }
+
+            object? decoded =
+                ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0.CanFrameRouter.TryParseAny(canId, data)
+                ?? ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames.CanFrameRouter.TryParseAny(canId, data);
+
+            return decoded is null
+                ? null
+                : $"{decoded.GetType().Name} {System.Text.Json.JsonSerializer.Serialize(decoded, decoded.GetType())}";
+        }
+
+        /// <summary>
         /// Logs session summary using Serilog for proper file logging and analysis
         /// </summary>
         private static void LogSessionSummary(BleDeviceInfo device, DateTime start, TimeSpan duration, int success, int invalid, int failed)
@@ -905,6 +985,27 @@ namespace ObdInsight
                     {
                         AnsiConsole.MarkupLine("[yellow]⚠[/] Steering not available");
                         Log.Warning("Steering capability not available");
+                    }
+
+                    // ===========================================
+                    // 11. Broadcast decode diagnostic
+                    // Captures raw frames + decoded values so the wire format and signal bit
+                    // layouts can be verified against reality (no broadcast frame had ever been
+                    // decoded on hardware as of 2026-07-18). The 0x1DB voltage/current decode is
+                    // cross-checkable against the BMS 2101 query values logged above.
+                    // ===========================================
+                    AnsiConsole.WriteLine();
+                    AnsiConsole.MarkupLine("[cyan]Broadcast decode diagnostic (20s, filter rotation)...[/]");
+                    if (commands is ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.LeafAze0CommandSet leafCommands)
+                    {
+                        try
+                        {
+                            await RunBroadcastDiagnosticAsync(leafCommands.Monitor, ct);
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Warning(ex, "Broadcast diagnostic failed: {Message}", ex.Message);
+                        }
                     }
 
                     AnsiConsole.WriteLine();
