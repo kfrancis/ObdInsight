@@ -14,7 +14,9 @@
 | `ObdInsight.Simulation` | Replay transport + simulated Leaf for hardware-free dev |
 | `ObdInsight.Transports.Ble` | Plugin.BLE transport, `net9.0` + `net9.0-android` + `net9.0-ios` |
 
-Shared metadata (license, repo URL) lives in `src/Directory.Build.props`.
+Shared metadata (license, repo URL) lives in `src/Directory.Build.props`. Every
+package ships its own `README.md` (lives next to each csproj; rendered on nuget.org —
+`Directory.Build.props` packs it automatically for packable projects).
 
 ## Versioning (MinVer)
 

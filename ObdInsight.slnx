@@ -15,6 +15,7 @@
     <File Path="mockup.png" />
     <File Path="notes.md" />
     <File Path="README.md" />
+    <File Path="src/Directory.Build.props" />
     <File Path="vehicle_nissanleaf.cpp" />
   </Folder>
   <Folder Name="/src/">
