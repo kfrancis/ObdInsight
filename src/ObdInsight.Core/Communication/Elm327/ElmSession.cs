@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -1069,7 +1068,7 @@ namespace ObdInsight.Core.Communication.Elm327
             }
         }
 
-        private bool TryParseMonitoringFrame(string rawData, out RawCanFrame frame)
+        private static bool TryParseMonitoringFrame(string rawData, out RawCanFrame frame)
         {
             frame = default;
 
@@ -1084,51 +1083,9 @@ namespace ObdInsight.Core.Communication.Elm327
                 return false;
             }
 
-            // Monitoring format with CAF0: "CAN_ID BYTE1 BYTE2 BYTE3 ..."
-            // Example: "1DB 10 14 61 01 00 00 00"
-            var parts = rawData.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-            // Need at least CAN ID (1 part) - data bytes are optional for valid frames
-            if (parts.Length < 1)
-            {
-                return false;
-            }
-
-            // Parse CAN ID (3 hex digits for 11-bit CAN)
-            if (!int.TryParse(parts[0], NumberStyles.HexNumber, null, out var canId))
-            {
-                return false;
-            }
-
-            // Validate CAN ID range (11-bit CAN: 0x000-0x7FF)
-            if (canId < 0 || canId > 0x7FF)
-            {
-                return false;
-            }
-
-            // Parse data bytes (if any)
-            var dataBytes = new List<byte>();
-            for (var i = 1; i < parts.Length; i++)
-            {
-                if (byte.TryParse(parts[i], NumberStyles.HexNumber, null, out var b))
-                {
-                    dataBytes.Add(b);
-                }
-                else
-                {
-                    break; // Stop at first non-hex byte
-                }
-            }
-
-            // Valid CAN frames have 0-8 data bytes
-            // If we got more than 8 bytes, something is wrong - reject the frame
-            if (dataBytes.Count > 8)
-            {
-                return false;
-            }
-
-            frame = new RawCanFrame(canId, new ReadOnlyMemory<byte>([.. dataBytes]));
-            return true;
+            // Monitoring format: "CAN_ID BYTE1 BYTE2 BYTE3 ..." (11-bit or 29-bit ID, spaced
+            // or contiguous depending on AT S0/S1). See RawCanFrameParser for the format rules.
+            return RawCanFrameParser.TryParse(rawData, out frame);
         }
 
         private void Log(string message)

@@ -283,6 +283,26 @@ public sealed class EcuContext
         CanFilterPattern = "100"
     };
 
+    /// <summary>
+    ///     Vehicle-agnostic accept-all ATMA monitoring context: no hardware CAN filter, no
+    ///     session activation, no keep-alive. Used by raw CAN frame capture (e.g.
+    ///     <c>IRawCanMonitor</c> in ObdInsight.Telemetry) where the caller wants every frame
+    ///     on the bus rather than a vehicle-specific subset.
+    /// </summary>
+    public static EcuContext RawCanMonitor => new()
+    {
+        Name = "Raw CAN Monitor",
+        TxHeader = "000",
+        RxFilter = "000",
+        FlowControlHeader = "000",
+        EnableHeaders = true,
+        EnableAutoFormatting = false, // CAF0 for monitoring - preserves spaces between bytes
+        CommunicationMode = EcuCommunicationMode.PassiveMonitoring,
+        MonitoringCommand = "ATMA",
+        CanFilterMask = null,
+        CanFilterPattern = null
+    };
+
     public void Validate()
     {
         if (CommunicationMode == EcuCommunicationMode.RequestResponse)

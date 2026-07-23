@@ -8,11 +8,11 @@ namespace ObdInsight.Core.Protocols;
 public readonly record struct RawCanFrame(int CanId, ReadOnlyMemory<byte> Data)
 {
     /// <summary>
-    ///     Gets the CAN ID as a hexadecimal string (3-digit for 11-bit IDs).
+    ///     Gets the CAN ID as a hexadecimal string (3-digit for 11-bit IDs, 8-digit for 29-bit IDs).
     /// </summary>
     public string CanIdHex
     {
-        get => $"{CanId:X3}";
+        get => CanId > 0x7FF ? $"{CanId:X8}" : $"{CanId:X3}";
     }
 
     /// <summary>

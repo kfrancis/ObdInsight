@@ -8,7 +8,10 @@
       "Bash(dotnet run:*)",
       "Bash(git checkout:*)",
       "Bash(dotnet test:*)",
-      "Bash(tee:*)"
+      "Bash(tee:*)",
+      "Bash(git -C /d/Github/ObdInsight tag --list \"v*\" --sort=-v:refname)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet run *)"
     ]
   }
 }
