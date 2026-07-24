@@ -16,8 +16,12 @@
     <PackageTags>obd;obd2;elm327;can;ev;nissan-leaf;ble;telemetry</PackageTags>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!--
+      Embedded (not portable+snupkg): pdb bytes live inside the dll itself, so any
+      consuming app's local build output already has resolvable debug info — no
+      separate symbol-server restore step required for downstream Sentry uploads.
+    -->
+    <DebugType>embedded</DebugType>
     <!-- Every packable project ships its own README.md (shown on nuget.org). -->
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

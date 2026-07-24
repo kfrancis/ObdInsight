@@ -74,8 +74,8 @@ jobs:
         shell: pwsh
         run: |
           # Enumerate explicitly: dotnet nuget push's own wildcard handling breaks on
-          # Windows with forward-slash globs ("File does not exist"). Symbol packages
-          # (.snupkg) are pushed automatically alongside each .nupkg.
+          # Windows with forward-slash globs ("File does not exist"). Debug info is
+          # embedded in each dll (DebugType=embedded) — no separate .snupkg to push.
           $packages = Get-ChildItem artifacts/packages -Filter *.nupkg
           if ($packages.Count -eq 0) { Write-Error 'No packages found to push.'; exit 1 }
           foreach ($pkg in $packages) {
