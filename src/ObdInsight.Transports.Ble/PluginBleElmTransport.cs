@@ -70,7 +70,7 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
                     .ToList()));
         }
 
-        var resolved = _forcedProfile ?? BleProfileResolver.Resolve(topology)
+        var resolved = _forcedProfile ?? BleProfileResolver.Resolve(topology, _device.Name)
             ?? throw new IOException(
                 $"No compatible OBD GATT profile on device {_deviceId} " +
                 $"({topology.Count} services discovered).");

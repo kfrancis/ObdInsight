@@ -130,6 +130,53 @@ public class BleProfileResolverTests
     }
 
     [Test]
+    public async Task UnknownService_WithVeepeakDeviceName_HintsInGenericFallback(CancellationToken _)
+    {
+        var service = Guid.NewGuid();
+        var w = Guid.NewGuid();
+        var n = Guid.NewGuid();
+        var topology = new[]
+        {
+            new GattServiceInfo(service,
+            [
+                new GattCharacteristicInfo(w, CanWrite: true, CanNotify: false),
+                new GattCharacteristicInfo(n, CanWrite: false, CanNotify: true),
+            ]),
+        };
+
+        var resolved = BleProfileResolver.Resolve(topology, deviceName: "Veepeak OBDII");
+
+        await Assert.That(resolved).IsNotNull();
+        await Assert.That(resolved!.Name).Contains("Veepeak-like");
+    }
+
+    [Test]
+    public async Task KnownService_MismatchedCharacteristicUuids_FallsBackWithinService(CancellationToken _)
+    {
+        // FFF0 service present (matches Veepeak), but the write/notify UUIDs are a
+        // different firmware batch's FFF3/FFF4 — not FFF1/FFF2, and not a single
+        // dual-role characteristic either.
+        var altWrite = BleUuid.FromShortId(0xFFF3);
+        var altNotify = BleUuid.FromShortId(0xFFF4);
+        var topology = new[]
+        {
+            new GattServiceInfo(Fff0,
+            [
+                new GattCharacteristicInfo(altWrite, CanWrite: true, CanNotify: false),
+                new GattCharacteristicInfo(altNotify, CanWrite: false, CanNotify: true),
+            ]),
+        };
+
+        var resolved = BleProfileResolver.Resolve(topology);
+
+        await Assert.That(resolved).IsNotNull();
+        await Assert.That(resolved!.Name).Contains("Veepeak");
+        await Assert.That(resolved.Name).Contains("characteristic fallback");
+        await Assert.That(resolved.WriteCharacteristicUuid).IsEqualTo(altWrite);
+        await Assert.That(resolved.NotifyCharacteristicUuid).IsEqualTo(altNotify);
+    }
+
+    [Test]
     public async Task NoUsableTopology_ReturnsNull(CancellationToken _)
     {
         var topology = new[]

@@ -25,12 +25,13 @@ public sealed record ResolvedBleProfile(
 /// </summary>
 public static class BleProfileResolver
 {
-    public static ResolvedBleProfile? Resolve(IReadOnlyList<GattServiceInfo> services) =>
-        Resolve(services, BleAdapterProfile.KnownProfiles);
+    public static ResolvedBleProfile? Resolve(IReadOnlyList<GattServiceInfo> services, string? deviceName = null) =>
+        Resolve(services, BleAdapterProfile.KnownProfiles, deviceName);
 
     public static ResolvedBleProfile? Resolve(
         IReadOnlyList<GattServiceInfo> services,
-        IReadOnlyList<BleAdapterProfile> knownProfiles)
+        IReadOnlyList<BleAdapterProfile> knownProfiles,
+        string? deviceName = null)
     {
         // Rule 1: exact known-profile match, in table priority order.
         foreach (var profile in knownProfiles)
@@ -60,6 +61,20 @@ public static class BleProfileResolver
                     service.Uuid, dual.Uuid, dual.Uuid,
                     profile.WriteWithResponse, profile.MaxWriteSize);
             }
+
+            // Rule 2b: known service, but write/notify sit on characteristic UUIDs the
+            // firmware batch changed (e.g. FFF3/FFF4 instead of FFF1/FFF2) — any usable
+            // write+notify pair inside a *recognized* service still deserves a named
+            // profile, not the generic fallback below.
+            var anyWrite = service.Characteristics.FirstOrDefault(c => c.CanWrite);
+            var anyNotify = service.Characteristics.FirstOrDefault(c => c.CanNotify);
+            if (anyWrite is not null && anyNotify is not null)
+            {
+                return new ResolvedBleProfile(
+                    $"{profile.Name} (characteristic fallback)",
+                    service.Uuid, anyWrite.Uuid, anyNotify.Uuid,
+                    profile.WriteWithResponse, profile.MaxWriteSize);
+            }
         }
 
         // Rule 3: generic fallback — any service carrying a usable (write, notify) pair
@@ -70,9 +85,11 @@ public static class BleProfileResolver
             var notify = service.Characteristics.FirstOrDefault(c => c.CanNotify);
             if (write is not null && notify is not null)
             {
+                var label = NameHint(deviceName) is { } hint
+                    ? $"{hint} (write/notify pair fallback)"
+                    : "Generic (write/notify pair fallback)";
                 return new ResolvedBleProfile(
-                    "Generic (write/notify pair fallback)",
-                    service.Uuid, write.Uuid, notify.Uuid,
+                    label, service.Uuid, write.Uuid, notify.Uuid,
                     WriteWithResponse: false, MaxWriteSize: 20);
             }
         }
@@ -88,6 +105,38 @@ public static class BleProfileResolver
         {
             yield return data.Slice(offset, Math.Min(maxChunkSize, data.Length - offset));
         }
+    }
+
+    /// <summary>
+    /// Advertised device name is a more stable signal than GATT UUIDs, which vary by
+    /// firmware batch on the same physical clone — used only to label an otherwise
+    /// unrecognized service for diagnosability, not to pick UUIDs.
+    /// </summary>
+    private static string? NameHint(string? deviceName)
+    {
+        if (string.IsNullOrWhiteSpace(deviceName))
+        {
+            return null;
+        }
+
+        if (deviceName.Contains("veepeak", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Veepeak-like";
+        }
+
+        if (deviceName.Contains("vgate", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Vgate-like";
+        }
+
+        if (deviceName.Contains("obdii", StringComparison.OrdinalIgnoreCase) ||
+            deviceName.Contains("obd2", StringComparison.OrdinalIgnoreCase) ||
+            deviceName.Contains("elm327", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ELM327-family";
+        }
+
+        return null;
     }
 
     private static GattServiceInfo? FindService(IReadOnlyList<GattServiceInfo> services, Guid uuid) =>
