@@ -68,22 +68,6 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
         {
             _device = await _adapter.ConnectToKnownDeviceAsync(_deviceId, cancellationToken: ct);
 
-        var resolved = _forcedProfile ?? BleProfileResolver.Resolve(topology, _device.Name)
-            ?? throw new IOException(
-                $"No compatible OBD GATT profile on device {_deviceId} " +
-                $"({topology.Count} services discovered).");
-        _logger.LogInformation("BLE profile resolved: {Profile}", resolved.Name);
-            _probeStage = BleProbeStage.DiscoveringServices;
-            var services = await _device.GetServicesAsync(ct);
-            foreach (var service in services)
-            {
-                var characteristics = await service.GetCharacteristicsAsync();
-                _lastTopology.Add(new GattServiceInfo(
-                    service.Id,
-                    characteristics
-                        .Select(c => new GattCharacteristicInfo(c.Id, c.CanWrite, c.CanUpdate))
-                        .ToList()));
-            }
             _probeStage = BleProbeStage.DiscoveringServices;
             var services = await _device.GetServicesAsync(ct);
             foreach (var service in services)
@@ -97,18 +81,18 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
             }
 
             _probeStage = BleProbeStage.ResolvingProfile;
-            resolved = _forcedProfile ?? BleProfileResolver.Resolve(_lastTopology);
+            resolved = _forcedProfile ?? BleProfileResolver.Resolve(_lastTopology, _device.Name);
             if (resolved is null)
-                throw new IOException($"No compatible OBD GATT profile ({_lastTopology.Count} services discovered).");
+                throw new IOException(
+                    $"No compatible OBD GATT profile on device {_deviceId} " +
+                    $"({_lastTopology.Count} services discovered).");
             _logger.LogInformation("BLE profile resolved: {Profile}", resolved.Name);
 
             _probeStage = BleProbeStage.BindingCharacteristics;
-            var gattService = services.First(s => BleUuid.Matches(s.Id, resolved.ServiceUuid));
+            var gattService = services.First(s => s.Id == resolved.ServiceUuid);
             var characteristicsInService = await gattService.GetCharacteristicsAsync();
-            _writeCharacteristic = characteristicsInService.First(c =>
-                BleUuid.Matches(c.Id, resolved.WriteCharacteristicUuid));
-            _notifyCharacteristic = characteristicsInService.First(c =>
-                BleUuid.Matches(c.Id, resolved.NotifyCharacteristicUuid));
+            _writeCharacteristic = characteristicsInService.First(c => c.Id == resolved.WriteCharacteristicUuid);
+            _notifyCharacteristic = characteristicsInService.First(c => c.Id == resolved.NotifyCharacteristicUuid);
 
             _writeCharacteristic.WriteType = resolved.WriteWithResponse
                 ? CharacteristicWriteType.WithResponse
@@ -162,14 +146,14 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
         exception is OperationCanceledException
             ? BleProbeFailureKind.Cancelled
             : stage switch
-        {
-            BleProbeStage.Connecting => BleProbeFailureKind.ConnectionFailed,
-            BleProbeStage.DiscoveringServices => BleProbeFailureKind.ServiceDiscoveryFailed,
-            BleProbeStage.ResolvingProfile when exception is IOException => BleProbeFailureKind.NoCompatibleProfile,
-            BleProbeStage.BindingCharacteristics => BleProbeFailureKind.CharacteristicBindingFailed,
-            BleProbeStage.SubscribingNotifications => BleProbeFailureKind.NotificationSubscriptionFailed,
-            _ => BleProbeFailureKind.Unknown
-        };
+            {
+                BleProbeStage.Connecting => BleProbeFailureKind.ConnectionFailed,
+                BleProbeStage.DiscoveringServices => BleProbeFailureKind.ServiceDiscoveryFailed,
+                BleProbeStage.ResolvingProfile when exception is IOException => BleProbeFailureKind.NoCompatibleProfile,
+                BleProbeStage.BindingCharacteristics => BleProbeFailureKind.CharacteristicBindingFailed,
+                BleProbeStage.SubscribingNotifications => BleProbeFailureKind.NotificationSubscriptionFailed,
+                _ => BleProbeFailureKind.Unknown
+            };
 
     private static string FailureMessage(BleProbeFailureKind kind) =>
         kind switch

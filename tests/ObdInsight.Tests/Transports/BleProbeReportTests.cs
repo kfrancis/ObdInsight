@@ -251,6 +251,7 @@ public sealed class BleProbeReportTests
             method.Name switch
             {
                 "get_Id" => DeviceId,
+                "get_Name" => null,
                 "GetServicesAsync" when serviceDiscoveryFailure is not null =>
                     Task.FromException<IReadOnlyList<IService>>(serviceDiscoveryFailure),
                 "GetServicesAsync" => Task.FromResult(services),
