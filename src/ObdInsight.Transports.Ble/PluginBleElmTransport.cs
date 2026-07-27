@@ -84,6 +84,17 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
                         .Select(c => new GattCharacteristicInfo(c.Id, c.CanWrite, c.CanUpdate))
                         .ToList()));
             }
+            _probeStage = BleProbeStage.DiscoveringServices;
+            var services = await _device.GetServicesAsync(ct);
+            foreach (var service in services)
+            {
+                var characteristics = await service.GetCharacteristicsAsync();
+                _lastTopology.Add(new GattServiceInfo(
+                    service.Id,
+                    characteristics
+                        .Select(c => new GattCharacteristicInfo(c.Id, c.CanWrite, c.CanUpdate))
+                        .ToList()));
+            }
 
             _probeStage = BleProbeStage.ResolvingProfile;
             resolved = _forcedProfile ?? BleProfileResolver.Resolve(_lastTopology);
