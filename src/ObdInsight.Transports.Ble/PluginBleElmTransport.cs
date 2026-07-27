@@ -34,6 +34,8 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
     private ICharacteristic? _writeCharacteristic;
     private ICharacteristic? _notifyCharacteristic;
     private ResolvedBleProfile? _activeProfile;
+    private BleProbeStage _probeStage = BleProbeStage.Connecting;
+    private List<GattServiceInfo> _lastTopology = [];
 
     public PluginBleElmTransport(
         IBleAdapter adapter,
@@ -48,52 +50,127 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
     }
 
     public event EventHandler? ConnectionLost;
+    public event Action<BleProbeReport>? ProbeCompleted;
 
     /// <summary>The profile in use after a successful open.</summary>
     public ResolvedBleProfile? ActiveProfile => _activeProfile;
+    public BleProbeReport? LastProbeReport { get; private set; }
 
     public bool IsOpen { get; private set; }
 
     public async ValueTask OpenAsync(CancellationToken ct)
     {
-        _device = await _adapter.ConnectToKnownDeviceAsync(_deviceId, cancellationToken: ct);
-
-        var services = await _device.GetServicesAsync(ct);
-        var topology = new List<GattServiceInfo>();
-        foreach (var service in services)
+        _probeStage = BleProbeStage.Connecting;
+        _lastTopology = [];
+        LastProbeReport = null;
+        ResolvedBleProfile? resolved = null;
+        try
         {
-            var characteristics = await service.GetCharacteristicsAsync();
-            topology.Add(new GattServiceInfo(
-                service.Id,
-                characteristics
-                    .Select(c => new GattCharacteristicInfo(c.Id, c.CanWrite, c.CanUpdate))
-                    .ToList()));
-        }
+            _device = await _adapter.ConnectToKnownDeviceAsync(_deviceId, cancellationToken: ct);
 
         var resolved = _forcedProfile ?? BleProfileResolver.Resolve(topology, _device.Name)
             ?? throw new IOException(
                 $"No compatible OBD GATT profile on device {_deviceId} " +
                 $"({topology.Count} services discovered).");
         _logger.LogInformation("BLE profile resolved: {Profile}", resolved.Name);
+            _probeStage = BleProbeStage.DiscoveringServices;
+            var services = await _device.GetServicesAsync(ct);
+            foreach (var service in services)
+            {
+                var characteristics = await service.GetCharacteristicsAsync();
+                _lastTopology.Add(new GattServiceInfo(
+                    service.Id,
+                    characteristics
+                        .Select(c => new GattCharacteristicInfo(c.Id, c.CanWrite, c.CanUpdate))
+                        .ToList()));
+            }
 
-        var gattService = services.First(s => s.Id == resolved.ServiceUuid);
-        var characteristicsInService = await gattService.GetCharacteristicsAsync();
-        _writeCharacteristic = characteristicsInService.First(c => c.Id == resolved.WriteCharacteristicUuid);
-        _notifyCharacteristic = characteristicsInService.First(c => c.Id == resolved.NotifyCharacteristicUuid);
+            _probeStage = BleProbeStage.ResolvingProfile;
+            resolved = _forcedProfile ?? BleProfileResolver.Resolve(_lastTopology);
+            if (resolved is null)
+                throw new IOException($"No compatible OBD GATT profile ({_lastTopology.Count} services discovered).");
+            _logger.LogInformation("BLE profile resolved: {Profile}", resolved.Name);
 
-        _writeCharacteristic.WriteType = resolved.WriteWithResponse
-            ? CharacteristicWriteType.WithResponse
-            : CharacteristicWriteType.WithoutResponse;
+            _probeStage = BleProbeStage.BindingCharacteristics;
+            var gattService = services.First(s => BleUuid.Matches(s.Id, resolved.ServiceUuid));
+            var characteristicsInService = await gattService.GetCharacteristicsAsync();
+            _writeCharacteristic = characteristicsInService.First(c =>
+                BleUuid.Matches(c.Id, resolved.WriteCharacteristicUuid));
+            _notifyCharacteristic = characteristicsInService.First(c =>
+                BleUuid.Matches(c.Id, resolved.NotifyCharacteristicUuid));
 
-        _notifyCharacteristic.ValueUpdated += OnValueUpdated;
-        await _notifyCharacteristic.StartUpdatesAsync(ct);
+            _writeCharacteristic.WriteType = resolved.WriteWithResponse
+                ? CharacteristicWriteType.WithResponse
+                : CharacteristicWriteType.WithoutResponse;
 
-        _adapter.DeviceDisconnected += OnDeviceDisconnected;
-        _adapter.DeviceConnectionLost += OnDeviceDisconnected;
+            _probeStage = BleProbeStage.SubscribingNotifications;
+            _notifyCharacteristic.ValueUpdated += OnValueUpdated;
+            await _notifyCharacteristic.StartUpdatesAsync(ct);
 
-        _activeProfile = resolved;
-        IsOpen = true;
+            _adapter.DeviceDisconnected += OnDeviceDisconnected;
+            _adapter.DeviceConnectionLost += OnDeviceDisconnected;
+
+            _activeProfile = resolved;
+            IsOpen = true;
+            CompleteProbe(new BleProbeReport(BleProbeStage.Completed, _lastTopology, resolved, null, null));
+        }
+        catch (Exception ex)
+        {
+            var kind = ClassifyFailure(_probeStage, ex);
+            CompleteProbe(new BleProbeReport(
+                _probeStage,
+                _lastTopology,
+                resolved,
+                kind,
+                FailureMessage(kind)));
+            throw;
+        }
     }
+
+    private void CompleteProbe(BleProbeReport report)
+    {
+        LastProbeReport = report;
+        var handlers = ProbeCompleted;
+        if (handlers is null)
+            return;
+
+        foreach (Action<BleProbeReport> handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(report);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "BLE probe-completed callback failed.");
+            }
+        }
+    }
+
+    private static BleProbeFailureKind ClassifyFailure(BleProbeStage stage, Exception exception) =>
+        exception is OperationCanceledException
+            ? BleProbeFailureKind.Cancelled
+            : stage switch
+        {
+            BleProbeStage.Connecting => BleProbeFailureKind.ConnectionFailed,
+            BleProbeStage.DiscoveringServices => BleProbeFailureKind.ServiceDiscoveryFailed,
+            BleProbeStage.ResolvingProfile when exception is IOException => BleProbeFailureKind.NoCompatibleProfile,
+            BleProbeStage.BindingCharacteristics => BleProbeFailureKind.CharacteristicBindingFailed,
+            BleProbeStage.SubscribingNotifications => BleProbeFailureKind.NotificationSubscriptionFailed,
+            _ => BleProbeFailureKind.Unknown
+        };
+
+    private static string FailureMessage(BleProbeFailureKind kind) =>
+        kind switch
+        {
+            BleProbeFailureKind.Cancelled => "The BLE probe was cancelled.",
+            BleProbeFailureKind.ConnectionFailed => "The BLE connection failed.",
+            BleProbeFailureKind.ServiceDiscoveryFailed => "BLE service discovery failed.",
+            BleProbeFailureKind.NoCompatibleProfile => "No compatible BLE GATT profile was found.",
+            BleProbeFailureKind.CharacteristicBindingFailed => "BLE characteristic binding failed.",
+            BleProbeFailureKind.NotificationSubscriptionFailed => "BLE notification subscription failed.",
+            _ => "The BLE probe failed."
+        };
 
     public async ValueTask WriteAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
     {
