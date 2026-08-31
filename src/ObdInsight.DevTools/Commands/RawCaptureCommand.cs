@@ -16,11 +16,16 @@ namespace ObdInsight.DevTools.Commands;
 ///
 /// Output is a timestamped line log plus a JSON summary, both replayable offline. The live
 /// display shows a per-ID histogram and, per ID, which bits have ever changed during the
-/// capture — the cheapest useful form of the bit-flip analysis the discovery harness formalises.
+/// capture - the cheapest useful form of the bit-flip analysis the discovery harness formalises.
 ///
-/// This command never transmits a CAN frame. It sends AT configuration commands to the adapter
-/// and then listens. Whether the adapter itself acknowledges frames on the bus is governed by
-/// its silent-monitoring setting, which this command sets explicitly and reports.
+/// Runs two ways over the same body: interactively (prompts, live table, SPACE for markers) and
+/// headlessly (arguments, plain stdout, markers appended to a watched file). The headless path
+/// exists so the tool can be driven over SSH from a development machine while the laptop sits in
+/// the car.
+///
+/// This command never transmits a CAN frame. It sends AT configuration commands through
+/// <see cref="ListenOnlyElmTransport"/>, which throws on anything outside the listen-only
+/// whitelist, and then listens.
 /// </summary>
 public static class RawCaptureCommand
 {
@@ -33,6 +38,9 @@ public static class RawCaptureCommand
         "UNABLE TO CONNECT", "SEARCHING", "BUS INIT", "BUS ERROR", "FB ERROR", "?"
     ];
 
+    // ------------------------------------------------------------ entry points
+
+    /// <summary>Interactive entry point: prompts for options, then runs the shared body.</summary>
     public static async Task RunAsync(DevToolsSession session, CancellationToken ct = default)
     {
         AnsiConsole.WriteLine();
@@ -51,8 +59,8 @@ public static class RawCaptureCommand
                  AT CSM1 and reports the response, but older firmware may not
                  support it - check the reported result before trusting it.
 
-            [grey]This command sends AT commands to the adapter and then listens.
-            It never transmits a CAN frame.[/]
+            [grey]Writes are whitelisted at the transport: anything that could transmit
+            is refused, not merely avoided.[/]
             """)
             .Header("[cyan]Raw capture[/]")
             .Border(BoxBorder.Rounded));
@@ -64,33 +72,94 @@ public static class RawCaptureCommand
             return;
         }
 
-        var busLabel = AnsiConsole.Prompt(
-            new TextPrompt<string>("[cyan]Bus label[/] [grey](free text, becomes the filename)[/]:")
-                .DefaultValue("CAR-CAN"));
+        var options = new RawCaptureOptions
+        {
+            BusLabel = AnsiConsole.Prompt(
+                new TextPrompt<string>("[cyan]Bus label[/] [grey](free text, becomes the filename)[/]:")
+                    .DefaultValue("CAR-CAN")),
+            DurationSeconds = AnsiConsole.Prompt(
+                new TextPrompt<int>("[cyan]Capture duration in seconds[/] [grey](0 = until Q)[/]:")
+                    .DefaultValue(60)
+                    .Validate(v => v >= 0 ? ValidationResult.Success() : ValidationResult.Error("Must be >= 0"))),
+            OutputRoot = AnsiConsole.Prompt(
+                new TextPrompt<string>("[cyan]Output directory[/]:")
+                    .DefaultValue(DefaultOutputRoot())),
+            Headless = false,
+        };
 
-        var durationSeconds = AnsiConsole.Prompt(
-            new TextPrompt<int>("[cyan]Capture duration in seconds[/] [grey](0 = until Q)[/]:")
-                .DefaultValue(60)
-                .Validate(v => v >= 0 ? ValidationResult.Success() : ValidationResult.Error("Must be >= 0")));
+        await ExecuteAsync(session, options, ct);
+    }
 
-        var outputRoot = AnsiConsole.Prompt(
-            new TextPrompt<string>("[cyan]Output directory[/]:")
-                .DefaultValue(DefaultOutputRoot()));
+    /// <summary>
+    /// Headless entry point. Returns a process exit code: 0 on success, non-zero on failure, so
+    /// a remote caller can branch on it without parsing output.
+    /// </summary>
+    public static async Task<int> RunHeadlessAsync(
+        DevToolsSession session,
+        RawCaptureOptions options,
+        CancellationToken ct = default)
+    {
+        if (options.DurationSeconds <= 0)
+        {
+            Console.Error.WriteLine("error: --seconds must be greater than 0 in headless mode (no keyboard to stop it).");
+            return 2;
+        }
 
+        try
+        {
+            var jsonPath = await ExecuteAsync(session, options, ct);
+            if (jsonPath is null)
+            {
+                return 1;
+            }
+
+            // Sole stdout line on success, so a caller can consume it directly.
+            Console.Out.WriteLine(jsonPath);
+            return 0;
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("error: capture cancelled.");
+            return 130;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"error: {ex.Message}");
+            return 1;
+        }
+    }
+
+    // ------------------------------------------------------------ shared body
+
+    /// <summary>Returns the summary JSON path on success, null if the capture did not run.</summary>
+    private static async Task<string?> ExecuteAsync(
+        DevToolsSession session,
+        RawCaptureOptions options,
+        CancellationToken ct)
+    {
         // A connection that already ran ELM327 bring-up has transmitted AT SP 0 auto-detect and
         // 0100 probes. On a powertrain bus that is exactly what must never happen, so such a
         // connection is not reusable here - reconnect transport-only instead.
         if (session.IsConnected && session.AdapterInitialized)
         {
-            AnsiConsole.MarkupLine(
-                "[yellow]This connection already ran ELM327 bring-up, which probes the bus " +
-                "(AT SP 0, 0100).[/] Those frames were transmitted on whatever bus the adapter " +
-                "is wired to. A clean transport-only reconnect is required before a listen-only " +
-                "capture.");
+            const string warning =
+                "This connection already ran ELM327 bring-up, which probes the bus (AT SP 0, 0100). " +
+                "Those frames were transmitted on whatever bus the adapter is wired to. " +
+                "A clean transport-only reconnect is required before a listen-only capture.";
 
-            if (!AnsiConsole.Confirm("Reconnect transport-only now?", defaultValue: true))
+            if (options.Headless)
             {
-                return;
+                // No human to ask; reconnecting is the safe action and is what the operator
+                // would have chosen, so do it and say so loudly.
+                Console.Error.WriteLine("warning: " + warning + " Reconnecting transport-only.");
+            }
+            else
+            {
+                AnsiConsole.MarkupLine($"[yellow]{warning.EscapeMarkup()}[/]");
+                if (!AnsiConsole.Confirm("Reconnect transport-only now?", defaultValue: true))
+                {
+                    return null;
+                }
             }
 
             await session.DisconnectAsync();
@@ -98,24 +167,24 @@ public static class RawCaptureCommand
 
         if (!session.IsConnected && !await session.ConnectAsync(ct))
         {
-            return;
+            Report(options, "error: failed to connect to the adapter.", isError: true);
+            return null;
         }
 
         var transport = session.Transport;
         if (transport is null)
         {
-            AnsiConsole.MarkupLine("[red]No transport available.[/]");
-            return;
+            Report(options, "error: no transport available.", isError: true);
+            return null;
         }
 
         if (!session.ArmListenOnly())
         {
-            return;
+            return null;
         }
 
-        AnsiConsole.MarkupLine("[green]Listen-only armed.[/] Writes are whitelisted at the transport.");
+        Report(options, "Listen-only armed. Writes are whitelisted at the transport.");
 
-        // Per-chunk RX logging would flood the console and corrupt the live display.
         var previousSuppress = session.SuppressTrafficLogging;
         session.SuppressTrafficLogging = true;
 
@@ -126,26 +195,43 @@ public static class RawCaptureCommand
 
         try
         {
-            var setup = await ConfigureForMonitoringAsync(framer, ct);
-            RenderSetupTable(setup);
+            var setup = await ConfigureForMonitoringAsync(framer, options, ct);
 
-            if (!AnsiConsole.Confirm("Start capture?", defaultValue: true))
+            if (options.Headless)
             {
-                return;
+                ReportSetupPlain(setup);
+            }
+            else
+            {
+                RenderSetupTable(setup);
+                if (!AnsiConsole.Confirm("Start capture?", defaultValue: true))
+                {
+                    return null;
+                }
             }
 
-            var result = await CaptureAsync(framer, durationSeconds, ct);
-            var labels = PromptForMarkerLabels(result);
-            var paths = await WriteOutputAsync(outputRoot, busLabel, session, setup, result, labels, ct);
+            var result = await CaptureAsync(framer, options, ct);
 
-            RenderSummary(result);
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine($"[green]Log:[/]     {paths.LogPath.EscapeMarkup()}");
-            AnsiConsole.MarkupLine($"[green]Summary:[/] {paths.JsonPath.EscapeMarkup()}");
-        }
-        catch (OperationCanceledException)
-        {
-            AnsiConsole.MarkupLine("[yellow]Capture cancelled.[/]");
+            if (!options.Headless)
+            {
+                PromptForMarkerLabels(result);
+            }
+
+            var paths = await WriteOutputAsync(options, session, setup, result, ct);
+
+            if (options.Headless)
+            {
+                ReportSummaryPlain(result, paths.LogPath);
+            }
+            else
+            {
+                RenderSummary(result);
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine($"[green]Log:[/]     {paths.LogPath.EscapeMarkup()}");
+                AnsiConsole.MarkupLine($"[green]Summary:[/] {paths.JsonPath.EscapeMarkup()}");
+            }
+
+            return paths.JsonPath;
         }
         finally
         {
@@ -163,9 +249,11 @@ public static class RawCaptureCommand
 
             if (guarded.BlockedAttempts.Count > 0)
             {
-                AnsiConsole.MarkupLine(
-                    $"[red]Listen-only guard blocked {guarded.BlockedAttempts.Count} write(s):[/] " +
-                    string.Join(", ", guarded.BlockedAttempts).EscapeMarkup());
+                Report(
+                    options,
+                    $"listen-only guard blocked {guarded.BlockedAttempts.Count} write(s): " +
+                    string.Join(", ", guarded.BlockedAttempts),
+                    isError: true);
             }
 
             session.DisarmListenOnly();
@@ -179,7 +267,10 @@ public static class RawCaptureCommand
     /// Puts the adapter into wide-open monitoring configuration and records what each command
     /// answered, so the capture metadata says exactly how the data was collected.
     /// </summary>
-    private static async Task<List<SetupStep>> ConfigureForMonitoringAsync(ElmFramer framer, CancellationToken ct)
+    private static async Task<List<SetupStep>> ConfigureForMonitoringAsync(
+        ElmFramer framer,
+        RawCaptureOptions options,
+        CancellationToken ct)
     {
         // ATH1 is required (frames must carry their CAN ID) and ATCAF0 disables the adapter's
         // ISO-TP auto-formatting, which would otherwise reassemble/hide raw frames.
@@ -187,51 +278,65 @@ public static class RawCaptureCommand
         // that makes the capture unfiltered.
         var commands = new (string Command, string Why, TimeSpan Timeout)[]
         {
-            ("ATZ",    "reset adapter",                    TimeSpan.FromSeconds(6)),
-            ("ATE0",   "echo off",                         TimeSpan.FromSeconds(3)),
-            ("ATL0",   "linefeeds off",                    TimeSpan.FromSeconds(3)),
-            ("ATS0",   "spaces off (compact frames)",      TimeSpan.FromSeconds(3)),
-            ("ATH1",   "headers ON (need the CAN ID)",     TimeSpan.FromSeconds(3)),
-            ("ATCAF0", "auto-formatting off (raw frames)", TimeSpan.FromSeconds(3)),
-            ("ATSP6",  "ISO 15765-4 CAN 11-bit/500k",      TimeSpan.FromSeconds(4)),
-            ("ATCSM1", "silent monitoring ON",             TimeSpan.FromSeconds(3)),
+            ("ATZ",    "reset adapter",                     TimeSpan.FromSeconds(6)),
+            ("ATE0",   "echo off",                          TimeSpan.FromSeconds(3)),
+            ("ATL0",   "linefeeds off",                     TimeSpan.FromSeconds(3)),
+            ("ATS0",   "spaces off (compact frames)",       TimeSpan.FromSeconds(3)),
+            ("ATH1",   "headers ON (need the CAN ID)",      TimeSpan.FromSeconds(3)),
+            ("ATCAF0", "auto-formatting off (raw frames)",  TimeSpan.FromSeconds(3)),
+            ("ATSP6",  "ISO 15765-4 CAN 11-bit/500k",       TimeSpan.FromSeconds(4)),
+            ("ATCSM1", "silent monitoring ON",              TimeSpan.FromSeconds(3)),
             ("ATCRA",  "RESET receive filter (unfiltered)", TimeSpan.FromSeconds(3)),
         };
 
         var steps = new List<SetupStep>(commands.Length);
 
-        await AnsiConsole.Status()
-            .Spinner(Spinner.Known.Dots)
-            .StartAsync("Configuring adapter for unfiltered monitoring...", async _ =>
+        async Task RunAllAsync()
+        {
+            foreach (var (command, why, timeout) in commands)
             {
-                foreach (var (command, why, timeout) in commands)
+                string response;
+                try
                 {
-                    string response;
-                    try
-                    {
-                        framer.ClearBuffer();
-                        response = Clean(await framer.SendAndReadFrameAsync(command, timeout, ct));
-                    }
-                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-                    {
-                        response = "(timeout)";
-                    }
-                    catch (TimeoutException)
-                    {
-                        response = "(timeout)";
-                    }
-
-                    steps.Add(new SetupStep(command, why, response));
-
-                    if (command == "ATZ")
-                    {
-                        await Task.Delay(500, ct);
-                    }
+                    framer.ClearBuffer();
+                    response = Clean(await framer.SendAndReadFrameAsync(command, timeout, ct));
                 }
-            });
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    response = "(timeout)";
+                }
+                catch (TimeoutException)
+                {
+                    response = "(timeout)";
+                }
+
+                steps.Add(new SetupStep(command, why, response));
+
+                if (command == "ATZ")
+                {
+                    await Task.Delay(500, ct);
+                }
+            }
+        }
+
+        if (options.Headless)
+        {
+            await RunAllAsync();
+        }
+        else
+        {
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync("Configuring adapter for unfiltered monitoring...", async _ => await RunAllAsync());
+        }
 
         return steps;
     }
+
+    private static bool IsSetupStepOk(SetupStep step) =>
+        !step.Response.Contains("ERROR", StringComparison.OrdinalIgnoreCase)
+        && !step.Response.Contains('?')
+        && step.Response != "(timeout)";
 
     private static void RenderSetupTable(List<SetupStep> steps)
     {
@@ -242,10 +347,7 @@ public static class RawCaptureCommand
 
         foreach (var step in steps)
         {
-            var ok = !step.Response.Contains("ERROR", StringComparison.OrdinalIgnoreCase)
-                     && !step.Response.Contains('?')
-                     && step.Response != "(timeout)";
-
+            var ok = IsSetupStepOk(step);
             table.AddRow(
                 step.Command.EscapeMarkup(),
                 $"[grey]{step.Why.EscapeMarkup()}[/]",
@@ -254,80 +356,132 @@ public static class RawCaptureCommand
 
         AnsiConsole.WriteLine();
         AnsiConsole.Write(table);
+        WarnIfSilentMonitoringUnconfirmed(steps, s => AnsiConsole.MarkupLine($"[yellow]Warning:[/] {s.EscapeMarkup()}"));
+    }
 
-        var csm = steps.FirstOrDefault(s => s.Command == "ATCSM1");
-        if (csm is not null && (csm.Response.Contains('?') || csm.Response.Contains("ERROR", StringComparison.OrdinalIgnoreCase)))
+    private static void ReportSetupPlain(List<SetupStep> steps)
+    {
+        foreach (var step in steps)
         {
-            AnsiConsole.MarkupLine(
-                "[yellow]Warning:[/] the adapter did not accept AT CSM1. Silent monitoring is " +
-                "not confirmed - do not use this capture configuration on a powertrain bus " +
-                "until you have verified listen-only behaviour another way.");
+            Console.Error.WriteLine($"setup {step.Command,-8} {(IsSetupStepOk(step) ? "ok" : "??")}  {step.Response}");
+        }
+
+        WarnIfSilentMonitoringUnconfirmed(steps, s => Console.Error.WriteLine("warning: " + s));
+    }
+
+    private static void WarnIfSilentMonitoringUnconfirmed(List<SetupStep> steps, Action<string> warn)
+    {
+        var csm = steps.FirstOrDefault(s => s.Command == "ATCSM1");
+        if (csm is not null && !IsSetupStepOk(csm))
+        {
+            warn("the adapter did not accept AT CSM1. Silent monitoring is not confirmed - do not " +
+                 "use this capture configuration on a powertrain bus until you have verified " +
+                 "listen-only behaviour another way.");
         }
     }
 
     // -------------------------------------------------------------- capture
 
-    private static async Task<CaptureResult> CaptureAsync(ElmFramer framer, int durationSeconds, CancellationToken ct)
+    private static async Task<CaptureResult> CaptureAsync(
+        ElmFramer framer,
+        RawCaptureOptions options,
+        CancellationToken ct)
     {
         var result = new CaptureResult { StartedUtc = DateTime.UtcNow };
         var clock = Stopwatch.StartNew();
+        var markers = new MarkerFileWatcher(options.MarkerFilePath);
 
         framer.ClearBuffer();
         await framer.WriteAsync("AT MA\r", ct);
 
         using var window = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        if (durationSeconds > 0)
+        if (options.DurationSeconds > 0)
         {
-            window.CancelAfter(TimeSpan.FromSeconds(durationSeconds));
+            window.CancelAfter(TimeSpan.FromSeconds(options.DurationSeconds));
         }
 
-        var table = BuildLiveTable(result, clock);
-        var lastRender = TimeSpan.Zero;
-
-        await AnsiConsole.Live(table)
-            .AutoClear(false)
-            .StartAsync(async ctx =>
-            {
-                while (!window.IsCancellationRequested)
+        if (options.Headless)
+        {
+            await CaptureLoopAsync(framer, result, clock, markers, window, onTick: null);
+        }
+        else
+        {
+            var lastRender = TimeSpan.Zero;
+            await AnsiConsole.Live(BuildLiveTable(result, clock))
+                .AutoClear(false)
+                .StartAsync(async ctx =>
                 {
-                    // Drain the keyboard first so Q stops promptly even on a quiet bus.
-                    if (PumpKeyboard(result, clock, out var stop))
+                    await CaptureLoopAsync(framer, result, clock, markers, window, onTick: refreshNow =>
                     {
-                        ctx.Refresh();
-                    }
+                        if (!refreshNow && clock.Elapsed - lastRender <= TimeSpan.FromMilliseconds(400))
+                        {
+                            return;
+                        }
 
-                    if (stop)
-                    {
-                        break;
-                    }
-
-                    string line;
-                    try
-                    {
-                        line = await framer.ReadUntilAsync("\r", TimeSpan.FromMilliseconds(250), window.Token);
-                    }
-                    catch (TimeoutException)
-                    {
-                        result.IdleReads++;
-                        continue;
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        break;
-                    }
-
-                    Ingest(result, clock.Elapsed, line);
-
-                    if (clock.Elapsed - lastRender > TimeSpan.FromMilliseconds(400))
-                    {
                         lastRender = clock.Elapsed;
                         ctx.UpdateTarget(BuildLiveTable(result, clock));
-                    }
-                }
-            });
+                    });
+                });
+        }
 
         result.Duration = clock.Elapsed;
         return result;
+    }
+
+    /// <summary>
+    /// The read loop, shared by both modes. <paramref name="onTick"/> is null headlessly; when
+    /// present it is called to refresh the live display (true = refresh immediately).
+    /// </summary>
+    private static async Task CaptureLoopAsync(
+        ElmFramer framer,
+        CaptureResult result,
+        Stopwatch clock,
+        MarkerFileWatcher markers,
+        CancellationTokenSource window,
+        Action<bool>? onTick)
+    {
+        var interactive = onTick is not null;
+
+        while (!window.IsCancellationRequested)
+        {
+            // Markers first so one dropped just before the window closes still lands.
+            if (markers.Poll(clock.Elapsed.TotalMilliseconds, result))
+            {
+                onTick?.Invoke(true);
+            }
+
+            if (interactive)
+            {
+                // Drain the keyboard so Q stops promptly even on a quiet bus.
+                if (PumpKeyboard(result, clock, out var stop))
+                {
+                    onTick?.Invoke(true);
+                }
+
+                if (stop)
+                {
+                    break;
+                }
+            }
+
+            string line;
+            try
+            {
+                line = await framer.ReadUntilAsync("\r", TimeSpan.FromMilliseconds(250), window.Token);
+            }
+            catch (TimeoutException)
+            {
+                result.IdleReads++;
+                continue;
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
+            Ingest(result, clock.Elapsed, line);
+            onTick?.Invoke(false);
+        }
     }
 
     /// <summary>Reads pending keystrokes. Returns true if the display should refresh.</summary>
@@ -342,7 +496,7 @@ public static class RawCaptureCommand
             switch (key)
             {
                 case ConsoleKey.Spacebar:
-                    result.Markers.Add(new Marker(result.Markers.Count + 1, clock.Elapsed.TotalMilliseconds));
+                    result.AddMarker(clock.Elapsed.TotalMilliseconds, label: null);
                     changed = true;
                     break;
                 case ConsoleKey.Q:
@@ -407,8 +561,7 @@ public static class RawCaptureCommand
         }
 
         var idText = upper[..idLength];
-        var payloadText = upper[idLength..];
-        var payload = ParseHexBytes(payloadText);
+        var payload = ParseHexBytes(upper[idLength..]);
 
         result.TotalFrames++;
 
@@ -468,18 +621,17 @@ public static class RawCaptureCommand
 
     // --------------------------------------------------------------- output
 
-    private static Dictionary<int, string> PromptForMarkerLabels(CaptureResult result)
+    private static void PromptForMarkerLabels(CaptureResult result)
     {
-        var labels = new Dictionary<int, string>();
         if (result.Markers.Count == 0)
         {
-            return labels;
+            return;
         }
 
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine($"[cyan]{result.Markers.Count} marker(s) recorded.[/] Label them now (blank to skip).");
 
-        foreach (var marker in result.Markers)
+        foreach (var marker in result.Markers.Where(m => m.Label is null).ToList())
         {
             var label = AnsiConsole.Prompt(
                 new TextPrompt<string>($"  Marker {marker.Number} @ {marker.AtMs / 1000.0:F1}s:")
@@ -487,25 +639,21 @@ public static class RawCaptureCommand
 
             if (!string.IsNullOrWhiteSpace(label))
             {
-                labels[marker.Number] = label.Trim();
+                result.SetMarkerLabel(marker.Number, label.Trim());
             }
         }
-
-        return labels;
     }
 
     private static async Task<(string LogPath, string JsonPath)> WriteOutputAsync(
-        string outputRoot,
-        string busLabel,
+        RawCaptureOptions options,
         DevToolsSession session,
         List<SetupStep> setup,
         CaptureResult result,
-        Dictionary<int, string> markerLabels,
         CancellationToken ct)
     {
-        var safeBus = string.Concat(busLabel.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-'));
+        var safeBus = string.Concat(options.BusLabel.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-'));
         var stamp = result.StartedUtc.ToLocalTime().ToString("yyyyMMdd-HHmmss");
-        var dir = Path.Combine(outputRoot, $"{safeBus}-{stamp}");
+        var dir = Path.Combine(options.OutputRoot, $"{safeBus}-{stamp}");
         Directory.CreateDirectory(dir);
 
         var logPath = Path.Combine(dir, "capture.log");
@@ -513,7 +661,8 @@ public static class RawCaptureCommand
 
         var log = new StringBuilder();
         log.AppendLine("# ObdInsight raw CAN capture");
-        log.AppendLine($"# bus={busLabel}");
+        log.AppendLine($"# bus={options.BusLabel}");
+        log.AppendLine($"# toolVersion={ToolVersion()}");
         log.AppendLine($"# device={session.DeviceName} profile={session.Profile?.Name}");
         log.AppendLine($"# startedUtc={result.StartedUtc:O}");
         log.AppendLine($"# durationMs={result.Duration.TotalMilliseconds:F0}");
@@ -537,8 +686,7 @@ public static class RawCaptureCommand
 
         foreach (var m in result.Markers)
         {
-            var label = markerLabels.TryGetValue(m.Number, out var l) ? l : $"marker-{m.Number}";
-            lines.Add((m.AtMs, $"{m.AtMs,10:F1} M {m.Number} {label}"));
+            lines.Add((m.AtMs, $"{m.AtMs,10:F1} M {m.Number} {m.Label ?? $"marker-{m.Number}"}"));
         }
 
         foreach (var (_, text) in lines.OrderBy(l => l.At))
@@ -550,9 +698,10 @@ public static class RawCaptureCommand
 
         var summary = new
         {
-            bus = busLabel,
+            bus = options.BusLabel,
             // Stamped so a capture stays interpretable after the decoders change underneath it.
             toolVersion = ToolVersion(),
+            headless = options.Headless,
             device = session.DeviceName,
             profile = session.Profile?.Name,
             startedUtc = result.StartedUtc,
@@ -563,12 +712,7 @@ public static class RawCaptureCommand
             bufferFullCount = result.BufferFullCount,
             idleReads = result.IdleReads,
             setup = setup.Select(s => new { s.Command, s.Why, s.Response }),
-            markers = result.Markers.Select(m => new
-            {
-                m.Number,
-                atMs = m.AtMs,
-                label = markerLabels.TryGetValue(m.Number, out var l) ? l : null
-            }),
+            markers = result.Markers.Select(m => new { m.Number, atMs = m.AtMs, label = m.Label }),
             events = result.Events.Select(e => new { atMs = e.AtMs, e.Text }),
             ids = result.Ids.Values.OrderBy(s => s.Id, StringComparer.Ordinal).Select(s => new
             {
@@ -633,7 +777,45 @@ public static class RawCaptureCommand
         }
     }
 
+    private static void ReportSummaryPlain(CaptureResult result, string logPath)
+    {
+        var seconds = Math.Max(result.Duration.TotalSeconds, 0.001);
+        Console.Error.WriteLine(
+            $"captured {result.TotalFrames} frames across {result.Ids.Count} IDs in {seconds:F1}s " +
+            $"({result.UnparsedLines} unparsed, {result.BufferFullCount} BUFFER FULL, {result.Markers.Count} markers)");
+
+        foreach (var s in result.Ids.Values.OrderBy(v => v.Id, StringComparer.Ordinal))
+        {
+            Console.Error.WriteLine(
+                $"  {s.Id}  n={s.Count,-6} {s.Count / seconds,6:F1}Hz  dlc={string.Join(",", s.Dlcs.OrderBy(d => d))}  " +
+                $"changed={Convert.ToHexString(s.ChangedMask)}  last={Convert.ToHexString(s.LastPayload)}");
+        }
+
+        if (result.BufferFullCount > 0)
+        {
+            Console.Error.WriteLine(
+                "warning: BUFFER FULL seen - the adapter dropped frames. Counts and rates are lower bounds; " +
+                "do not conclude an ID is absent from this capture.");
+        }
+
+        Console.Error.WriteLine("log: " + logPath);
+    }
+
     // ---------------------------------------------------------------- utils
+
+    private static void Report(RawCaptureOptions options, string message, bool isError = false)
+    {
+        if (options.Headless)
+        {
+            Console.Error.WriteLine(isError ? message : "info: " + message);
+        }
+        else
+        {
+            AnsiConsole.MarkupLine(isError
+                ? $"[red]{message.EscapeMarkup()}[/]"
+                : $"[green]{message.EscapeMarkup()}[/]");
+        }
+    }
 
     /// <summary>
     /// Informational version of the running build (MinVer-computed), recorded in every capture
@@ -647,7 +829,7 @@ public static class RawCaptureCommand
         ?? typeof(RawCaptureCommand).Assembly.GetName().Version?.ToString()
         ?? "unknown";
 
-    private static string DefaultOutputRoot() =>
+    public static string DefaultOutputRoot() =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             "ObdInsight-Captures");
@@ -670,14 +852,84 @@ public static class RawCaptureCommand
 
     // ---------------------------------------------------------------- model
 
+    /// <summary>
+    /// Tails a text file, turning each appended line into a labelled marker. Opened shared so an
+    /// external appender (<c>echo ... &gt;&gt; markers.txt</c>, over SSH or from a phone) is never
+    /// blocked by this reader.
+    /// </summary>
+    private sealed class MarkerFileWatcher
+    {
+        private readonly string? _path;
+        private long _position;
+
+        public MarkerFileWatcher(string? path)
+        {
+            _path = path;
+
+            // Only lines appended after the capture starts count; ignore pre-existing content.
+            if (path is not null && File.Exists(path))
+            {
+                _position = new FileInfo(path).Length;
+            }
+        }
+
+        /// <summary>Returns true if any marker was added.</summary>
+        public bool Poll(double atMs, CaptureResult result)
+        {
+            if (_path is null || !File.Exists(_path))
+            {
+                return false;
+            }
+
+            try
+            {
+                var length = new FileInfo(_path).Length;
+                if (length <= _position)
+                {
+                    // Truncated or replaced: resync rather than reading garbage.
+                    _position = Math.Min(_position, length);
+                    return false;
+                }
+
+                using var stream = new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                stream.Seek(_position, SeekOrigin.Begin);
+                using var reader = new StreamReader(stream);
+                var added = false;
+
+                while (reader.ReadLine() is { } line)
+                {
+                    var label = line.Trim();
+                    if (label.Length > 0)
+                    {
+                        result.AddMarker(atMs, label);
+                        added = true;
+                    }
+                }
+
+                _position = stream.Position;
+                return added;
+            }
+            catch (IOException)
+            {
+                // Mid-write; try again on the next poll rather than failing the capture.
+                return false;
+            }
+        }
+    }
+
     private sealed record SetupStep(string Command, string Why, string Response);
 
-    private sealed record Marker(int Number, double AtMs);
+    private sealed record Marker(int Number, double AtMs)
+    {
+        public string? Label { get; set; }
+    }
 
     private sealed record BusEvent(double AtMs, string Text);
 
     private sealed class CaptureResult
     {
+        private readonly List<Marker> _markers = [];
+
         public DateTime StartedUtc { get; init; }
         public TimeSpan Duration { get; set; }
         public int TotalFrames { get; set; }
@@ -686,8 +938,20 @@ public static class RawCaptureCommand
         public int BufferFullCount { get; set; }
         public int IdleReads { get; set; }
         public Dictionary<string, IdStats> Ids { get; } = new(StringComparer.Ordinal);
-        public List<Marker> Markers { get; } = [];
+        public IReadOnlyList<Marker> Markers => _markers;
         public List<BusEvent> Events { get; } = [];
+
+        public void AddMarker(double atMs, string? label) =>
+            _markers.Add(new Marker(_markers.Count + 1, atMs) { Label = label });
+
+        public void SetMarkerLabel(int number, string label)
+        {
+            var marker = _markers.FirstOrDefault(m => m.Number == number);
+            if (marker is not null)
+            {
+                marker.Label = label;
+            }
+        }
     }
 
     private sealed class IdStats

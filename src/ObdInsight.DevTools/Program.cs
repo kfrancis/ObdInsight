@@ -6,8 +6,15 @@ namespace ObdInsight.DevTools;
 
 internal class Program
 {
-    private static async Task Main(string[] args)
+    private static async Task<int> Main(string[] args)
     {
+        // Headless subcommand, checked before any banner or menu so the process can be driven
+        // over SSH from a development machine while the laptop sits in the car.
+        if (args.Length > 0 && args[0].Equals("capture", StringComparison.OrdinalIgnoreCase))
+        {
+            return await RunHeadlessCaptureAsync(args);
+        }
+
         AnsiConsole.Write(new FigletText("OBD DevTools").Color(Color.Cyan1));
         AnsiConsole.MarkupLine("[grey]BLE OBD-II Development Tool[/]");
         AnsiConsole.WriteLine();
@@ -28,6 +35,81 @@ internal class Program
         }
 
         await RunMainMenuAsync(session);
+        return 0;
+    }
+
+    /// <summary>
+    /// <c>ObdInsight.DevTools.exe capture --device &lt;mac&gt; --bus EV-CAN --seconds 60
+    /// [--out DIR] [--markers FILE]</c>
+    ///
+    /// No prompts, no live table, no keyboard. Progress and diagnostics go to stderr; on success
+    /// the summary JSON path is the only thing written to stdout, so a caller can consume it
+    /// directly. Exit code: 0 success, 2 bad arguments, 1 failure, 130 cancelled.
+    /// </summary>
+    private static async Task<int> RunHeadlessCaptureAsync(string[] args)
+    {
+        string? device = null, bus = null, output = null, markers = null;
+        var seconds = 0;
+
+        for (var i = 1; i < args.Length; i++)
+        {
+            var isLast = i + 1 >= args.Length;
+            switch (args[i].ToLowerInvariant())
+            {
+                case "--device" when !isLast: device = args[++i]; break;
+                case "--bus" when !isLast: bus = args[++i]; break;
+                case "--out" when !isLast: output = args[++i]; break;
+                case "--markers" when !isLast: markers = args[++i]; break;
+                case "--seconds" when !isLast:
+                    if (!int.TryParse(args[++i], out seconds))
+                    {
+                        Console.Error.WriteLine("error: --seconds must be an integer.");
+                        return 2;
+                    }
+
+                    break;
+                case "--help":
+                case "-h":
+                    Console.Error.WriteLine(
+                        "usage: ObdInsight.DevTools.exe capture --device <mac> --bus <label> --seconds <n> [--out <dir>] [--markers <file>]");
+                    return 2;
+                default:
+                    Console.Error.WriteLine($"error: unrecognised argument '{args[i]}'.");
+                    return 2;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(device))
+        {
+            Console.Error.WriteLine("error: --device <mac> is required.");
+            return 2;
+        }
+
+        if (string.IsNullOrWhiteSpace(bus))
+        {
+            Console.Error.WriteLine("error: --bus <label> is required (it records which bus the adapter was wired to).");
+            return 2;
+        }
+
+        await using var session = new DevToolsSession
+        {
+            // Per-chunk BLE traffic logging would swamp an SSH pipe.
+            EnableTrafficLogging = false,
+            // Keeps status chatter off stdout, which carries only the summary JSON path.
+            SuppressTrafficLogging = true,
+        };
+        session.SetDevice(device);
+
+        return await RawCaptureCommand.RunHeadlessAsync(
+            session,
+            new RawCaptureOptions
+            {
+                BusLabel = bus,
+                DurationSeconds = seconds,
+                OutputRoot = output ?? RawCaptureCommand.DefaultOutputRoot(),
+                Headless = true,
+                MarkerFilePath = markers,
+            });
     }
 
     private static async Task RunMainMenuAsync(DevToolsSession session)

@@ -336,7 +336,12 @@ public sealed class DevToolsSession : IAsyncDisposable
             _adapter = null;
         }
 
-        AnsiConsole.MarkupLine("[grey]Disconnected[/]");
+        // Suppressed in headless mode: stdout there carries only the summary JSON path, and a
+        // stray status line would corrupt whatever consumes it.
+        if (!_suppressLogging)
+        {
+            AnsiConsole.MarkupLine("[grey]Disconnected[/]");
+        }
     }
 
     /// <summary>
