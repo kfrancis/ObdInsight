@@ -227,8 +227,9 @@ public static class LeafAze0Contexts
     /// Expected per window (CAR-CAN only — EV-CAN IDs 11A,1CA,1DA,1DB,1DC,55A,59E don't
     /// appear because stock ELM327 adapters wire OBD pins 6/14 = CAR-CAN; EV-CAN is on pins
     /// 12/13 and needs a modified adapter; hardware-confirmed 2026-07-18):
-    /// 0x1xx: 130,174,176,180,1D4 · 0x2xx: 245,284,285,292 (260 is 4 bytes; decoders skip)
-    /// 0x3xx: 354,390,393 · 0x4xx: 421 (1-byte gear relay, raw-decoded)
+    /// 0x1xx: 130,174,176,180,1D4 · 0x2xx: 245,284,285,292 (260's signals reach byte 4, so a
+    /// 4-byte frame is still short of its MinimumLength — see the note in CarVcmFrames)
+    /// 0x3xx: 354,390,393 · 0x4xx: 421 (1-byte gear relay, decodes typed)
     /// 0x5xx: 50A-D,510,54A-F,55B,5A9,5B3,5BC,5C0 · 0x6xx: 603,60D
     /// </summary>
     public static IReadOnlyList<Communication.Elm327.CanFilterWindow> SharedBroadcastRotation { get; } =

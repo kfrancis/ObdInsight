@@ -80,11 +80,26 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         /// ambient temp); falls back to 0x180 (motor current, throttle) which broadcasts
         /// even when stationary.
         /// </summary>
+        /// <summary>The frames that feed <see cref="VcmStatus" />.</summary>
+        private static readonly int[] StatusFrameIds = [0x510, 0x180, 0x5A9];
+
         public async ValueTask<VcmStatus> GetStatusAsync(CancellationToken ct = default)
         {
             await _monitor.StartAsync(ct);
             await _monitor.WaitForCacheAsync(StatusWarmupTimeout, ct, 0x510);
 
+            return BuildStatus();
+        }
+
+        public IAsyncEnumerable<VcmStatus> StreamStatusAsync(
+            TimeSpan minInterval = default,
+            CancellationToken ct = default)
+        {
+            return _monitor.StreamSnapshots(StatusFrameIds, BuildStatus, minInterval, ct);
+        }
+
+        private VcmStatus BuildStatus()
+        {
             VcmStatus status;
             if (_monitor.TryGetLatest<VcmFrame_510_AZE0>(out var frame510))
             {

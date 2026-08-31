@@ -19,11 +19,26 @@ internal sealed class LeafAze0Abs : IAntilockBrakingSystem
         _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
     }
 
+    /// <summary>The frames that feed <see cref="AbsStatus" />.</summary>
+    private static readonly int[] StatusFrameIds = [0x130, 0x245, 0x284, 0x285, 0x292, 0x354];
+
     public async ValueTask<AbsStatus> GetStatusAsync(CancellationToken ct = default)
     {
         await _monitor.StartAsync(ct);
         await _monitor.WaitForCacheAsync(WarmupTimeout, ct, 0x130, 0x284, 0x285, 0x354);
 
+        return BuildStatus();
+    }
+
+    public IAsyncEnumerable<AbsStatus> StreamStatusAsync(
+        TimeSpan minInterval = default,
+        CancellationToken ct = default)
+    {
+        return _monitor.StreamSnapshots(StatusFrameIds, BuildStatus, minInterval, ct);
+    }
+
+    private AbsStatus BuildStatus()
+    {
         _monitor.TryGetLatest<AbsFrame_130_AZE0>(out var frame130);
         _monitor.TryGetLatest<AbsFrame_245_AZE0>(out var frame245);
         _monitor.TryGetLatest<AbsFrame_284_AZE0>(out var frame284);

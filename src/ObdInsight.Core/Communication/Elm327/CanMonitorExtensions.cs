@@ -39,6 +39,80 @@ namespace ObdInsight.Core.Communication.Elm327
         }
 
         /// <summary>
+        ///     Streams a status projection built from the monitor's latest-frame cache, re-emitting
+        ///     whenever any of <paramref name="canIds" /> arrives (coalesce-on-any). This is how a
+        ///     multi-frame status DTO is streamed: each contributing CAN ID has its own cadence, so
+        ///     the newest frame triggers the emission and the rest of the DTO comes from the cache.
+        /// </summary>
+        /// <remarks>
+        ///     <para>Registration is immediate — frames arriving before the consumer starts iterating
+        ///     are buffered, not lost. The monitor is started on first enumeration if it has not run
+        ///     yet; a monitor that has already ended is not restarted, so the stream just completes.</para>
+        ///     <para>Cold start: the first emission fires on the first contributing frame, so fields
+        ///     sourced from IDs not yet seen are null/default. That matches the pull API's
+        ///     degradation contract (absence is null, never an exception).</para>
+        ///     <para>The stream completes when the monitor's run ends (see
+        ///     <see cref="CanMonitor.EndReason" /> for why).</para>
+        /// </remarks>
+        /// <param name="monitor">The shared monitor to view.</param>
+        /// <param name="canIds">The CAN IDs that contribute to the projection. Empty = every frame.</param>
+        /// <param name="snapshot">Builds the status from the cache. Called once per emission.</param>
+        /// <param name="minInterval">
+        ///     Minimum spacing between emissions; default (zero) emits on every contributing frame.
+        ///     Emissions inside the interval are skipped, not queued — the next frame after it
+        ///     carries the newest state, which is what a 10 ms broadcast consumer wants.
+        /// </param>
+        /// <param name="ct">Stops the stream.</param>
+        public static IAsyncEnumerable<TStatus> StreamSnapshots<TStatus>(
+            this CanMonitor monitor,
+            ReadOnlyMemory<int> canIds,
+            Func<TStatus> snapshot,
+            TimeSpan minInterval = default,
+            CancellationToken ct = default)
+        {
+            ArgumentNullException.ThrowIfNull(monitor);
+            ArgumentNullException.ThrowIfNull(snapshot);
+
+            // Register eagerly — an async iterator would defer registration to the first
+            // MoveNext, silently dropping frames that arrive before iteration starts.
+            var frames = monitor.Subscribe(canIds, ct);
+            return CoalesceAsync(monitor, frames, snapshot, minInterval, ct);
+        }
+
+        private static async IAsyncEnumerable<TStatus> CoalesceAsync<TStatus>(
+            CanMonitor monitor,
+            IAsyncEnumerable<RawCanFrame> frames,
+            Func<TStatus> snapshot,
+            TimeSpan minInterval,
+            [EnumeratorCancellation] CancellationToken ct)
+        {
+            // Start on first enumeration so a stream is usable on its own, but never resurrect a
+            // monitor that has already ended - that subscription is closed, so the stream simply
+            // completes (EndReason says why).
+            if (monitor.EndReason == MonitoringEndReason.None)
+            {
+                await monitor.StartAsync(ct);
+            }
+
+            var throttleMs = (long)minInterval.TotalMilliseconds;
+            var emitted = false;
+            var lastEmit = 0L;
+
+            await foreach (var _ in frames.WithCancellation(ct))
+            {
+                var now = Environment.TickCount64;
+                if (throttleMs > 0 && emitted && now - lastEmit < throttleMs)
+                {
+                    continue;
+                }
+
+                emitted = true;
+                lastEmit = now;
+                yield return snapshot();
+            }
+        }
+
+        /// <summary>
         ///     Waits until the monitor's latest-frame cache holds all of <paramref name="canIds" />,
         ///     or the timeout elapses. Returns immediately on a warm cache. Used by cache-view
         ///     capabilities to bridge the cold-start gap; partial data after timeout is expected.

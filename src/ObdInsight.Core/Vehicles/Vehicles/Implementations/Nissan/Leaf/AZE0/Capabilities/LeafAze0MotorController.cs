@@ -28,6 +28,9 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
         }
 
+        /// <summary>The frames that feed <see cref="MotorStatus" />.</summary>
+        private static readonly int[] StatusFrameIds = [0x1DA, 0x55A];
+
         public async ValueTask<MotorStatus> GetStatusAsync(CancellationToken ct = default)
         {
             await _monitor.StartAsync(ct);
@@ -39,6 +42,18 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
                 await Task.Delay(10, ct);
             }
 
+            return BuildStatus();
+        }
+
+        public IAsyncEnumerable<MotorStatus> StreamStatusAsync(
+            TimeSpan minInterval = default,
+            CancellationToken ct = default)
+        {
+            return _monitor.StreamSnapshots(StatusFrameIds, BuildStatus, minInterval, ct);
+        }
+
+        private MotorStatus BuildStatus()
+        {
             _monitor.TryGetLatest<InvMcFrame_1DA_AZE0>(out var frame1DA);
             _monitor.TryGetLatest<InvMcFrame_55A_AZE0>(out var frame55A);
 

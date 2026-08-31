@@ -195,6 +195,10 @@ public partial class VcmFrame_180_AZE0
 /// <remarks>
 /// Contains motor power consumption and available power limits.
 /// Power values include both drive and regeneration modes.
+/// <para>UNRESOLVED: the description says 4 bytes on the wire, but PowerConsumptMotor is
+/// declared at bits 23-34, which reaches byte 4 — so MinimumLength is 5 and a genuinely
+/// 4-byte frame is still skipped. Either the width or that signal's placement is wrong;
+/// needs a capture to settle. No capability reads this frame today.</para>
 /// </remarks>
 [CanFrame(0x260, Description = "VCM motor power data (CAR-CAN, 4 bytes)")]
 public partial class VcmFrame_260_AZE0

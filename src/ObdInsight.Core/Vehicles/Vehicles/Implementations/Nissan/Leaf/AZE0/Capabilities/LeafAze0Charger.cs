@@ -19,11 +19,26 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
         }
 
+        /// <summary>The frames that feed <see cref="ChargingStatus" />.</summary>
+        private static readonly int[] StatusFrameIds = [0x390];
+
         public async ValueTask<ChargingStatus?> GetChargingStatusAsync(CancellationToken ct = default)
         {
             await _monitor.StartAsync(ct);
             await _monitor.WaitForCacheAsync(WarmupTimeout, ct, 0x390);
 
+            return BuildStatus();
+        }
+
+        public IAsyncEnumerable<ChargingStatus?> StreamChargingStatusAsync(
+            TimeSpan minInterval = default,
+            CancellationToken ct = default)
+        {
+            return _monitor.StreamSnapshots(StatusFrameIds, BuildStatus, minInterval, ct);
+        }
+
+        private ChargingStatus? BuildStatus()
+        {
             if (!_monitor.TryGetLatest<ObcPdFrame_390_AZE0>(out var frame390))
             {
                 return null;
