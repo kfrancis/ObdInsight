@@ -40,6 +40,43 @@ namespace ObdInsight.SourceGeneration.Tests
         }
 
         [Test]
+        public async Task SingleBitNumericSignal_Compiles()
+        {
+            // A 1-bit signal declared as a number, not a bool: only ReadBool takes a bit position
+            // without a length, so the decoder has to use the three-argument read here.
+            var source = """
+            using ObdInsight.SourceGeneration.Attributes;
+
+            namespace TestNamespace
+            {
+                [CanFrame(0x54C)]
+                public partial class TestFrame
+                {
+                    [CanSignal(3, 1)]
+                    public partial int Flag { get; init; }
+
+                    [CanSignal(4, 1, IsSigned = true)]
+                    public partial int SignedFlag { get; init; }
+
+                    [CanSignal(5, 1, Factor = 0.5)]
+                    public partial double ScaledFlag { get; init; }
+                }
+            }
+            """;
+
+            var compilation = GeneratorTestHelper.CreateCompilation(source);
+
+            CSharpGeneratorDriver.Create(new CanSignalGenerator())
+                .RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out _);
+
+            var errors = outputCompilation.GetDiagnostics()
+                .Where(d => d.Severity == DiagnosticSeverity.Error)
+                .ToList();
+
+            await Assert.That(errors).IsEmpty();
+        }
+
+        [Test]
         public async Task GeneratesBoolSignal()
         {
             var source = """

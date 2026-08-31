@@ -590,10 +590,9 @@ namespace ObdInsight.SourceGeneration
                 return $"{readMethod}(data, {signal.BitStart})";
             }
 
-            // Build the raw value expression
-            var rawExpr = signal.BitLength == 1
-                ? $"{readMethod}(data, {signal.BitStart})"
-                : $"{readMethod}(data, {signal.BitStart}, {signal.BitLength})";
+            // Build the raw value expression. Only ReadBool, handled above, takes a bit position
+            // without a length - a 1-bit numeric signal still needs the three-argument overload.
+            var rawExpr = $"{readMethod}(data, {signal.BitStart}, {signal.BitLength})";
 
             // Apply scaling if needed
             var needsScaling =
