@@ -10,6 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="CsCheck" Version="4.8.0" />
     <PackageReference Include="TUnit" Version="1.12.3" />
   </ItemGroup>
 
