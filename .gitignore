@@ -423,3 +423,6 @@ FodyWeavers.xsd
 # Claude Code local settings (per-machine)
 **/.claude/settings.local.json
 **/.claude/*.local.md
+
+# Local research/planning scratch (not for commit)
+.local/

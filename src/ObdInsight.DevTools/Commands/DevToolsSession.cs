@@ -68,6 +68,17 @@ public sealed class DevToolsSession : IAsyncDisposable
     public bool EnableTrafficLogging { get; set; } = true;
 
     /// <summary>
+    /// Temporarily suppresses BLE/ELM traffic logging without tearing down the connection.
+    /// High-volume commands (raw CAN capture) set this so per-chunk RX logging does not
+    /// flood the console or corrupt a live-rendered display.
+    /// </summary>
+    public bool SuppressTrafficLogging
+    {
+        get => _suppressLogging;
+        set => _suppressLogging = value;
+    }
+
+    /// <summary>
     /// Set the target device without connecting.
     /// </summary>
     public void SetDevice(string address, string? name = null, BleDeviceProfile? profile = null)

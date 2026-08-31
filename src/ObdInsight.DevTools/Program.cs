@@ -94,6 +94,7 @@ internal class Program
             choices.Add("-- Tools --");
             if (!string.IsNullOrEmpty(session.DeviceAddress))
             {
+                choices.Add("Raw CAN capture (unfiltered)");
                 choices.Add("Record OBD session");
                 choices.Add("Generate vehicle support report");
             }
@@ -191,6 +192,10 @@ internal class Program
                         break;
 
                     // Tools
+                    case "Raw CAN capture (unfiltered)":
+                        await RawCaptureCommand.RunAsync(session);
+                        break;
+
                     case "Record OBD session":
                         await RecordingCommands.RecordSessionAsync(session);
                         break;
