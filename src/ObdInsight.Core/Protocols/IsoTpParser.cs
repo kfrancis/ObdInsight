@@ -3,17 +3,22 @@ using System.Globalization;
 namespace ObdInsight.Core.Protocols;
 
 /// <summary>
-///     Utilities for parsing ISO-TP (ISO 15765-2) responses from ELM327
+///     Utilities for parsing ISO-TP (ISO 15765-2) responses from ELM327.
 /// </summary>
+/// <remarks>
+///     Expects unspaced output ("AT S0", which <c>ElmSession</c> sets during baseline init and
+///     restores when leaving monitoring). Spaced output ("AT S1") is not parsed - the hex reader
+///     stops at the first space and the response is dropped.
+/// </remarks>
 public static class IsoTpParser
 {
     /// <summary>Width of one frame in unspaced ELM327 output: 3-char CAN ID + 8 data bytes.</summary>
     private const int UnspacedFrameLength = 19;
 
     /// <summary>
-    ///     Parse ISO-TP response, handling multi-frame messages.
-    ///     Handles both spaced and concatenated hex formats from ELM327.
-    ///     Also handles frames concatenated together on a single line (e.g., "7BB25...7BB26...").
+    ///     Parse an ISO-TP response, reassembling multi-frame messages and trimming the result to
+    ///     the length the first frame declares. Frames may arrive one per line or run together on
+    ///     a single line (e.g. "7BB25...7BB26...").
     /// </summary>
     public static List<byte> ParseIsoTpResponse(string response)
     {

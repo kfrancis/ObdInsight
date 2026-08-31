@@ -1,4 +1,5 @@
 
+using ObdInsight.Core.Protocols;
 using Spectre.Console;
 
 namespace ObdInsight.DevTools.Commands;
@@ -373,7 +374,7 @@ public static class LeafBatteryHealthCommand
 
         // Query Group 01 - need longer collection time for multi-frame response
         var g01Response = await sendAndCollect("2101", TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(8));
-        var g01Bytes = ParseIsoTpResponse(g01Response);
+        var g01Bytes = IsoTpParser.ParseIsoTpResponse(g01Response);
 
         // Debug output
         AnsiConsole.MarkupLine($"[grey]   Group 01: {g01Bytes.Count} bytes parsed[/]");
@@ -432,7 +433,7 @@ public static class LeafBatteryHealthCommand
 
         // Query Group 61 - SOH data (shorter response, should work reliably)
         var g61Response = await sendAndCollect("2161", TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(5));
-        var g61Bytes = ParseIsoTpResponse(g61Response);
+        var g61Bytes = IsoTpParser.ParseIsoTpResponse(g61Response);
 
         AnsiConsole.MarkupLine($"[grey]   Group 61: {g61Bytes.Count} bytes parsed[/]");
         if (g61Bytes.Count > 0 && g61Bytes.Count <= 20)
@@ -479,7 +480,7 @@ public static class LeafBatteryHealthCommand
         await sendCommand("ATFCSM1", TimeSpan.FromSeconds(2));
 
         var g02Response = await sendAndCollect("2102", TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(8));
-        var bytes = ParseIsoTpResponse(g02Response);
+        var bytes = IsoTpParser.ParseIsoTpResponse(g02Response);
 
         if (bytes.Count < 4) return null;
 
@@ -508,7 +509,7 @@ public static class LeafBatteryHealthCommand
         await sendCommand("ATFCSM1", TimeSpan.FromSeconds(2));
 
         var g04Response = await sendAndCollect("2104", TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(5));
-        var bytes = ParseIsoTpResponse(g04Response);
+        var bytes = IsoTpParser.ParseIsoTpResponse(g04Response);
 
         if (bytes.Count < 6 || bytes[0] != 0x61 || bytes[1] != 0x04) return null;
 
@@ -787,80 +788,5 @@ public static class LeafBatteryHealthCommand
 
         await File.WriteAllTextAsync(filePath, content.ToString());
         AnsiConsole.MarkupLine($"[green]?[/] Report saved to: [cyan]{filePath.EscapeMarkup()}[/]");
-    }
-
-    private static List<byte> ParseIsoTpResponse(string response)
-    {
-        var bytes = new List<byte>();
-        if (string.IsNullOrWhiteSpace(response)) return bytes;
-
-        var cleaned = response.Replace("\r", "\n").Replace(">", "").Trim();
-        var lines = cleaned.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        var frameSequence = new List<(int Type, int Seq, byte[] Data)>();
-
-        foreach (var line in lines)
-        {
-            var trimmed = line.Trim();
-            if (trimmed.Length < 6) continue;
-            if (!IsCanIdPrefix(trimmed)) continue;
-
-            var frameHex = trimmed[3..];
-            if (frameHex.Length < 2) continue;
-            if (!byte.TryParse(frameHex[..2], System.Globalization.NumberStyles.HexNumber, null, out var frameTypeByte)) continue;
-
-            var frameType = (frameTypeByte & 0xF0) >> 4;
-            var frameInfo = frameTypeByte & 0x0F;
-            byte[] frameData;
-
-            switch (frameType)
-            {
-                case 0:
-                    var sfLen = frameInfo;
-                    frameData = ParseHexString(frameHex[2..]);
-                    if (frameData.Length > sfLen) frameData = frameData[..sfLen];
-                    frameSequence.Add((0, 0, frameData));
-                    break;
-                case 1:
-                    if (frameHex.Length < 4) continue;
-                    frameData = ParseHexString(frameHex[4..]);
-                    frameSequence.Add((1, 0, frameData));
-                    break;
-                case 2:
-                    frameData = ParseHexString(frameHex[2..]);
-                    frameSequence.Add((2, frameInfo, frameData));
-                    break;
-                default:
-                    frameData = ParseHexString(frameHex);
-                    if (frameData.Length > 0) frameSequence.Add((-1, 0, frameData));
-                    break;
-            }
-        }
-
-        var firstFrame = frameSequence.FirstOrDefault(f => f.Type == 0 || f.Type == 1);
-        if (firstFrame.Data != null) bytes.AddRange(firstFrame.Data);
-
-        foreach (var cf in frameSequence.Where(f => f.Type == 2).OrderBy(f => f.Seq))
-            bytes.AddRange(cf.Data);
-
-        if (bytes.Count == 0)
-            foreach (var line in lines.Where(l => l.Trim().All(c => Uri.IsHexDigit(c))))
-                bytes.AddRange(ParseHexString(line.Trim()));
-
-        return bytes;
-    }
-
-    private static bool IsCanIdPrefix(string s) =>
-        s.Length >= 3 && s[..3].All(c => Uri.IsHexDigit(c)) &&
-        int.TryParse(s[..3], System.Globalization.NumberStyles.HexNumber, null, out var id) &&
-        id >= 0x700 && id <= 0x7FF;
-
-    private static byte[] ParseHexString(string hex)
-    {
-        var result = new List<byte>();
-        for (int i = 0; i + 1 < hex.Length; i += 2)
-            if (byte.TryParse(hex.Substring(i, 2), System.Globalization.NumberStyles.HexNumber, null, out var b))
-                result.Add(b);
-            else break;
-        return result.ToArray();
     }
 }
