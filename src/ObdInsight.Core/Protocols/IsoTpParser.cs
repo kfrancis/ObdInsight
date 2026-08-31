@@ -7,6 +7,9 @@ namespace ObdInsight.Core.Protocols;
 /// </summary>
 public static class IsoTpParser
 {
+    /// <summary>Width of one frame in unspaced ELM327 output: 3-char CAN ID + 8 data bytes.</summary>
+    private const int UnspacedFrameLength = 19;
+
     /// <summary>
     ///     Parse ISO-TP response, handling multi-frame messages.
     ///     Handles both spaced and concatenated hex formats from ELM327.
@@ -28,7 +31,12 @@ public static class IsoTpParser
 
         var lines = cleaned.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
-        // First, split any concatenated frames (e.g., "7BB25...7BB26..." becomes two separate frames)
+        // Adapters may run several frames together on one line. ELM327 output with spaces off has
+        // fixed geometry - a 3-char CAN ID plus 8 data bytes, 19 chars per frame - and every frame
+        // of a response carries the same responder ID, so split on that geometry. Scanning for
+        // anything CAN-ID-shaped instead corrupts payloads: response hex routinely spells a valid
+        // looking ID (e.g. "7BB27676BE7F10D46D8" contains "7F1" followed by '0'). See
+        // IsoTpParserPropertyTests.
         var allFrames = new List<string>();
         foreach (var line in lines)
         {
@@ -38,61 +46,12 @@ public static class IsoTpParser
                 continue;
             }
 
-            // Split concatenated frames by finding CAN ID patterns (3 hex chars followed by frame data)
-            var remaining = trimmed;
-            while (remaining.Length >= 6)
+            if (!IsCanIdPrefixForIsoTp(trimmed))
             {
-                if (!IsCanIdPrefixForIsoTp(remaining))
-                {
-                    break;
-                }
-
-                // Find the next CAN ID prefix in the string (if any)
-                var nextFrameStart = -1;
-                for (var i = 7; i <= remaining.Length - 6; i++)
-                {
-                    var potentialCanId = remaining.Substring(i, 3);
-                    if (!potentialCanId.All(Uri.IsHexDigit))
-                    {
-                        continue;
-                    }
-
-                    if (!int.TryParse(potentialCanId, NumberStyles.HexNumber, null, out var id))
-                    {
-                        continue;
-                    }
-
-                    if (!(id is >= 0x700 and <= 0x7FF or >= 0x790 and <= 0x79F))
-                    {
-                        continue;
-                    }
-
-                    if (i + 3 >= remaining.Length)
-                    {
-                        continue;
-                    }
-
-                    var frameTypeChar = remaining[i + 3];
-                    if (frameTypeChar is not ('0' or '1' or '2' or '3'))
-                    {
-                        continue;
-                    }
-
-                    nextFrameStart = i;
-                    break;
-                }
-
-                if (nextFrameStart > 0)
-                {
-                    allFrames.Add(remaining[..nextFrameStart]);
-                    remaining = remaining[nextFrameStart..];
-                }
-                else
-                {
-                    allFrames.Add(remaining);
-                    break;
-                }
+                continue;
             }
+
+            allFrames.AddRange(SplitRunTogetherFrames(trimmed));
         }
 
         var frameSequence = new List<(int Type, int Seq, byte[] Data, int TotalLen)>();
@@ -211,6 +170,76 @@ public static class IsoTpParser
         }
 
         return bytes;
+    }
+
+    /// <summary>
+    ///     Splits a line that carries more than one frame run together, using the fixed unspaced
+    ///     ELM327 frame width and the responder ID established by the line's first frame.
+    /// </summary>
+    /// <remarks>
+    ///     Returns the line unchanged when it does not fit that geometry, so an unrecognised layout
+    ///     degrades to "one frame per line" rather than to a mis-split payload.
+    /// </remarks>
+    private static List<string> SplitRunTogetherFrames(string line)
+    {
+        var canId = line[..3];
+
+        // Whole multiples of the frame width, every frame carrying the same responder ID.
+        if (line.Length % UnspacedFrameLength == 0 && StartsEveryFrame(line, canId))
+        {
+            return SplitOnFrameWidth(line, 0);
+        }
+
+        // First frame shortened (adapter trimmed padding); the rest still end on the width grid.
+        for (var i = 4; i <= line.Length - 6; i++)
+        {
+            if ((line.Length - i) % UnspacedFrameLength != 0)
+            {
+                continue;
+            }
+
+            if (string.CompareOrdinal(line, i, canId, 0, 3) != 0)
+            {
+                continue;
+            }
+
+            if (!StartsEveryFrame(line[i..], canId))
+            {
+                continue;
+            }
+
+            var frames = SplitOnFrameWidth(line, i);
+            frames.Insert(0, line[..i]);
+            return frames;
+        }
+
+        return [line];
+    }
+
+    /// <summary>Cuts <paramref name="line"/> from <paramref name="start"/> into frame-width pieces.</summary>
+    private static List<string> SplitOnFrameWidth(string line, int start)
+    {
+        var frames = new List<string>((line.Length - start) / UnspacedFrameLength);
+        for (var i = start; i < line.Length; i += UnspacedFrameLength)
+        {
+            frames.Add(line.Substring(i, UnspacedFrameLength));
+        }
+
+        return frames;
+    }
+
+    /// <summary>True when every frame-width position in <paramref name="s"/> starts with <paramref name="canId"/>.</summary>
+    private static bool StartsEveryFrame(string s, string canId)
+    {
+        for (var i = 0; i < s.Length; i += UnspacedFrameLength)
+        {
+            if (i + 3 > s.Length || string.CompareOrdinal(s, i, canId, 0, 3) != 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
