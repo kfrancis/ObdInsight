@@ -41,4 +41,12 @@ public sealed record RawCaptureOptions
     /// fails, since "Failed to connect" alone does not say which stage gave up.
     /// </summary>
     public bool Verbose { get; init; }
+
+    /// <summary>
+    /// When set, the capture is driven by this stimulus script instead of running for a fixed
+    /// duration: the read loop runs in the background while the operator is prompted through the
+    /// sequence, and each confirmation records an already-labelled marker. The capture ends when
+    /// the script does.
+    /// </summary>
+    public ProbeScript? Script { get; init; }
 }

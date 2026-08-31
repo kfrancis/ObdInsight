@@ -20,6 +20,12 @@ internal class Program
             return await RunHeadlessScanAsync(args);
         }
 
+        // Offline: no vehicle, no adapter. Pure function over a recorded capture directory.
+        if (args.Length > 0 && args[0].Equals("analyze", StringComparison.OrdinalIgnoreCase))
+        {
+            return RunAnalyze(args);
+        }
+
         AnsiConsole.Write(new FigletText("OBD DevTools").Color(Color.Cyan1));
         AnsiConsole.MarkupLine("[grey]BLE OBD-II Development Tool[/]");
         AnsiConsole.WriteLine();
@@ -41,6 +47,41 @@ internal class Program
 
         await RunMainMenuAsync(session);
         return 0;
+    }
+
+    /// <summary>
+    /// <c>ObdInsight.DevTools.exe analyze &lt;capture-dir&gt; [&lt;capture-dir&gt; ...]</c>
+    ///
+    /// Correlates guided-probe captures offline and prints the bits that tracked each stimulus.
+    /// Needs no vehicle and no adapter, so the scoring can be iterated on at a desk.
+    /// </summary>
+    private static int RunAnalyze(string[] args)
+    {
+        var dirs = args.Skip(1).Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToList();
+        if (dirs.Count == 0)
+        {
+            Console.Error.WriteLine("usage: ObdInsight.DevTools.exe analyze <capture-dir> [<capture-dir> ...]");
+            return 2;
+        }
+
+        var failed = false;
+
+        foreach (var dir in dirs)
+        {
+            try
+            {
+                var session = ProbeAnalyzer.Load(dir);
+                var findings = ProbeAnalyzer.Analyze(session, out var header);
+                Console.Out.Write(ProbeAnalyzer.Format(session, findings, header));
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"error: {dir}: {ex.Message}");
+                failed = true;
+            }
+        }
+
+        return failed ? 1 : 0;
     }
 
     /// <summary>
@@ -251,6 +292,7 @@ internal class Program
             if (!string.IsNullOrEmpty(session.DeviceAddress))
             {
                 choices.Add("Raw CAN capture (unfiltered)");
+                choices.Add("Guided stimulus probes");
                 choices.Add("Record OBD session");
                 choices.Add("Generate vehicle support report");
             }
@@ -350,6 +392,11 @@ internal class Program
                     // Tools
                     case "Raw CAN capture (unfiltered)":
                         await RawCaptureCommand.RunAsync(session);
+                        break;
+
+
+                    case "Guided stimulus probes":
+                        await RawCaptureCommand.RunGuidedAsync(session);
                         break;
 
                     case "Record OBD session":

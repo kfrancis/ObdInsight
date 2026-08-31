@@ -91,6 +91,63 @@ public static class RawCaptureCommand
     }
 
     /// <summary>
+    /// Guided stimulus probes: pick a script, then follow prompts while a capture runs behind
+    /// them. Produces the same artefacts as a plain capture, but with markers that are already
+    /// labelled and a sequence that actually follows the discovery protocol - baseline first,
+    /// three alternations per stimulus, confounders included.
+    /// </summary>
+    public static async Task RunGuidedAsync(DevToolsSession session, CancellationToken ct = default)
+    {
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new Rule("[cyan]Guided stimulus probes[/]").RuleStyle("grey"));
+        AnsiConsole.WriteLine();
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Script");
+        table.AddColumn("Steps");
+        table.AddColumn("Safe when");
+        foreach (var s in ProbeScripts.All)
+        {
+            table.AddRow(s.Name.EscapeMarkup(), s.Steps.Count.ToString(), $"[yellow]{s.SafeWhen.EscapeMarkup()}[/]");
+        }
+
+        AnsiConsole.Write(table);
+
+        var choice = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[cyan]Which script?[/]")
+                .AddChoices(ProbeScripts.All.Select(s => s.Name).Append("cancel")));
+
+        if (choice == "cancel")
+        {
+            return;
+        }
+
+        var script = ProbeScripts.Find(choice)!;
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine($"[yellow]Confirm the vehicle is: {script.SafeWhen.EscapeMarkup()}[/]");
+        if (!AnsiConsole.Confirm("Ready?", defaultValue: false))
+        {
+            return;
+        }
+
+        var options = new RawCaptureOptions
+        {
+            BusLabel = AnsiConsole.Prompt(
+                new TextPrompt<string>("[cyan]Bus label[/]:").DefaultValue("CAR-CAN")),
+            // The script decides when the capture ends, not a timer.
+            DurationSeconds = 0,
+            OutputRoot = AnsiConsole.Prompt(
+                new TextPrompt<string>("[cyan]Output directory[/]:").DefaultValue(DefaultOutputRoot())),
+            Headless = false,
+            Script = script,
+        };
+
+        await ExecuteAsync(session, options, ct);
+    }
+
+    /// <summary>
     /// Headless entry point. Returns a process exit code: 0 on success, non-zero on failure, so
     /// a remote caller can branch on it without parsing output.
     /// </summary>
@@ -404,7 +461,23 @@ public static class RawCaptureCommand
             window.CancelAfter(TimeSpan.FromSeconds(options.DurationSeconds));
         }
 
-        if (options.Headless)
+        if (options.Script is not null)
+        {
+            // The read loop must keep draining while the operator is being prompted - a blocked
+            // reader means BUFFER FULL and a dead capture. So the loop runs in the background and
+            // the script drives the foreground, both writing into the same result.
+            var reader = CaptureLoopAsync(framer, result, clock, markers, window, onTick: null);
+            try
+            {
+                await RunScriptAsync(options.Script, result, clock, window.Token);
+            }
+            finally
+            {
+                window.Cancel();
+                try { await reader; } catch (OperationCanceledException) { }
+            }
+        }
+        else if (options.Headless)
         {
             await CaptureLoopAsync(framer, result, clock, markers, window, onTick: null);
         }
@@ -507,6 +580,79 @@ public static class RawCaptureCommand
 
             onTick?.Invoke(false);
         }
+    }
+
+    /// <summary>
+    /// Walks the operator through a stimulus script, recording a labelled marker at the moment
+    /// each action is confirmed.
+    ///
+    /// Confirmation is explicit rather than timed: the harness must not assume the stimulus
+    /// happened because it printed a prompt. The operator presses ENTER once the action is done
+    /// AND held, then a settle delay discards the transient before the hold window is measured.
+    /// The marker is stamped at confirmation, so the analysis knows where the boundary is even
+    /// though the exact actuation moment is a little earlier.
+    /// </summary>
+    private static async Task RunScriptAsync(
+        ProbeScript script,
+        CaptureResult result,
+        Stopwatch clock,
+        CancellationToken ct)
+    {
+        // Transient at the start of an action is discarded before the state is treated as held.
+        var settle = TimeSpan.FromMilliseconds(1500);
+
+        AnsiConsole.Clear();
+        AnsiConsole.Write(new Rule($"[cyan]Guided probes: {script.Name}[/]").RuleStyle("grey"));
+        AnsiConsole.MarkupLine($"[grey]{script.Description.EscapeMarkup()}[/]");
+        AnsiConsole.MarkupLine($"[yellow]Safe when:[/] {script.SafeWhen.EscapeMarkup()}");
+        AnsiConsole.MarkupLine($"[grey]{script.Steps.Count} steps. Ctrl+C aborts; partial data is still written.[/]");
+        AnsiConsole.WriteLine();
+
+        for (var i = 0; i < script.Steps.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var step = script.Steps[i];
+            var n = $"[grey][[{i + 1}/{script.Steps.Count}]][/]";
+
+            if (step.Kind == ProbeStepKind.Idle)
+            {
+                result.AddMarker(clock.Elapsed.TotalMilliseconds, step.Label + "-start");
+                AnsiConsole.MarkupLine($"{n} [yellow]{step.Instruction.EscapeMarkup()}[/]");
+
+                for (var remaining = step.Seconds; remaining > 0; remaining--)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    AnsiConsole.Markup($"\r      [grey]{remaining,3}s remaining, frames {result.TotalFrames}   [/]");
+                    await Task.Delay(1000, ct);
+                }
+
+                AnsiConsole.MarkupLine("\r      [green]done[/]                                   ");
+                result.AddMarker(clock.Elapsed.TotalMilliseconds, step.Label + "-end");
+                continue;
+            }
+
+            AnsiConsole.MarkupLine($"{n} [white]{step.Instruction.EscapeMarkup()}[/]");
+            AnsiConsole.Markup("      [grey]press ENTER when done and held...[/]");
+
+            // Console.ReadLine blocks a thread; keep it off the loop that owns the read side.
+            await Task.Run(Console.ReadLine, ct);
+
+            result.AddMarker(clock.Elapsed.TotalMilliseconds, step.Label);
+
+            await Task.Delay(settle, ct);
+            for (var remaining = step.Seconds; remaining > 0; remaining--)
+            {
+                ct.ThrowIfCancellationRequested();
+                AnsiConsole.Markup($"\r      [grey]holding {remaining}s, frames {result.TotalFrames}    [/]");
+                await Task.Delay(1000, ct);
+            }
+
+            AnsiConsole.MarkupLine($"\r      [green]recorded '{step.Label}'[/]                     ");
+        }
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[green]Script complete.[/]");
     }
 
     /// <summary>Reads pending keystrokes. Returns true if the display should refresh.</summary>
@@ -968,15 +1114,36 @@ public static class RawCaptureCommand
         public IReadOnlyList<Marker> Markers => _markers;
         public List<BusEvent> Events { get; } = [];
 
-        public void AddMarker(double atMs, string? label) =>
-            _markers.Add(new Marker(_markers.Count + 1, atMs) { Label = label });
+        /// <summary>
+        /// Guarded because guided probe mode adds markers from the prompt thread while the read
+        /// loop runs on another. Contention is negligible - a marker per operator action.
+        /// </summary>
+        public void AddMarker(double atMs, string? label)
+        {
+            lock (_markers)
+            {
+                _markers.Add(new Marker(_markers.Count + 1, atMs) { Label = label });
+            }
+        }
 
         public void SetMarkerLabel(int number, string label)
         {
-            var marker = _markers.FirstOrDefault(m => m.Number == number);
-            if (marker is not null)
+            lock (_markers)
             {
-                marker.Label = label;
+                var marker = _markers.FirstOrDefault(m => m.Number == number);
+                if (marker is not null)
+                {
+                    marker.Label = label;
+                }
+            }
+        }
+
+        /// <summary>Snapshot for readers that must not race the prompt thread.</summary>
+        public IReadOnlyList<Marker> MarkerSnapshot()
+        {
+            lock (_markers)
+            {
+                return _markers.ToList();
             }
         }
     }
