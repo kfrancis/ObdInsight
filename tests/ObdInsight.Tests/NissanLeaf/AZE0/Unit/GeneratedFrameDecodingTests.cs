@@ -232,17 +232,42 @@ public class GeneratedFrameDecodingTests
     }
 
     [Test]
-    public async Task VcmFrame421_ShifterMap_DecodesAllGears()
+    public async Task VcmFrame421_ShifterMap_DecodesAllGears_FromOneBytePayload()
     {
-        // 0x421 is a 1-byte frame — decoded from raw byte 0, not the generated 8-byte Parse.
+        // 0x421 is a 1-byte frame on the wire. The generated Parse accepts it because the
+        // frame's only signal lives in byte 0 (MinimumLength = 1) — no hand-decode helper.
         // Map per OVMS: 0/1=P, 2=R, 3=N, 4=D, 7=Drive/B.
-        await Assert.That(VcmFrame_421_AZE0.ShifterPositionFromByte0(0x08)).IsEqualTo(1); // Park
-        await Assert.That(VcmFrame_421_AZE0.ShifterPositionFromByte0(0x10)).IsEqualTo(2); // Reverse
-        await Assert.That(VcmFrame_421_AZE0.ShifterPositionFromByte0(0x18)).IsEqualTo(3); // Neutral
-        await Assert.That(VcmFrame_421_AZE0.ShifterPositionFromByte0(0x20)).IsEqualTo(4); // Drive
-        await Assert.That(VcmFrame_421_AZE0.ShifterPositionFromByte0(0x38)).IsEqualTo(7); // Drive/B
+        await Assert.That(VcmFrame_421_AZE0.MinimumLength).IsEqualTo(1);
+
+        await Assert.That(VcmFrame_421_AZE0.Parse([0x08]).DashShifterPosition).IsEqualTo(1); // Park
+        await Assert.That(VcmFrame_421_AZE0.Parse([0x10]).DashShifterPosition).IsEqualTo(2); // Reverse
+        await Assert.That(VcmFrame_421_AZE0.Parse([0x18]).DashShifterPosition).IsEqualTo(3); // Neutral
+        await Assert.That(VcmFrame_421_AZE0.Parse([0x20]).DashShifterPosition).IsEqualTo(4); // Drive
+        await Assert.That(VcmFrame_421_AZE0.Parse([0x38]).DashShifterPosition).IsEqualTo(7); // Drive/B
         // Bits outside 3-5 must not bleed in.
-        await Assert.That(VcmFrame_421_AZE0.ShifterPositionFromByte0(0xC7)).IsEqualTo(0);
+        await Assert.That(VcmFrame_421_AZE0.Parse([0xC7]).DashShifterPosition).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task VcmFrame176_SevenBytePayload_DecodesWithoutPadding()
+    {
+        // 7 bytes on the wire; the CRC signal ends in byte 6, so MinimumLength is 7.
+        // ASCD speed is bits 39-46: byte5 = 0x32 puts 100 (0x64) across the byte boundary.
+        await Assert.That(VcmFrame_176_AZE0.MinimumLength).IsEqualTo(7);
+
+        var frame = VcmFrame_176_AZE0.Parse([0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0x5A]);
+
+        await Assert.That(frame.AscdSpeedRequest).IsEqualTo(100);
+        await Assert.That(frame.Crc).IsEqualTo(0x5A);
+    }
+
+    [Test]
+    public async Task Parse_PayloadShorterThanMinimumLength_Throws()
+    {
+        // A truncated payload cannot carry every signal — that is an error, not a silent
+        // zero-fill. (Frames longer than declared are fine: extra bytes are ignored.)
+        await Assert.That(() => { _ = VcmFrame_176_AZE0.Parse([0x00, 0x00, 0x00]); })
+            .Throws<ArgumentException>();
     }
 
     [Test]

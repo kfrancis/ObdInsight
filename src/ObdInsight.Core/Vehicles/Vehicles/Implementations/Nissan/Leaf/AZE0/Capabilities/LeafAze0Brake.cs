@@ -27,11 +27,26 @@ internal sealed class LeafAze0Brake : IBrake
         _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
     }
 
+    /// <summary>The frames that feed <see cref="BrakeStatus" />.</summary>
+    private static readonly int[] StatusFrameIds = [0x1CA];
+
     public async ValueTask<BrakeStatus> GetStatusAsync(CancellationToken ct = default)
     {
         await _monitor.StartAsync(ct);
         await _monitor.WaitForCacheAsync(WarmupTimeout, ct, 0x1CA);
 
+        return BuildStatus();
+    }
+
+    public IAsyncEnumerable<BrakeStatus> StreamStatusAsync(
+        TimeSpan minInterval = default,
+        CancellationToken ct = default)
+    {
+        return _monitor.StreamSnapshots(StatusFrameIds, BuildStatus, minInterval, ct);
+    }
+
+    private BrakeStatus BuildStatus()
+    {
         if (!_monitor.TryGetLatest<BrakeFrame_1CA_AZE0>(out var frame1CA))
         {
             return new BrakeStatus(BrakePressed: false, AbsActive: false);

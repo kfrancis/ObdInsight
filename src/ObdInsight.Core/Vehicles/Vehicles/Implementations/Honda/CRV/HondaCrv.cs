@@ -154,6 +154,17 @@ namespace ObdInsight.Core.Vehicles.Implementations
             _context = context;
         }
 
+        /// <summary>
+        /// No broadcast frame source is wired for this stub, so the stream completes
+        /// immediately rather than hanging a consumer that awaits a first value.
+        /// </summary>
+        public IAsyncEnumerable<HvacStatus> StreamStatusAsync(
+            TimeSpan minInterval = default,
+            CancellationToken ct = default)
+        {
+            return AsyncEnumerable.Empty<HvacStatus>();
+        }
+
         public ValueTask<HvacStatus> GetStatusAsync(CancellationToken ct = default)
         {
             if (_context.Name == HondaCrvGen5Contexts.Null.Name)

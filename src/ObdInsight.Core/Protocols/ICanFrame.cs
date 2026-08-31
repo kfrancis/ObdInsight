@@ -11,6 +11,19 @@ public interface ICanFrame<out TSelf> where TSelf : ICanFrame<TSelf>
     /// <summary>The CAN ID this frame type decodes.</summary>
     static abstract int FrameCanId { get; }
 
-    /// <summary>Parses an 8-byte little-endian CAN frame payload.</summary>
+    /// <summary>
+    ///     The shortest payload <see cref="Parse" /> accepts: the highest byte any of this frame's
+    ///     signals touches. Frames on the wire are often shorter than 8 bytes, so consumers filter
+    ///     on this rather than on a fixed length.
+    /// </summary>
+    static abstract int MinimumLength { get; }
+
+    /// <summary>
+    ///     Parses a little-endian CAN frame payload of at least <see cref="MinimumLength" /> bytes.
+    ///     Bytes past the last signal are ignored.
+    /// </summary>
+    /// <exception cref="System.ArgumentException">
+    ///     Thrown if <paramref name="data" /> is shorter than <see cref="MinimumLength" />.
+    /// </exception>
     static abstract TSelf Parse(ReadOnlySpan<byte> data);
 }

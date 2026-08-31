@@ -12,9 +12,10 @@ BLE OBD-II adapters. The actively developed artifact is a **Windows console app*
 no project references — do not assume the MAUI app works.
 
 `AUDIT.md` (repo root) tracks the improvement plan and what has been fixed;
-`docs/STREAMING_MONITOR_DESIGN.md` is the streaming-API design (P1–P3 implemented:
+`docs/STREAMING_MONITOR_DESIGN.md` is the streaming-API design (P1–P4 implemented:
 shared monitor, typed layer, capability migration, `SuspendAsync` UDS arbitration,
-hardware filter rotation); `docs/EVTESTDRIVE_ROADMAP.md` is the consumer-app readiness plan.
+hardware filter rotation, and the P4 consumer streaming surface — `StreamStatusAsync`
+on the broadcast capabilities, typed `ITelemetrySession.Stream<T>`, short-frame decoding); `docs/EVTESTDRIVE_ROADMAP.md` is the consumer-app readiness plan.
 
 ## Solution layout
 
@@ -70,7 +71,8 @@ IElmTransport            byte I/O (BLE impls live in the console app; ReplayElmT
        ├─ EcuContext     per-ECU headers/filters/flow control (presets in LeafAze0Contexts, EcuContext statics)
        ├─ CanMonitor     long-lived monitoring: one read loop, per-subscriber bounded channels (drop-oldest),
        │                 latest-frame cache, BUFFER FULL auto-restart, EndReason. Typed streams via
-       │                 CanMonitor.Subscribe<T>() / TryGetLatest<T>() for ICanFrame<T> frame types
+       │                 CanMonitor.Subscribe<T>() / TryGetLatest<T>() for ICanFrame<T> frame types;
+       │                 StreamSnapshots() backs the capabilities' StreamStatusAsync
        └─ Capabilities   IHvac, IBatteryManagementSystem, ... (vehicle-specific impls under
                          Vehicles/Vehicles/Implementations/), wired by LeafAze0CommandSet,
                          looked up via VehicleSession.TryGet<T>()

@@ -20,6 +20,9 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
         }
 
+        /// <summary>The frames that feed <see cref="HvacStatus" />.</summary>
+        private static readonly int[] StatusFrameIds = [0x54A, 0x54B, 0x54C, 0x54F];
+
         public async ValueTask<HvacStatus> GetStatusAsync(CancellationToken ct = default)
         {
             await _monitor.StartAsync(ct);
@@ -35,6 +38,18 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
                 await Task.Delay(10, ct);
             }
 
+            return BuildStatus();
+        }
+
+        public IAsyncEnumerable<HvacStatus> StreamStatusAsync(
+            TimeSpan minInterval = default,
+            CancellationToken ct = default)
+        {
+            return _monitor.StreamSnapshots(StatusFrameIds, BuildStatus, minInterval, ct);
+        }
+
+        private HvacStatus BuildStatus()
+        {
             _monitor.TryGetLatest<HvacFrame_54A_AZE0>(out var ambient);
             _monitor.TryGetLatest<HvacFrame_54B_AZE0>(out var fan);
             _monitor.TryGetLatest<HvacFrame_54C_AZE0>(out var status);

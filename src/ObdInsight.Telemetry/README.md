@@ -23,6 +23,12 @@ await foreach (var batch in telemetry.Batches(ct))
 {
     // one batch per cadence tick; samples carry signal, value, timestamp, tier
 }
+
+// Or one signal at its own type — no enum switch, no TelemetryValue unpacking:
+await foreach (var sample in telemetry.Stream(Signals.StateOfCharge, ct))
+{
+    decimal soc = sample.Value;   // TelemetrySample<decimal>
+}
 ```
 
 Develop without hardware using `ObdInsight.Simulation`.

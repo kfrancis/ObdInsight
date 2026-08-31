@@ -335,6 +335,17 @@ namespace ObdInsight.SourceGeneration
                 sb.AppendLine();
             }
 
+            var minimumLength = GetMinimumLength(model);
+
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine(
+                $"        /// The shortest payload this frame can be decoded from ({minimumLength} byte(s)) - the");
+            sb.AppendLine("        /// highest byte any of its signals touches. Frames on the wire are often shorter");
+            sb.AppendLine("        /// than 8 bytes; anything at least this long decodes.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        public static int MinimumLength => {minimumLength};");
+            sb.AppendLine();
+
             // Generate Parse method
             GenerateParseMethod(sb, model);
 
@@ -352,29 +363,32 @@ namespace ObdInsight.SourceGeneration
 
         /// <summary>
         ///     Generates the source code for a static Parse method that parses a CAN frame with a specific ID from raw
-        ///     8-byte data.
+        ///     payload data.
         /// </summary>
         /// <remarks>
-        ///     The generated Parse method validates that the input data is exactly 8 bytes in length
-        ///     and throws an exception if this condition is not met. The method constructs an instance of the specified
-        ///     model class by decoding each signal from the provided data.
+        ///     The generated Parse method validates that the input data is at least
+        ///     <see cref="GetMinimumLength" /> bytes long and throws an exception if it is shorter. The method constructs
+        ///     an instance of the specified model class by decoding each signal from the provided data.
         /// </remarks>
         /// <param name="sb">The StringBuilder to which the generated method source code will be appended.</param>
         /// <param name="model">The CAN frame model describing the frame structure and signals to be parsed.</param>
         private static void GenerateParseMethod(StringBuilder sb, CanFrameModel model)
         {
+            var minimumLength = GetMinimumLength(model);
+
             sb.AppendLine("        /// <summary>");
-            sb.AppendLine($"        /// Parses a CAN frame with ID 0x{model.CanId:X3} from raw 8-byte data.");
+            sb.AppendLine($"        /// Parses a CAN frame with ID 0x{model.CanId:X3} from raw payload data.");
             sb.AppendLine("        /// </summary>");
-            sb.AppendLine("        /// <param name=\"data\">8-byte CAN frame data (little-endian byte order)</param>");
+            sb.AppendLine(
+                $"        /// <param name=\"data\">CAN frame data, at least {minimumLength} byte(s), little-endian byte order. Bytes past the last signal are ignored.</param>");
             sb.AppendLine($"        /// <returns>Parsed {model.ClassName} instance</returns>");
             sb.AppendLine(
-                "        /// <exception cref=\"ArgumentException\">Thrown if data length is not 8 bytes</exception>");
+                $"        /// <exception cref=\"ArgumentException\">Thrown if data is shorter than {minimumLength} byte(s)</exception>");
             sb.AppendLine($"        public static {model.ClassName} Parse(ReadOnlySpan<byte> data)");
             sb.AppendLine("        {");
-            sb.AppendLine("            if (data.Length != 8)");
+            sb.AppendLine($"            if (data.Length < {minimumLength})");
             sb.AppendLine(
-                "                throw new ArgumentException($\"CAN frame data must be exactly 8 bytes, got {data.Length}\", nameof(data));");
+                $"                throw new ArgumentException($\"CAN frame data must be at least {minimumLength} byte(s), got {{data.Length}}\", nameof(data));");
             sb.AppendLine();
             sb.AppendLine($"            return new {model.ClassName}");
             sb.AppendLine("            {");
@@ -438,6 +452,33 @@ namespace ObdInsight.SourceGeneration
                 $"        public partial {signal.PropertyType} {signal.PropertyName} {{ get => __{signal.PropertyName}; init => __{signal.PropertyName} = value; }}");
             sb.AppendLine($"        private {signal.PropertyType} __{signal.PropertyName};");
             sb.AppendLine();
+        }
+
+        /// <summary>
+        ///     The shortest payload the frame can be decoded from: the highest byte any of its signals touches.
+        /// </summary>
+        /// <remarks>
+        ///     Bit 0 is the LSB of byte 0 (Intel order), so a signal ending at bit <c>n</c> needs <c>n / 8 + 1</c> bytes.
+        ///     Real CAN frames are frequently shorter than 8 bytes (Leaf 0x421 is 1, 0x260 is 4, 0x176 is 7); decoding
+        ///     those must not require padding the payload out to 8. Clamped to 1..8 - the decoder reads a 64-bit window,
+        ///     so a signal declared past bit 63 cannot be decoded anyway.
+        /// </remarks>
+        /// <param name="model">The frame whose signals determine the minimum length.</param>
+        /// <returns>A byte count in the range 1..8.</returns>
+        private static int GetMinimumLength(CanFrameModel model)
+        {
+            var highestBit = 0;
+            foreach (var signal in model.Signals)
+            {
+                var lastBit = signal.BitStart + signal.BitLength - 1;
+                if (lastBit > highestBit)
+                {
+                    highestBit = lastBit;
+                }
+            }
+
+            var bytes = (highestBit / 8) + 1;
+            return bytes < 1 ? 1 : bytes > 8 ? 8 : bytes;
         }
 
         /// <summary>
@@ -601,9 +642,28 @@ namespace ObdInsight.SourceGeneration
 
             sb.AppendLine("        public static uint ReadUnsigned(ReadOnlySpan<byte> data, int bitPos, int bitLen)");
             sb.AppendLine("        {");
-            sb.AppendLine("            var raw = BinaryPrimitives.ReadUInt64LittleEndian(data);");
+            sb.AppendLine("            var raw = ReadPayload(data);");
             sb.AppendLine("            var mask = bitLen == 32 ? 0xFFFF_FFFFul : ((1ul << bitLen) - 1ul);");
             sb.AppendLine("            return (uint)((raw >> bitPos) & mask);");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            sb.AppendLine("        // Payloads shorter than 8 bytes are zero-extended: the frame's own MinimumLength");
+            sb.AppendLine("        // guard has already established that every signal it decodes is within range.");
+            sb.AppendLine("        private static ulong ReadPayload(ReadOnlySpan<byte> data)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (data.Length >= 8)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                return BinaryPrimitives.ReadUInt64LittleEndian(data);");
+            sb.AppendLine("            }");
+            sb.AppendLine();
+            sb.AppendLine("            ulong raw = 0;");
+            sb.AppendLine("            for (var i = 0; i < data.Length; i++)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                raw |= (ulong)data[i] << (i * 8);");
+            sb.AppendLine("            }");
+            sb.AppendLine();
+            sb.AppendLine("            return raw;");
             sb.AppendLine("        }");
         }
 
@@ -681,7 +741,8 @@ namespace ObdInsight.SourceGeneration
                 sb.AppendLine(
                     $"        public static bool TryParse{frame.ClassName}(int canId, ReadOnlySpan<byte> data, out {frame.ClassName}? result)");
                 sb.AppendLine("        {");
-                sb.AppendLine($"            if (canId == 0x{frame.CanId:X3} && data.Length == 8)");
+                sb.AppendLine(
+                    $"            if (canId == 0x{frame.CanId:X3} && data.Length >= {frame.ClassName}.MinimumLength)");
                 sb.AppendLine("            {");
                 sb.AppendLine($"                result = {frame.ClassName}.Parse(data);");
                 sb.AppendLine("                return true;");
@@ -700,14 +761,13 @@ namespace ObdInsight.SourceGeneration
                 "        /// <returns>Parsed frame object, or null if the CAN ID is not recognized.</returns>");
             sb.AppendLine("        public static object? TryParseAny(int canId, ReadOnlySpan<byte> data)");
             sb.AppendLine("        {");
-            sb.AppendLine("            if (data.Length != 8) return null;");
-            sb.AppendLine();
             sb.AppendLine("            return canId switch");
             sb.AppendLine("            {");
 
             foreach (var frame in frames)
             {
-                sb.AppendLine($"                0x{frame.CanId:X3} => {frame.ClassName}.Parse(data),");
+                sb.AppendLine(
+                    $"                0x{frame.CanId:X3} => data.Length >= {frame.ClassName}.MinimumLength ? {frame.ClassName}.Parse(data) : null,");
             }
 
             sb.AppendLine("                _ => null");

@@ -12,6 +12,19 @@ public interface IAntilockBrakingSystem : IVehicleCapability
     /// Gets current ABS status including wheel speeds and vehicle speed.
     /// </summary>
     ValueTask<AbsStatus> GetStatusAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Streams ABS status as the underlying broadcast frames arrive (0x130/0x245/0x284/0x285/0x292/0x354 on the Leaf), re-emitting
+    /// on every contributing frame with the rest of the record taken from the shared monitor's
+    /// latest-frame cache.
+    /// </summary>
+    /// <param name="minInterval">
+    /// Minimum spacing between emissions; default (zero) emits on every contributing frame.
+    /// Emissions inside the interval are skipped rather than queued, so the next one always
+    /// carries the newest state.
+    /// </param>
+    /// <param name="ct">Stops the stream. The stream also completes when monitoring ends.</param>
+    IAsyncEnumerable<AbsStatus> StreamStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -34,16 +47,55 @@ public interface IBatteryManagementSystem : IVehicleCapability
 public interface IBodyControl : IVehicleCapability
 {
     ValueTask<BodyControlStatus> GetStatusAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Streams body control status as the underlying broadcast frames arrive (0x60D/0x625 on the Leaf), re-emitting
+    /// on every contributing frame with the rest of the record taken from the shared monitor's
+    /// latest-frame cache.
+    /// </summary>
+    /// <param name="minInterval">
+    /// Minimum spacing between emissions; default (zero) emits on every contributing frame.
+    /// Emissions inside the interval are skipped rather than queued, so the next one always
+    /// carries the newest state.
+    /// </param>
+    /// <param name="ct">Stops the stream. The stream also completes when monitoring ends.</param>
+    IAsyncEnumerable<BodyControlStatus> StreamStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
 }
 
 public interface IBrake : IVehicleCapability
 {
     ValueTask<BrakeStatus> GetStatusAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Streams brake status as the underlying broadcast frames arrive (0x1CA on the Leaf), re-emitting
+    /// on every contributing frame with the rest of the record taken from the shared monitor's
+    /// latest-frame cache.
+    /// </summary>
+    /// <param name="minInterval">
+    /// Minimum spacing between emissions; default (zero) emits on every contributing frame.
+    /// Emissions inside the interval are skipped rather than queued, so the next one always
+    /// carries the newest state.
+    /// </param>
+    /// <param name="ct">Stops the stream. The stream also completes when monitoring ends.</param>
+    IAsyncEnumerable<BrakeStatus> StreamStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
 }
 
 public interface IHvac : IVehicleCapability
 {
     ValueTask<HvacStatus> GetStatusAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Streams HVAC status as the underlying broadcast frames arrive (0x54A/0x54B/0x54C/0x54F on the Leaf), re-emitting
+    /// on every contributing frame with the rest of the record taken from the shared monitor's
+    /// latest-frame cache.
+    /// </summary>
+    /// <param name="minInterval">
+    /// Minimum spacing between emissions; default (zero) emits on every contributing frame.
+    /// Emissions inside the interval are skipped rather than queued, so the next one always
+    /// carries the newest state.
+    /// </param>
+    /// <param name="ct">Stops the stream. The stream also completes when monitoring ends.</param>
+    IAsyncEnumerable<HvacStatus> StreamStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
 }
 
 public interface IHvbat : IVehicleCapability
@@ -60,6 +112,19 @@ public interface IMotorController : IVehicleCapability
     /// Gets current motor and inverter status.
     /// </summary>
     ValueTask<MotorStatus> GetStatusAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Streams motor and inverter status as the underlying broadcast frames arrive (0x1DA/0x55A on the Leaf), re-emitting
+    /// on every contributing frame with the rest of the record taken from the shared monitor's
+    /// latest-frame cache.
+    /// </summary>
+    /// <param name="minInterval">
+    /// Minimum spacing between emissions; default (zero) emits on every contributing frame.
+    /// Emissions inside the interval are skipped rather than queued, so the next one always
+    /// carries the newest state.
+    /// </param>
+    /// <param name="ct">Stops the stream. The stream also completes when monitoring ends.</param>
+    IAsyncEnumerable<MotorStatus> StreamStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -71,6 +136,20 @@ public interface IOnboardCharger : IVehicleCapability
     /// Gets current charging status if vehicle is plugged in.
     /// </summary>
     ValueTask<ChargingStatus?> GetChargingStatusAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Streams charging status as the underlying broadcast frames arrive (0x390 on the Leaf), re-emitting
+    /// on every contributing frame with the rest of the record taken from the shared monitor's
+    /// latest-frame cache. Nullable for the same reason the pull
+    /// method is: a frame that arrives but cannot be decoded yields null rather than an error.
+    /// </summary>
+    /// <param name="minInterval">
+    /// Minimum spacing between emissions; default (zero) emits on every contributing frame.
+    /// Emissions inside the interval are skipped rather than queued, so the next one always
+    /// carries the newest state.
+    /// </param>
+    /// <param name="ct">Stops the stream. The stream also completes when monitoring ends.</param>
+    IAsyncEnumerable<ChargingStatus?> StreamChargingStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
 }
 
 public interface ISteering : IVehicleCapability
@@ -90,6 +169,19 @@ public interface IVcm : IVehicleCapability
     /// This data is typically transmitted on the CAR-CAN bus.
     /// </summary>
     ValueTask<VcmStatus> GetStatusAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Streams VCM status as the underlying broadcast frames arrive (0x510/0x180/0x5A9 on the Leaf), re-emitting
+    /// on every contributing frame with the rest of the record taken from the shared monitor's
+    /// latest-frame cache.
+    /// </summary>
+    /// <param name="minInterval">
+    /// Minimum spacing between emissions; default (zero) emits on every contributing frame.
+    /// Emissions inside the interval are skipped rather than queued, so the next one always
+    /// carries the newest state.
+    /// </param>
+    /// <param name="ct">Stops the stream. The stream also completes when monitoring ends.</param>
+    IAsyncEnumerable<VcmStatus> StreamStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
 }
 
 /// <summary>

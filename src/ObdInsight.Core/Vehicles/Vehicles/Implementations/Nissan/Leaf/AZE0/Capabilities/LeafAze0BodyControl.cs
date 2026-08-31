@@ -19,11 +19,26 @@ internal sealed class LeafAze0BodyControl : IBodyControl
         _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
     }
 
+    /// <summary>The frames that feed <see cref="BodyControlStatus" />.</summary>
+    private static readonly int[] StatusFrameIds = [0x60D, 0x625];
+
     public async ValueTask<BodyControlStatus> GetStatusAsync(CancellationToken ct = default)
     {
         await _monitor.StartAsync(ct);
         await _monitor.WaitForCacheAsync(WarmupTimeout, ct, 0x60D, 0x625);
 
+        return BuildStatus();
+    }
+
+    public IAsyncEnumerable<BodyControlStatus> StreamStatusAsync(
+        TimeSpan minInterval = default,
+        CancellationToken ct = default)
+    {
+        return _monitor.StreamSnapshots(StatusFrameIds, BuildStatus, minInterval, ct);
+    }
+
+    private BodyControlStatus BuildStatus()
+    {
         _monitor.TryGetLatest<BcmFrame_60D_AZE0>(out var frame60D);
         _monitor.TryGetLatest<BcmFrame_625_AZE0>(out var frame625);
 
