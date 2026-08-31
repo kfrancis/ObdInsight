@@ -99,7 +99,7 @@ namespace ObdInsight.Core.Protocols
                 return false;
             }
 
-            if (!byte.TryParse(parts[1], NumberStyles.HexNumber, null, out var gotPid) && gotPid != pid)
+            if (!byte.TryParse(parts[1], NumberStyles.HexNumber, null, out var gotPid) || gotPid != pid)
             {
                 return false;
             }

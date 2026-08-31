@@ -35,6 +35,37 @@ namespace ObdInsight.SourceGeneration
     {
         private const double ScalingTolerance = 1e-12;
 
+        /// <summary>Bits available to a signal: the 8-byte CAN payload the decoder reads as one ulong.</summary>
+        private const int PayloadBits = 64;
+
+        /// <summary>Widest signal the generated CanBits reader can return, since it yields uint/int.</summary>
+        private const int MaxSignalBits = 32;
+
+        /// <summary>
+        ///     Reported when a signal's bit range does not fit the 8-byte payload. Silently generating
+        ///     for it would decode the wrong bits: the shift count in the generated reader is masked to
+        ///     6 bits, so a start bit of 64 or more reads as if it were 64 lower.
+        /// </summary>
+        private static readonly DiagnosticDescriptor SignalRangeOutsidePayload = new(
+            "OBDCAN001",
+            "CAN signal bit range is outside the frame payload",
+            "Signal '{0}' declares bits {1}..{2}, which is outside the {3}-bit CAN payload",
+            "ObdInsight.SourceGeneration",
+            DiagnosticSeverity.Error,
+            true);
+
+        /// <summary>
+        ///     Reported when a signal is wider than the generated reader's return type. The mask would
+        ///     be computed at 64 bits and then truncated to uint, dropping the high bits without warning.
+        /// </summary>
+        private static readonly DiagnosticDescriptor SignalTooWide = new(
+            "OBDCAN002",
+            "CAN signal is wider than the decoder can represent",
+            "Signal '{0}' declares {1} bits; the generated decoder reads at most {2}",
+            "ObdInsight.SourceGeneration",
+            DiagnosticSeverity.Error,
+            true);
+
         /// <summary>
         ///     Initializes the incremental source generator by registering syntax providers and source outputs for classes
         ///     marked with the [CanFrame] attribute.
@@ -67,6 +98,7 @@ namespace ObdInsight.SourceGeneration
             context.RegisterSourceOutput(canFrameClasses.Combine(hasICanFrame), static (spc, pair) =>
             {
                 var (model, implementICanFrame) = pair;
+                ReportInvalidSignals(spc, model);
                 var source = GenerateCanFrameDecoder(model, implementICanFrame);
                 spc.AddSource($"{model.ClassName}.g.cs", SourceText.From(source, Encoding.UTF8));
             });
@@ -108,6 +140,42 @@ namespace ObdInsight.SourceGeneration
                 spc.AddSource($"CanFrameRouter_{item.Namespace.Replace(".", "_")}.g.cs",
                     SourceText.From(source, Encoding.UTF8));
             });
+        }
+
+        /// <summary>
+        ///     Reports signals whose declared bit range the generated decoder cannot honour. Generation
+        ///     continues so the frame still yields one clear error rather than a cascade of missing
+        ///     partial-property implementations.
+        /// </summary>
+        private static void ReportInvalidSignals(SourceProductionContext context, CanFrameModel model)
+        {
+            foreach (var signal in model.Signals)
+            {
+                var location = signal.Location?.ToLocation() ?? Location.None;
+
+                if (signal.BitStart < 0 || signal.BitLength < 1 ||
+                    signal.BitStart + signal.BitLength > PayloadBits)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        SignalRangeOutsidePayload,
+                        location,
+                        signal.PropertyName,
+                        signal.BitStart,
+                        signal.BitStart + signal.BitLength - 1,
+                        PayloadBits));
+                    continue;
+                }
+
+                if (signal.BitLength > MaxSignalBits)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        SignalTooWide,
+                        location,
+                        signal.PropertyName,
+                        signal.BitLength,
+                        MaxSignalBits));
+                }
+            }
         }
 
         /// <summary>
@@ -265,7 +333,8 @@ namespace ObdInsight.SourceGeneration
                     unit,
                     signalDescription,
                     minValue,
-                    maxValue));
+                    maxValue,
+                    SignalLocation.From(member)));
             }
 
             if (signals.Count == 0)
@@ -853,5 +922,32 @@ namespace ObdInsight.SourceGeneration
         string? Unit,
         string? Description,
         double? MinValue,
-        double? MaxValue);
+        double? MaxValue,
+        SignalLocation? Location);
+
+    /// <summary>
+    ///     Where a signal was declared, kept as value-comparable pieces rather than a
+    ///     <see cref="Location" /> so the model stays usable as an incremental-pipeline cache key.
+    /// </summary>
+    internal sealed record SignalLocation(string FilePath, TextSpan TextSpan, LinePositionSpan LineSpan)
+    {
+        /// <summary>Captures the first declaration site of <paramref name="symbol" />, if it has one.</summary>
+        public static SignalLocation? From(ISymbol symbol)
+        {
+            var location = symbol.Locations.FirstOrDefault(l => l.IsInSource);
+            if (location is null)
+            {
+                return null;
+            }
+
+            var lineSpan = location.GetLineSpan();
+            return new SignalLocation(lineSpan.Path, location.SourceSpan, lineSpan.Span);
+        }
+
+        /// <summary>Rebuilds a Roslyn location for reporting.</summary>
+        public Location ToLocation()
+        {
+            return Location.Create(FilePath, TextSpan, LineSpan);
+        }
+    }
 }
