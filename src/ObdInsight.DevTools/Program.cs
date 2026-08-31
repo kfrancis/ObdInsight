@@ -15,6 +15,11 @@ internal class Program
             return await RunHeadlessCaptureAsync(args);
         }
 
+        if (args.Length > 0 && args[0].Equals("scan", StringComparison.OrdinalIgnoreCase))
+        {
+            return await RunHeadlessScanAsync(args);
+        }
+
         AnsiConsole.Write(new FigletText("OBD DevTools").Color(Color.Cyan1));
         AnsiConsole.MarkupLine("[grey]BLE OBD-II Development Tool[/]");
         AnsiConsole.WriteLine();
@@ -39,6 +44,72 @@ internal class Program
     }
 
     /// <summary>
+    /// <c>ObdInsight.DevTools.exe scan [--seconds 10]</c>
+    ///
+    /// Lists nearby BLE devices as tab-separated <c>address name rssi</c> on stdout, strongest
+    /// first, so the adapter's MAC can be discovered remotely instead of by driving the
+    /// interactive menu on a laptop that is sitting in a car.
+    /// </summary>
+    private static async Task<int> RunHeadlessScanAsync(string[] args)
+    {
+        var seconds = 10;
+
+        for (var i = 1; i < args.Length; i++)
+        {
+            if (args[i].Equals("--seconds", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                if (!int.TryParse(args[++i], out seconds) || seconds <= 0)
+                {
+                    Console.Error.WriteLine("error: --seconds must be a positive integer.");
+                    return 2;
+                }
+            }
+            else
+            {
+                Console.Error.WriteLine($"error: unrecognised argument '{args[i]}'. usage: scan [--seconds <n>]");
+                return 2;
+            }
+        }
+
+        var devices = new Dictionary<string, Core.Communication.Bluetooth.BleDeviceInfo>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            using var scanner = new WindowsBleScanner();
+            scanner.DeviceDiscovered += (_, e) => devices[e.Device.Address] = e.Device;
+
+            Console.Error.WriteLine($"scanning for {seconds}s...");
+            await scanner.StartScanAsync();
+            await Task.Delay(TimeSpan.FromSeconds(seconds));
+            await scanner.StopScanAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"error: scan failed: {ex.Message}");
+            return 1;
+        }
+
+        if (devices.Count == 0)
+        {
+            Console.Error.WriteLine(
+                "no BLE devices found. The adapter only advertises once it has power - check it is " +
+                "plugged into the OBD port and its LED is lit.");
+            return 1;
+        }
+
+        // Tab-separated so the caller can cut/parse it; strongest signal first, since an adapter
+        // in the same vehicle as the laptop should sort near the top.
+        foreach (var d in devices.Values.OrderByDescending(d => d.Rssi))
+        {
+            var name = string.IsNullOrWhiteSpace(d.Name) ? "(unnamed)" : d.Name;
+            Console.Out.WriteLine($"{d.Address}\t{name}\t{d.Rssi}");
+        }
+
+        Console.Error.WriteLine($"{devices.Count} device(s).");
+        return 0;
+    }
+
+    /// <summary>
     /// <c>ObdInsight.DevTools.exe capture --device &lt;mac&gt; --bus EV-CAN --seconds 60
     /// [--out DIR] [--markers FILE]</c>
     ///
@@ -50,6 +121,7 @@ internal class Program
     {
         string? device = null, bus = null, output = null, markers = null;
         var seconds = 0;
+        var verbose = false;
 
         for (var i = 1; i < args.Length; i++)
         {
@@ -60,6 +132,7 @@ internal class Program
                 case "--bus" when !isLast: bus = args[++i]; break;
                 case "--out" when !isLast: output = args[++i]; break;
                 case "--markers" when !isLast: markers = args[++i]; break;
+                case "--verbose": verbose = true; break;
                 case "--seconds" when !isLast:
                     if (!int.TryParse(args[++i], out seconds))
                     {
@@ -71,7 +144,7 @@ internal class Program
                 case "--help":
                 case "-h":
                     Console.Error.WriteLine(
-                        "usage: ObdInsight.DevTools.exe capture --device <mac> --bus <label> --seconds <n> [--out <dir>] [--markers <file>]");
+                        "usage: ObdInsight.DevTools.exe capture --device <mac> --bus <label> --seconds <n> [--out <dir>] [--markers <file>] [--verbose]");
                     return 2;
                 default:
                     Console.Error.WriteLine($"error: unrecognised argument '{args[i]}'.");
@@ -109,6 +182,7 @@ internal class Program
                 OutputRoot = output ?? RawCaptureCommand.DefaultOutputRoot(),
                 Headless = true,
                 MarkerFilePath = markers,
+                Verbose = verbose,
             });
     }
 

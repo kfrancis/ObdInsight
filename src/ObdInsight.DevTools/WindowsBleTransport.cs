@@ -175,6 +175,22 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                 {
                     Log($"Notify characteristic found: {_notifyCharacteristic.Uuid}, Props: {_notifyCharacteristic.CharacteristicProperties}");
 
+                    // Adapters sharing a service UUID do not always agree on which characteristic
+                    // plays which role, and a profile table cannot know. Trust the properties the
+                    // device actually reports: if the two are transposed relative to the profile,
+                    // swap them rather than failing. Hardware-confirmed on a Veepeak BLE where
+                    // FFF1 advertises Notify and FFF2 advertises Write/WriteWithoutResponse -
+                    // the reverse of what the profile declares.
+                    if (!Supports(_notifyCharacteristic, GattCharacteristicProperties.Notify | GattCharacteristicProperties.Indicate)
+                        && Supports(_writeCharacteristic, GattCharacteristicProperties.Notify | GattCharacteristicProperties.Indicate)
+                        && Supports(_notifyCharacteristic, GattCharacteristicProperties.Write | GattCharacteristicProperties.WriteWithoutResponse))
+                    {
+                        Log("Profile roles are transposed for this device - swapping write/notify characteristics");
+                        (_writeCharacteristic, _notifyCharacteristic) = (_notifyCharacteristic, _writeCharacteristic);
+                        Log($"Write is now {_writeCharacteristic.Uuid} ({_writeCharacteristic.CharacteristicProperties})");
+                        Log($"Notify is now {_notifyCharacteristic.Uuid} ({_notifyCharacteristic.CharacteristicProperties})");
+                    }
+
                     var notifyOk = await EnableNotificationsAsync(_notifyCharacteristic, cancellationToken);
                     if (!notifyOk && Profile.NotificationsRequired)
                     {
@@ -774,6 +790,10 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
             Spectre.Console.AnsiConsole.MarkupLine($"[grey][[BLE]] {escaped}[/]");
         }
     }
+
+    /// <summary>True if the characteristic advertises any of the given properties.</summary>
+    private static bool Supports(GattCharacteristic? characteristic, GattCharacteristicProperties any) =>
+        characteristic != null && (characteristic.CharacteristicProperties & any) != 0;
 
     private static ulong ParseMacAddress(string mac)
     {

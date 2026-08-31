@@ -34,4 +34,11 @@ public sealed record RawCaptureOptions
     /// reaching for the laptop.
     /// </summary>
     public string? MarkerFilePath { get; init; }
+
+    /// <summary>
+    /// Surfaces BLE transport diagnostics (device lookup, GATT session, service and
+    /// characteristic discovery). Off by default because it is noisy; essential when a connect
+    /// fails, since "Failed to connect" alone does not say which stage gave up.
+    /// </summary>
+    public bool Verbose { get; init; }
 }

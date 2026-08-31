@@ -68,6 +68,14 @@ public sealed class DevToolsSession : IAsyncDisposable
     public bool EnableTrafficLogging { get; set; } = true;
 
     /// <summary>
+    /// Applied to the transport when it is created, so BLE connect/GATT diagnostics are captured.
+    /// Must be set before connecting: the transport is constructed inside ConnectAsync, and the
+    /// interesting failures (device lookup, service discovery, characteristic lookup) all happen
+    /// during that call.
+    /// </summary>
+    public bool EnableTransportDebugLogging { get; set; }
+
+    /// <summary>
     /// True once the ELM327 bring-up path has run on the current connection.
     ///
     /// That path probes the bus (<c>AT SP 0</c> auto-detect and <c>0100</c> requests), so a
@@ -141,7 +149,7 @@ public sealed class DevToolsSession : IAsyncDisposable
         AdapterInitialized = false;
 
         Profile ??= BleDeviceProfile.VeepeakBle;
-        _transport = new WindowsBleTransport(Profile);
+        _transport = new WindowsBleTransport(Profile) { EnableDebugLogging = EnableTransportDebugLogging };
 
         if (EnableTrafficLogging)
         {

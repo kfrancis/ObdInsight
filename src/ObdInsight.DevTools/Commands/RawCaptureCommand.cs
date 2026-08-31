@@ -165,6 +165,10 @@ public static class RawCaptureCommand
             await session.DisconnectAsync();
         }
 
+        // Must precede ConnectAsync: the transport is built inside it, and the failures worth
+        // seeing (device lookup, GATT session, service/characteristic discovery) happen there.
+        session.EnableTransportDebugLogging = options.Verbose;
+
         if (!session.IsConnected && !await session.ConnectAsync(ct))
         {
             Report(options, "error: failed to connect to the adapter.", isError: true);
@@ -479,7 +483,28 @@ public static class RawCaptureCommand
                 break;
             }
 
+            var bufferFullBefore = result.BufferFullCount;
             Ingest(result, clock.Elapsed, line);
+
+            // BUFFER FULL means the adapter gave up and left monitoring mode on its own - it does
+            // not resume. Without a restart the rest of the window is silence: a 20s capture of a
+            // busy CAR-CAN yielded 33 frames in the first 183ms and nothing after (2026-08-31).
+            // Re-issue AT MA and keep going. Frames between the overflow and the restart are lost,
+            // which is why bufferFullCount is reported and counts are only lower bounds.
+            if (result.BufferFullCount > bufferFullBefore)
+            {
+                result.MonitorRestarts++;
+                framer.ClearBuffer();
+                try
+                {
+                    await framer.WriteAsync("AT MA\r", window.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+
             onTick?.Invoke(false);
         }
     }
@@ -711,6 +736,7 @@ public static class RawCaptureCommand
             unparsedLines = result.UnparsedLines,
             bufferFullCount = result.BufferFullCount,
             idleReads = result.IdleReads,
+            monitorRestarts = result.MonitorRestarts,
             setup = setup.Select(s => new { s.Command, s.Why, s.Response }),
             markers = result.Markers.Select(m => new { m.Number, atMs = m.AtMs, label = m.Label }),
             events = result.Events.Select(e => new { atMs = e.AtMs, e.Text }),
@@ -782,7 +808,7 @@ public static class RawCaptureCommand
         var seconds = Math.Max(result.Duration.TotalSeconds, 0.001);
         Console.Error.WriteLine(
             $"captured {result.TotalFrames} frames across {result.Ids.Count} IDs in {seconds:F1}s " +
-            $"({result.UnparsedLines} unparsed, {result.BufferFullCount} BUFFER FULL, {result.Markers.Count} markers)");
+            $"({result.UnparsedLines} unparsed, {result.BufferFullCount} BUFFER FULL, {result.MonitorRestarts} restarts, {result.Markers.Count} markers)");
 
         foreach (var s in result.Ids.Values.OrderBy(v => v.Id, StringComparer.Ordinal))
         {
@@ -937,6 +963,7 @@ public static class RawCaptureCommand
         public int UnparsedLines { get; set; }
         public int BufferFullCount { get; set; }
         public int IdleReads { get; set; }
+        public int MonitorRestarts { get; set; }
         public Dictionary<string, IdStats> Ids { get; } = new(StringComparer.Ordinal);
         public IReadOnlyList<Marker> Markers => _markers;
         public List<BusEvent> Events { get; } = [];
