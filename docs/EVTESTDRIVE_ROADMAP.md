@@ -268,8 +268,11 @@ Milestones: **M-A** pre-check · **M-B** live drive · **M-C** post-check/report
 
 ## API design flags (fix before EvTestDrive integrates; folded into items above)
 
-1. No streaming members on capability interfaces — apps must reach into
-   `LeafAze0CommandSet.Monitor`. B1 becomes the only consumer surface.
+1. ~~No streaming members on capability interfaces — apps must reach into
+   `LeafAze0CommandSet.Monitor`.~~ **RESOLVED** (streaming design P4): the broadcast
+   capability interfaces expose `StreamStatusAsync` (charger:
+   `StreamChargingStatusAsync`), and `ITelemetrySession.Stream(Signals.X)` streams a
+   single signal at its own CLR type. Nothing needs the concrete command set to stream.
 2. Inconsistent absence semantics (throw vs null vs partial) — B7.
 3. `IElmTransport` has no connection-state events — add during B9/B10 while all
    implementations are in-repo.

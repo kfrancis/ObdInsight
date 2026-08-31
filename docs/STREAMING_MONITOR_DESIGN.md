@@ -1,7 +1,9 @@
 # Streaming Monitor Design
 
-**Status:** P1 implemented (`CanMonitor`, `MonitoringEndReason`, `IElmSession.LastMonitoringEndReason` — tests in `tests/ObdInsight.Tests/Elm327/CanMonitorTests.cs`). P2/P3 pending.
-**Date:** 2026-07-18
+**Status:** P1–P4 implemented. P1–P3: shared `CanMonitor`, typed layer, capability migration,
+`SuspendAsync` arbitration, filter rotation. P4: streaming members on the capability interfaces,
+typed per-signal telemetry streams, short-frame decoding (see the P4 row and §7).
+**Date:** 2026-07-18 (P4: 2026-08-31)
 
 ## 1. Problem
 
@@ -174,6 +176,7 @@ windows. Phase 3; until then callers stop the monitor explicitly before UDS work
 | P1 — **DONE 2026-07-18** | `CanMonitor` with raw `Subscribe`, latest cache, `MonitoringEndReason`, BUFFER FULL auto-restart. Replay tests: multi-subscriber demux, drop-oldest, end reasons. Also landed: `IElmSession.LastMonitoringEndReason` — `MonitorFramesAsync` now records why it ended at every exit site (fixes audit A7 at the source). Hardware checkpoint (real-adapter BUFFER FULL restart) pending. | M/L | Core mechanics, no consumer changes ✔ |
 | P2 — **DONE 2026-07-18** | Typed layer: generator conditionally implements `ICanFrame<TSelf>` + `FrameCanId` (interface-free compilations byte-identical — snapshot-verified); `Subscribe<T>()`/`TryGetLatest<T>()` extensions. Pilots migrated: `LeafAze0Hvac` + `LeafAze0MotorController` are now cache views over the shared monitor (warm cache = instant snapshot, cold = short warm-up wait); `LeafAze0CommandSet` owns one `CanMonitor` (`SharedBroadcastMonitor` accept-all context) and exposes it for direct typed streaming. | L | Consumer API + migration pattern ✔ |
 | P3 — **DONE 2026-07-18** | Arbitration: `CanMonitor.SuspendAsync` + `MonitorSuspendingElmSession` decorator (whole-model replay test: HVAC stream → BMS UDS query → HVAC warm-cache read, monitor running throughout). Broadcast capabilities migrated to cache views: ABS, Brake, BodyControl, Charger, VCM (helper split folded) — legacy per-capability enter/exit code deleted. Session-activation + keep-alive hooks built: `StartAsync` activates when `RequiresSessionActivation` (cold start only); a keep-alive timer runs brief suspend→TesterPresent→resume cycles (`IElmSession.SendKeepAliveAsync`, tolerant of suppress-positive silence), serialized with query arbitration via a control gate; `StopAsync` serializes with cycles so a mid-cycle resume cannot revive a stopped monitor. Replay-tested (activation ordering incl. EPS header; keep-alive cycle with subscriber survival). **Steering wiring decision deferred to hardware data:** putting activation/keep-alive on the shared accept-all context imposes a ~2s suspend cycle on ALL monitoring; alternative is an on-demand steering monitor session. Steering stays on the decorator until measured. | L | Whole-system model ✔ |
+| P4 — **DONE 2026-08-31** | Consumer streaming surface: `StreamStatusAsync` on the broadcast capability interfaces (charger: `StreamChargingStatusAsync`) over a new `CanMonitor.StreamSnapshots` coalescing helper; `ITelemetrySession.Stream<T>(TelemetrySignal<T>)` with typed handles in `Signals`; `TelemetrySession.Batches` registration made eager; generated frames carry `MinimumLength` so sub-8-byte frames (0x421, 0x176) decode through the typed path instead of being silently skipped. Replay-tested: coalescing across contributing frames, eager registration, throttle, survival across a UDS suspension, no-resurrect on an ended monitor, typed signal values, first-batch-not-missed. | M | Consumer API complete ✔ |
 
 Each phase lands green against `ReplayElmTransport`; hardware validation checkpoints after P1
 (does BUFFER FULL restart behave on the real adapter?) and P2 (real-bus throughput with
@@ -201,3 +204,69 @@ frame injection, timed no-data reads). P1 test matrix:
 - `BUFFER FULL` line → auto-restart re-enters monitoring (scripted `ATMA` twice) → after retries
   exhausted, `EndReason == BufferFull` and all subscriber streams complete.
 - `StopAsync` → `EndReason == Stopped`, adapter back in request/response mode (prompt drained).
+
+## 7. P4 — the consumer streaming contract
+
+P2 gave `CanMonitor.Subscribe<T>()`, but nothing on the public surface handed it out: every
+capability interface was pull-only, so an app holding `IVehicleSession` had to downcast to
+`LeafAze0CommandSet` to reach `Monitor` (roadmap API design flag #1). P4 closes that at two
+levels — capability status streams, and typed per-signal telemetry streams.
+
+### 7.1 Capability streams
+
+```csharp
+IAsyncEnumerable<HvacStatus> StreamStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
+```
+
+Implemented by `CanMonitor.StreamSnapshots(canIds, snapshot, minInterval, ct)`: subscribe to the
+IDs that feed the DTO, and rebuild the DTO whenever any of them arrives. Each capability's
+projection now lives in a private `BuildStatus()` shared by the pull and stream paths, so the
+two cannot drift.
+
+Decisions, and why:
+
+- **Coalesce on any contributing frame.** A status DTO spans frames with different cadences
+  (`HvacStatus` = 0x54A/54B/54C/54F). Waiting for all of them would emit at the slowest rate and
+  stall entirely if one ID never appears — which is the normal case on stock adapters. The
+  newest frame triggers the emission; the rest comes from the cache.
+- **Emissions are built when the consumer pulls,** not when the frame arrives. A slow consumer
+  therefore gets fresher data rather than a queue of stale records — the same reasoning as the
+  monitor's drop-oldest channels. (Tests must step the enumerator between frames to observe
+  coalescing; draining at the end only ever shows the final cache state.)
+- **`minInterval` skips, never queues.** For 10 ms broadcast data a backlog is worthless; the
+  next frame after the window carries the newest state.
+- **Cold start emits partial records.** Fields whose IDs have not been seen are null/default,
+  matching the pull API's degradation contract (absence is null, never an exception).
+- **Registration is eager.** `StreamStatusAsync` is not an async iterator: it registers with the
+  monitor synchronously, then returns the iterator. Deferring to the first `MoveNext` would drop
+  every frame arriving between creation and iteration.
+- **A stream never resurrects an ended monitor.** It starts one that has not run yet, but a
+  monitor that has been stopped stays stopped and the stream completes (`EndReason` says why).
+
+### 7.2 Typed telemetry streams
+
+`ITelemetrySession.Batches` yields `TelemetryValue` — a union-by-convention of
+`decimal? / IReadOnlyList<decimal>? / bool?` that every consumer had to switch on. `Stream<T>`
+takes a phantom-typed handle instead:
+
+```csharp
+await foreach (var sample in session.Stream(Signals.StateOfCharge, ct))  // TelemetrySample<decimal>
+```
+
+Handles come only from `Signals`, so a handle cannot claim a type its signal does not produce.
+Ticks where the signal has no value are skipped, so every emission carries a real value; the
+`Availability` map still says whether a quiet signal is cold or unsupported. `Batches` itself was
+an async iterator and so registered its channel on first `MoveNext` — a consumer that stored the
+enumerable and iterated later silently missed ticks. It now registers when called, and `Stream<T>`
+is a projection over that same subscription.
+
+### 7.3 Short frames
+
+The generator emitted a `Parse` that threw unless the payload was exactly 8 bytes, and the typed
+monitor extensions silently skipped anything shorter — so 0x421 (1 byte), 0x176 (7) and 0x260 (4)
+had typed streams that never yielded. Frames now carry `MinimumLength` (the highest byte any
+signal touches) and decode from any payload at least that long; `CanBits` zero-extends a short
+payload. `ICanFrame<TSelf>` exposes `MinimumLength` so generic consumers filter on it.
+
+No LINQ-over-`IAsyncEnumerable` dependency was added: these target net10.0, where
+`System.Linq.AsyncEnumerable` is in-box, so consumers get `Where`/`Select`/`Take` for free.

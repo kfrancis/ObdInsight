@@ -165,6 +165,107 @@ public class TelemetrySessionTests
         await commands.Monitor.StopAsync(token);
     }
 
+    [Test]
+    public async Task TypedStream_YieldsSignalValuesAtTheirOwnType(CancellationToken token)
+    {
+        var (transport, commands) = Setup();
+        await using var session = TelemetrySession.Create(commands, TestSubscription, FastOptions);
+
+        using var pumpCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var pump = PumpBroadcastFramesAsync(transport, commands, pumpCts.Token);
+
+        // Both streams are created before the session starts: registration is eager, so no
+        // tick produced in between is lost.
+        var socStream = session.Stream(Signals.StateOfCharge, token);
+        var cellStream = session.Stream(Signals.CellVoltages, token);
+
+        await session.StartAsync(token);
+
+        await using var socSamples = socStream.GetAsyncEnumerator(token);
+        await Assert.That(await socSamples.MoveNextAsync()).IsTrue();
+        var soc = socSamples.Current;
+
+        await using var cellSamples = cellStream.GetAsyncEnumerator(token);
+        await Assert.That(await cellSamples.MoveNextAsync()).IsTrue();
+        var cells = cellSamples.Current;
+
+        pumpCts.Cancel();
+        try { await pump; } catch (OperationCanceledException) { }
+
+        // decimal, not TelemetryValue: no Scalar/Vector/Boolean unpacking at the call site.
+        decimal socPercent = soc.Value;
+        await Assert.That(socPercent).IsEqualTo(41.921m);
+        await Assert.That(soc.Signal).IsEqualTo(TelemetrySignal.StateOfCharge);
+        await Assert.That(soc.Tier).IsEqualTo(CadenceTier.High);
+
+        IReadOnlyList<decimal> cellVoltages = cells.Value;
+        await Assert.That(cellVoltages.Count).IsEqualTo(96);
+        await Assert.That(cells.Tier).IsEqualTo(CadenceTier.Low);
+
+        await session.StopAsync(token);
+        await commands.Monitor.StopAsync(token);
+    }
+
+    [Test]
+    public async Task TypedStream_SkipsTicksWhereTheSignalHasNoValue(CancellationToken token)
+    {
+        // No broadcast frames pumped: VehicleSpeed is empty on every tick, so its typed
+        // stream stays silent while the UDS-sourced SOC stream still produces values.
+        var (_, commands) = Setup();
+        await using var session = TelemetrySession.Create(commands, TestSubscription, FastOptions);
+
+        var speedStream = session.Stream(Signals.VehicleSpeed, token);
+        var socStream = session.Stream(Signals.StateOfCharge, token);
+
+        await session.StartAsync(token);
+
+        await using var speedSamples = speedStream.GetAsyncEnumerator(token);
+        var speedPending = speedSamples.MoveNextAsync();
+
+        // Drain a few SOC samples: enough ticks have run that an empty VehicleSpeed would
+        // have surfaced by now if empties were emitted.
+        await using var socSamples = socStream.GetAsyncEnumerator(token);
+        for (var i = 0; i < 3; i++)
+        {
+            await Assert.That(await socSamples.MoveNextAsync()).IsTrue();
+            await Assert.That(socSamples.Current.Value).IsEqualTo(41.921m);
+        }
+
+        await Assert.That(speedPending.IsCompleted).IsFalse();
+        await Assert.That(session.Availability[TelemetrySignal.VehicleSpeed])
+            .IsEqualTo(SignalAvailability.Unknown);
+
+        await session.StopAsync(token);
+        await commands.Monitor.StopAsync(token);
+    }
+
+    [Test]
+    public async Task Batches_RegisterEagerly_FirstBatchIsNotMissed(CancellationToken token)
+    {
+        var (_, commands) = Setup();
+        await using var session = TelemetrySession.Create(commands, TestSubscription, FastOptions);
+
+        var firstPublished = new TaskCompletionSource<TelemetrySampleBatch>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        session.BatchAvailable += (_, batch) => firstPublished.TrySetResult(batch);
+
+        // Subscribe before the scheduler runs, but do not start iterating yet.
+        var batches = session.Batches(token);
+
+        await session.StartAsync(token);
+        var published = await firstPublished.Task.WaitAsync(token);
+
+        // Iteration starts only now — the very first published batch must still be waiting in
+        // this subscriber's buffer. With registration deferred to the first MoveNext it would
+        // have been dropped and this would hand back a later batch.
+        await using var enumerator = batches.GetAsyncEnumerator(token);
+        await Assert.That(await enumerator.MoveNextAsync()).IsTrue();
+        await Assert.That(enumerator.Current).IsSameReferenceAs(published);
+
+        await session.StopAsync(token);
+        await commands.Monitor.StopAsync(token);
+    }
+
     private static (ReplayElmTransport transport, LeafAze0CommandSet commands) Setup()
     {
         var transport = new ReplayElmTransport();

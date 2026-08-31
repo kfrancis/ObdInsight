@@ -25,9 +25,27 @@ public interface ITelemetrySession : IAsyncDisposable
 
     /// <summary>
     /// Streams sample batches. Each caller gets an independent bounded buffer; slow
-    /// consumers drop oldest batches.
+    /// consumers drop oldest batches. Registration happens when this is called, not on first
+    /// enumeration, so batches produced before the consumer starts iterating are buffered
+    /// rather than lost.
     /// </summary>
     IAsyncEnumerable<TelemetrySampleBatch> Batches(CancellationToken ct = default);
+
+    /// <summary>
+    /// Streams one signal as its own type: <c>Stream(Signals.StateOfCharge)</c> yields
+    /// <c>TelemetrySample&lt;decimal&gt;</c>, <c>Stream(Signals.CellVoltages)</c> yields
+    /// <c>TelemetrySample&lt;IReadOnlyList&lt;decimal&gt;&gt;</c> — no enum switch and no
+    /// unpacking of <see cref="TelemetryValue"/> at the call site.
+    /// </summary>
+    /// <remarks>
+    /// Ticks where the signal has no value are skipped, so every emission carries a real
+    /// value; <see cref="Availability"/> says whether a quiet signal is merely cold or
+    /// genuinely unsupported. Buffering, drop-oldest behaviour and eager registration match
+    /// <see cref="Batches" /> — this is a projection of the same subscription.
+    /// </remarks>
+    /// <param name="signal">A typed handle from <see cref="Signals"/>.</param>
+    /// <param name="ct">Stops the stream.</param>
+    IAsyncEnumerable<TelemetrySample<T>> Stream<T>(TelemetrySignal<T> signal, CancellationToken ct = default);
 
     /// <summary>Raised for every produced batch (UI-binding convenience).</summary>
     event EventHandler<TelemetrySampleBatch>? BatchAvailable;

@@ -170,8 +170,7 @@ public sealed class TelemetrySession : ITelemetrySession
         }
     }
 
-    public async IAsyncEnumerable<TelemetrySampleBatch> Batches(
-        [EnumeratorCancellation] CancellationToken ct = default)
+    public IAsyncEnumerable<TelemetrySampleBatch> Batches(CancellationToken ct = default)
     {
         var channel = Channel.CreateBounded<TelemetrySampleBatch>(new BoundedChannelOptions(_options.SubscriberBufferSize)
         {
@@ -179,11 +178,47 @@ public sealed class TelemetrySession : ITelemetrySession
             SingleReader = true,
         });
 
+        // Register here rather than inside the iterator: an async iterator would defer this to
+        // the first MoveNext, and every batch produced in between would be lost.
         lock (_stateLock)
         {
             _subscribers.Add(channel);
         }
 
+        return ReadBatchesAsync(channel, ct);
+    }
+
+    public IAsyncEnumerable<TelemetrySample<T>> Stream<T>(
+        TelemetrySignal<T> signal,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(signal);
+
+        // Batches registers eagerly, so the projection inherits that guarantee.
+        return ProjectAsync(Batches(ct), signal, ct);
+    }
+
+    private static async IAsyncEnumerable<TelemetrySample<T>> ProjectAsync<T>(
+        IAsyncEnumerable<TelemetrySampleBatch> batches,
+        TelemetrySignal<T> signal,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        await foreach (var batch in batches.WithCancellation(ct))
+        {
+            foreach (var sample in batch.Samples)
+            {
+                if (sample.Signal == signal.Signal && signal.TryRead(sample.Value, out var value))
+                {
+                    yield return new TelemetrySample<T>(sample.Signal, value, sample.TimestampUtc, sample.Tier);
+                }
+            }
+        }
+    }
+
+    private async IAsyncEnumerable<TelemetrySampleBatch> ReadBatchesAsync(
+        Channel<TelemetrySampleBatch> channel,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
         try
         {
             await foreach (var batch in channel.Reader.ReadAllAsync(ct))
