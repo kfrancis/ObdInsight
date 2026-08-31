@@ -256,6 +256,7 @@ namespace ObdInsight.SourceGeneration.Tests
                 public interface ICanFrame<TSelf> where TSelf : ICanFrame<TSelf>
                 {
                     static abstract int FrameCanId { get; }
+                    static abstract int MinimumLength { get; }
                     static abstract TSelf Parse(ReadOnlySpan<byte> data);
                 }
             }
@@ -276,6 +277,8 @@ namespace ObdInsight.SourceGeneration.Tests
             var generated = GeneratorTestHelper.GetGeneratedSource(result);
             await Assert.That(generated).Contains("ICanFrame<BatteryFrame>");
             await Assert.That(generated).Contains("public static int FrameCanId => 0x1DB;");
+            // Signal at bits 30-39 reaches byte 4, so the frame decodes from 5 bytes up.
+            await Assert.That(generated).Contains("public static int MinimumLength => 5;");
 
             await Verify(result);
         }

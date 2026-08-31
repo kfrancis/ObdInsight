@@ -13,7 +13,7 @@ namespace TestNamespace
         /// </summary>
         public static bool TryParseHvacFrame(int canId, ReadOnlySpan<byte> data, out HvacFrame? result)
         {
-            if (canId == 0x54C && data.Length == 8)
+            if (canId == 0x54C && data.Length >= HvacFrame.MinimumLength)
             {
                 result = HvacFrame.Parse(data);
                 return true;
@@ -27,10 +27,9 @@ namespace TestNamespace
         /// <returns>Parsed frame object, or null if the CAN ID is not recognized.</returns>
         public static object? TryParseAny(int canId, ReadOnlySpan<byte> data)
         {
-            if (data.Length != 8) return null;
             return canId switch
             {
-                0x54C => HvacFrame.Parse(data),
+                0x54C => data.Length >= HvacFrame.MinimumLength ? HvacFrame.Parse(data) : null,
                 _ => null
             };
         }

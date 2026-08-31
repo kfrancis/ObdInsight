@@ -12,8 +12,8 @@ namespace ObdInsight.Core.Communication.Elm327
         /// <summary>
         ///     Streams decoded frames of type <typeparamref name="T" /> as they arrive.
         ///     Registration is immediate (same semantics as the raw Subscribe — frames arriving
-        ///     before the consumer starts iterating are buffered, not lost). Frames whose payload
-        ///     is not exactly 8 bytes are skipped (generated decoders require full frames).
+        ///     before the consumer starts iterating are buffered, not lost). Frames shorter than
+        ///     <c>T.MinimumLength</c> are skipped — they cannot carry all of the frame's signals.
         /// </summary>
         public static IAsyncEnumerable<T> Subscribe<T>(
             this CanMonitor monitor,
@@ -31,7 +31,7 @@ namespace ObdInsight.Core.Communication.Elm327
         {
             await foreach (var raw in frames)
             {
-                if (raw.Data.Length == 8)
+                if (raw.Data.Length >= T.MinimumLength)
                 {
                     yield return T.Parse(raw.Data.Span);
                 }
@@ -79,12 +79,12 @@ namespace ObdInsight.Core.Communication.Elm327
 
         /// <summary>
         ///     Decodes the latest cached frame of type <typeparamref name="T" />, if one has been
-        ///     seen with a full 8-byte payload. O(1) plus decode; no I/O.
+        ///     seen with a payload of at least <c>T.MinimumLength</c> bytes. O(1) plus decode; no I/O.
         /// </summary>
         public static bool TryGetLatest<T>(this CanMonitor monitor, out T frame)
             where T : ICanFrame<T>
         {
-            if (monitor.TryGetLatest(T.FrameCanId, out var raw) && raw.Data.Length == 8)
+            if (monitor.TryGetLatest(T.FrameCanId, out var raw) && raw.Data.Length >= T.MinimumLength)
             {
                 frame = T.Parse(raw.Data.Span);
                 return true;

@@ -13,7 +13,7 @@ namespace TestNamespace
         /// </summary>
         public static bool TryParseBatteryFrame(int canId, ReadOnlySpan<byte> data, out BatteryFrame? result)
         {
-            if (canId == 0x1DB && data.Length == 8)
+            if (canId == 0x1DB && data.Length >= BatteryFrame.MinimumLength)
             {
                 result = BatteryFrame.Parse(data);
                 return true;
@@ -27,10 +27,9 @@ namespace TestNamespace
         /// <returns>Parsed frame object, or null if the CAN ID is not recognized.</returns>
         public static object? TryParseAny(int canId, ReadOnlySpan<byte> data)
         {
-            if (data.Length != 8) return null;
             return canId switch
             {
-                0x1DB => BatteryFrame.Parse(data),
+                0x1DB => data.Length >= BatteryFrame.MinimumLength ? BatteryFrame.Parse(data) : null,
                 _ => null
             };
         }

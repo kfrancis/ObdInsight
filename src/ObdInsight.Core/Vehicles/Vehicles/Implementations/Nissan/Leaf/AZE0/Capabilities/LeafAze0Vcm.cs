@@ -30,8 +30,8 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         /// 0x11A is an EV-CAN broadcast frame: stock ELM327 adapters wire OBD pins 6/14
         /// (CAR-CAN); EV-CAN sits on pins 12/13 and needs a rewired adapter
         /// (hardware-confirmed 2026-07-18). On stock adapters the 0x421 fallback is the
-        /// path that actually fires. 0x421 is 1 byte on the wire, so it's decoded from the
-        /// raw cache (typed decode skips short frames); value map per OVMS
+        /// path that actually fires. 0x421 is 1 byte on the wire, which the typed decoder
+        /// accepts (its only signal sits in byte 0); value map per OVMS
         /// vehicle_nissanleaf.cpp: 0/1=Park, 2=Reverse, 3=Neutral, 4=Drive, 7=Drive/B.
         /// </remarks>
         public async ValueTask<GearPosition> GetGearPositionAsync(CancellationToken ct = default)
@@ -59,9 +59,9 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
                 };
             }
 
-            if (_monitor.TryGetLatest(0x421, out var raw421) && raw421.Data.Length >= 1)
+            if (_monitor.TryGetLatest<VcmFrame_421_AZE0>(out var frame421))
             {
-                return VcmFrame_421_AZE0.ShifterPositionFromByte0(raw421.Data.Span[0]) switch
+                return frame421.DashShifterPosition switch
                 {
                     0 or 1 => GearPosition.Park,
                     2 => GearPosition.Reverse,

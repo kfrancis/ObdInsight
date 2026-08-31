@@ -221,9 +221,8 @@ public partial class VcmFrame_260_AZE0
 /// </summary>
 /// <remarks>
 /// VCM relays shifter position to instrument panel and VSP for dashboard display.
-/// Single-byte frame on the wire, so the generated 8-byte <c>Parse</c> is unusable for
-/// live traffic (decoders skip short frames) — consumers read the raw cached frame and
-/// call <see cref="ShifterPositionFromByte0"/>. Value map confirmed against OVMS
+/// Single-byte frame on the wire; the generated <c>Parse</c> handles it because the frame's
+/// only signal lives in byte 0 (<c>MinimumLength</c> = 1). Value map confirmed against OVMS
 /// vehicle_nissanleaf.cpp (case 0x421): 0/1=Park, 2=Reverse, 3=Neutral, 4=Drive,
 /// 7=Drive/B (Eco), 5/6=undefined.
 /// </remarks>
@@ -234,9 +233,6 @@ public partial class VcmFrame_421_AZE0
         Description = "Shifter position (byte 0 bits 3-5): 0/1=Park, 2=Reverse, 3=Neutral, 4=Drive, 7=Drive/B",
         MinValue = 0, MaxValue = 7)]
     public partial int DashShifterPosition { get; init; }
-
-    /// <summary>Decodes the shifter position from raw byte 0 of the 1-byte wire frame.</summary>
-    public static int ShifterPositionFromByte0(byte byte0) => (byte0 >> 3) & 0x07;
 }
 
 /// <summary>
