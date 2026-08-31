@@ -68,6 +68,41 @@ public sealed class DevToolsSession : IAsyncDisposable
     public bool EnableTrafficLogging { get; set; } = true;
 
     /// <summary>
+    /// True once the ELM327 bring-up path has run on the current connection.
+    ///
+    /// That path probes the bus (<c>AT SP 0</c> auto-detect and <c>0100</c> requests), so a
+    /// connection with this flag set has already transmitted. Commands that must not transmit -
+    /// anything wired to a powertrain bus - have to refuse such a connection and reconnect
+    /// transport-only instead.
+    /// </summary>
+    public bool AdapterInitialized { get; private set; }
+
+    /// <summary>
+    /// When armed, the ELM327 bring-up path is refused and callers are expected to route writes
+    /// through <see cref="ListenOnlyElmTransport"/>, which whitelists them. Arm this BEFORE
+    /// connecting - arming afterwards cannot un-transmit probes that already went out.
+    /// </summary>
+    public bool ListenOnlyArmed { get; private set; }
+
+    /// <summary>Arms listen-only mode. Refuses if the adapter bring-up already probed the bus.</summary>
+    public bool ArmListenOnly()
+    {
+        if (AdapterInitialized)
+        {
+            AnsiConsole.MarkupLine(
+                "[red]Cannot arm listen-only:[/] this connection already ran ELM327 bring-up, " +
+                "which probes the bus. Disconnect and reconnect first.");
+            return false;
+        }
+
+        ListenOnlyArmed = true;
+        return true;
+    }
+
+    /// <summary>Disarms listen-only mode, re-enabling querying.</summary>
+    public void DisarmListenOnly() => ListenOnlyArmed = false;
+
+    /// <summary>
     /// Temporarily suppresses BLE/ELM traffic logging without tearing down the connection.
     /// High-volume commands (raw CAN capture) set this so per-chunk RX logging does not
     /// flood the console or corrupt a live-rendered display.
@@ -101,6 +136,9 @@ public sealed class DevToolsSession : IAsyncDisposable
 
         // Disconnect any existing connection
         await DisconnectAsync();
+
+        // A fresh transport-only connection has not probed anything yet.
+        AdapterInitialized = false;
 
         Profile ??= BleDeviceProfile.VeepeakBle;
         _transport = new WindowsBleTransport(Profile);
@@ -148,8 +186,20 @@ public sealed class DevToolsSession : IAsyncDisposable
     /// </summary>
     public async Task<bool> ConnectAndInitializeAdapterAsync(bool minimalInit = false, CancellationToken ct = default)
     {
+        // The bring-up below probes the bus. Blocked outright while listen-only is armed -
+        // this is the guard that keeps request frames off a powertrain bus.
+        if (ListenOnlyArmed)
+        {
+            AnsiConsole.MarkupLine(
+                "[red]Blocked:[/] listen-only mode is armed. ELM327 bring-up probes the bus " +
+                "(AT SP 0, 0100) and must not run. Use a listen-only command, or disarm first.");
+            return false;
+        }
+
         if (!await ConnectAsync(ct))
             return false;
+
+        AdapterInitialized = true;
 
         _adapter = new Elm327Adapter();
         
@@ -260,6 +310,8 @@ public sealed class DevToolsSession : IAsyncDisposable
     /// </summary>
     public async Task DisconnectAsync()
     {
+        AdapterInitialized = false;
+
         if (_transport != null)
         {
             // Unsubscribe from events
@@ -308,16 +360,24 @@ public sealed class DevToolsSession : IAsyncDisposable
     /// </summary>
     public string GetStatusDisplay()
     {
+        // Whether the bus has been probed on this connection is safety-relevant, so it is
+        // always on screen rather than something the operator has to remember.
+        var mode = ListenOnlyArmed
+            ? " [green]\\[LISTEN-ONLY ARMED][/]"
+            : AdapterInitialized
+                ? " [yellow]\\[bus probed - do not use on EV-CAN][/]"
+                : "";
+
         if (string.IsNullOrEmpty(DeviceAddress))
             return "[grey]No device selected[/]";
 
         if (IsConnected)
-            return $"[green]Connected:[/] {DeviceName} ({DeviceAddress})";
+            return $"[green]Connected:[/] {DeviceName} ({DeviceAddress}){mode}";
 
         if (IsBinaryConnected)
             return $"[cyan]Binary mode:[/] {DeviceName} ({DeviceAddress})";
 
-        return $"[yellow]Selected:[/] {DeviceName} ({DeviceAddress}) [grey](not connected)[/]";
+        return $"[yellow]Selected:[/] {DeviceName} ({DeviceAddress}) [grey](not connected)[/]{mode}";
     }
 
     public async ValueTask DisposeAsync()

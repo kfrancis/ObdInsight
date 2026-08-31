@@ -77,6 +77,25 @@ public static class RawCaptureCommand
             new TextPrompt<string>("[cyan]Output directory[/]:")
                 .DefaultValue(DefaultOutputRoot()));
 
+        // A connection that already ran ELM327 bring-up has transmitted AT SP 0 auto-detect and
+        // 0100 probes. On a powertrain bus that is exactly what must never happen, so such a
+        // connection is not reusable here - reconnect transport-only instead.
+        if (session.IsConnected && session.AdapterInitialized)
+        {
+            AnsiConsole.MarkupLine(
+                "[yellow]This connection already ran ELM327 bring-up, which probes the bus " +
+                "(AT SP 0, 0100).[/] Those frames were transmitted on whatever bus the adapter " +
+                "is wired to. A clean transport-only reconnect is required before a listen-only " +
+                "capture.");
+
+            if (!AnsiConsole.Confirm("Reconnect transport-only now?", defaultValue: true))
+            {
+                return;
+            }
+
+            await session.DisconnectAsync();
+        }
+
         if (!session.IsConnected && !await session.ConnectAsync(ct))
         {
             return;
@@ -89,11 +108,21 @@ public static class RawCaptureCommand
             return;
         }
 
+        if (!session.ArmListenOnly())
+        {
+            return;
+        }
+
+        AnsiConsole.MarkupLine("[green]Listen-only armed.[/] Writes are whitelisted at the transport.");
+
         // Per-chunk RX logging would flood the console and corrupt the live display.
         var previousSuppress = session.SuppressTrafficLogging;
         session.SuppressTrafficLogging = true;
 
-        var framer = new ElmFramer(transport);
+        // The guard lives at the transport, not in this method, so it holds for anything written
+        // through the framer regardless of later edits to the command sequence below.
+        var guarded = new ListenOnlyElmTransport(transport);
+        var framer = new ElmFramer(guarded);
 
         try
         {
@@ -132,6 +161,14 @@ public static class RawCaptureCommand
                 // The connection may already be gone; nothing useful to do here.
             }
 
+            if (guarded.BlockedAttempts.Count > 0)
+            {
+                AnsiConsole.MarkupLine(
+                    $"[red]Listen-only guard blocked {guarded.BlockedAttempts.Count} write(s):[/] " +
+                    string.Join(", ", guarded.BlockedAttempts).EscapeMarkup());
+            }
+
+            session.DisarmListenOnly();
             session.SuppressTrafficLogging = previousSuppress;
         }
     }
