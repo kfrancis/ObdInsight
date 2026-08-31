@@ -15,6 +15,11 @@
 
   <ItemGroup>
     <PackageReference Include="Spectre.Console" Version="0.54.0" />
+    <!-- Directory.Build.props only attaches MinVer to packable projects. This app is not
+         packable but its version is recorded into every capture's summary.json, so a capture
+         can be traced back to the exact build that produced it. Without MinVer that stamp
+         would be a constant "1.0.0" and carry no information. -->
+    <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all" />
   </ItemGroup>
 
   <!-- Kill running instances before build to prevent file locking issues -->
