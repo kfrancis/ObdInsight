@@ -36,6 +36,21 @@ public static class ProbeAnalyzer
 
     public sealed record Session(string Name, IReadOnlyList<Frame> Frames, IReadOnlyList<Marker> Markers);
 
+    /// <summary>How a bit responded to the stimulus.</summary>
+    public enum ResponseKind
+    {
+        /// <summary>Held one value while the stimulus was applied, a different one while it was not.</summary>
+        Static,
+
+        /// <summary>
+        /// Oscillated while the stimulus was applied and was still while it was not. Indicators
+        /// and hazards behave this way, and a modal-value comparison cannot see them: the bit is
+        /// not constant within the window, so the constancy test rejects it. That is exactly why
+        /// the `hazards` probe returned nothing on 2026-08-31.
+        /// </summary>
+        Blink,
+    }
+
     /// <summary>A bit that tracked a stimulus.</summary>
     public sealed record Finding(
         string Probe,
@@ -44,7 +59,25 @@ public static class ProbeAnalyzer
         int OnValue,
         int Windows,
         bool Confounded,
-        string ConfoundedBy);
+        string ConfoundedBy)
+    {
+        public ResponseKind Kind { get; init; } = ResponseKind.Static;
+
+        /// <summary>Mean transitions per active window, for blink responses.</summary>
+        public double BlinkRate { get; init; }
+
+        /// <summary>
+        /// Mean frames observed per window. Below roughly 8 the sampling is too sparse to
+        /// resolve a ~1.5 Hz blink (Nyquist), so BlinkRate is a lower bound and the finding
+        /// should be treated as provisional rather than measured.
+        /// </summary>
+        public double SamplesPerWindow { get; init; }
+
+        public bool Undersampled => Kind == ResponseKind.Blink && SamplesPerWindow < 8;
+    }
+
+    /// <summary>Per-bit behaviour within one hold window.</summary>
+    private readonly record struct BitStats(int Modal, int Transitions, bool Constant);
 
     // ------------------------------------------------------------------ parse
 
@@ -135,8 +168,16 @@ public static class ProbeAnalyzer
 
         var findings = new List<Finding>();
 
+
+        var coverage = new Dictionary<string, (int Scored, int Skipped, int Partial)>(StringComparer.Ordinal);
+
         foreach (var (probe, marks) in probes.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
+            var unanalysable = new HashSet<string>(StringComparer.Ordinal);
+
+            var partial = new HashSet<string>(StringComparer.Ordinal);
+
+
             var onWindows = marks.Where(m => m.Label.EndsWith("-on", StringComparison.Ordinal)).ToList();
             var offWindows = marks.Where(m => m.Label.EndsWith("-off", StringComparison.Ordinal)).ToList();
 
@@ -149,16 +190,40 @@ public static class ProbeAnalyzer
             {
                 var mask = noise.TryGetValue(id, out var m2) ? m2 : new byte[8];
 
-                // Modal payload per window; null when the ID produced no frames in that window.
-                var onModes = onWindows.Select(w => Modal(session, id, w.AtMs)).ToList();
-                var offModes = offWindows.Select(w => Modal(session, id, w.AtMs)).ToList();
+                // Per-bit behaviour per window; null when the ID produced no frames in a window.
+                var onStats = onWindows.Select(w => WindowBits(session, id, w.AtMs)).ToList();
+                var offStats = offWindows.Select(w => WindowBits(session, id, w.AtMs)).ToList();
+                var onSamples = onWindows.Select(w => (double)FramesIn(session, id, w.AtMs + SettleMs, w.AtMs + SettleMs + HoldMs).Count()).ToList();
+                var offSamples = offWindows.Select(w => (double)FramesIn(session, id, w.AtMs + SettleMs, w.AtMs + SettleMs + HoldMs).Count()).ToList();
 
-                if (onModes.Any(x => x is null) || offModes.Any(x => x is null))
+                // Drop only the windows that have no frames, not the whole ID.
+                //
+                // Requiring every window to be populated discarded 16 of 56 IDs during the
+                // parking-brake probe on 2026-08-31 - 29% of the bus, silently. On an adapter
+                // losing frames to BUFFER FULL that is the normal case for slow IDs, and it
+                // turns "not found" into something indistinguishable from "not looked at".
+                // Two windows per state still gives an alternation to check; fewer does not.
+                var onPresent = onStats.Where(x => x is not null).ToList();
+                var offPresent = offStats.Where(x => x is not null).ToList();
+
+                if (onPresent.Count < 2 || offPresent.Count < 2)
                 {
-                    continue;   // incomplete coverage - cannot claim consistency
+                    unanalysable.Add(id);
+                    continue;
                 }
 
-                var width = onModes.Concat(offModes).Min(x => x!.Length) * 8;
+                if (onPresent.Count < onStats.Count || offPresent.Count < offStats.Count)
+                {
+                    partial.Add(id);
+                }
+
+                onStats = onPresent;
+                offStats = offPresent;
+                onSamples = onSamples.Where(s => s > 0).ToList();
+                offSamples = offSamples.Where(s => s > 0).ToList();
+
+                var width = onStats.Concat(offStats).Min(x => x!.Length);
+                var windows = onStats.Count + offStats.Count;
 
                 for (var bit = 0; bit < width; bit++)
                 {
@@ -167,23 +232,71 @@ public static class ProbeAnalyzer
                         continue;
                     }
 
-                    var onBits = onModes.Select(x => GetBit(x!, bit)).ToList();
-                    var offBits = offModes.Select(x => GetBit(x!, bit)).ToList();
+                    var on = onStats.Select(x => x![bit]).ToList();
+                    var off = offStats.Select(x => x![bit]).ToList();
 
-                    // Alternation consistency: identical within each state, different between.
-                    if (onBits.Distinct().Count() != 1 || offBits.Distinct().Count() != 1)
+                    // --- static response: constant in every window, differing between states ---
+                    if (on.All(s => s.Constant) && off.All(s => s.Constant)
+                        && on.Select(s => s.Modal).Distinct().Count() == 1
+                        && off.Select(s => s.Modal).Distinct().Count() == 1
+                        && on[0].Modal != off[0].Modal)
                     {
+                        findings.Add(new Finding(probe, id, bit, on[0].Modal, windows, false, ""));
                         continue;
                     }
 
-                    if (onBits[0] == offBits[0])
-                    {
-                        continue;
-                    }
+                    // --- blink response: oscillating in one state, still in the other ---
+                    //
+                    // Scored on MEANS rather than per-window thresholds. Measured on 2026-08-31,
+                    // 0x60D arrived at only 3-5 frames per 3 s window - roughly 1 Hz, against a
+                    // native ~10 Hz, the rest lost to adapter BUFFER FULL. Sampling a ~1.5 Hz
+                    // indicator at ~1 Hz is below Nyquist, so the transition count aliases badly:
+                    // the same physical hazard flash produced 3,3,4 in one run and 2,1,2 in the
+                    // next. A unanimity test over per-window thresholds turns that into a
+                    // reproducibility failure; comparing means against a near-silent other state
+                    // survives it.
+                    const double MinMeanOn = 1.5;
+                    const double MaxMeanOff = 0.5;
 
-                    findings.Add(new Finding(probe, id, bit, onBits[0], onWindows.Count + offWindows.Count, false, ""));
+                    var meanOn = on.Average(s => s.Transitions);
+                    var meanOff = off.Average(s => s.Transitions);
+
+                    var onBlinks = meanOn >= MinMeanOn && meanOff <= MaxMeanOff;
+                    var offBlinks = meanOff >= MinMeanOn && meanOn <= MaxMeanOff;
+
+                    if (onBlinks || offBlinks)
+                    {
+                        var active = onBlinks ? on : off;
+                        findings.Add(new Finding(probe, id, bit, onBlinks ? 1 : 0, windows, false, "")
+                        {
+                            Kind = ResponseKind.Blink,
+                            BlinkRate = active.Average(s => s.Transitions),
+                            SamplesPerWindow = onSamples.Concat(offSamples).Average(),
+                        });
+                    }
                 }
             }
+
+            // Coverage is reported, never silent. A probe that examined 39 of 56 IDs has not
+            // shown that a signal is absent - it has shown that 17 IDs were never looked at.
+            if (unanalysable.Count > 0 || partial.Count > 0)
+            {
+                coverage[probe] = (ids.Count - unanalysable.Count, unanalysable.Count, partial.Count);
+            }
+        }
+
+        if (coverage.Count > 0)
+        {
+            sb.AppendLine("COVERAGE (frame loss means not every ID could be scored):");
+            foreach (var (probe, c) in coverage.OrderBy(k => k.Key, StringComparer.Ordinal))
+            {
+                sb.AppendLine($"  {probe,-18} scored {c.Scored}/{ids.Count} IDs" +
+                              (c.Skipped > 0 ? $", {c.Skipped} SKIPPED (too few populated windows)" : "") +
+                              (c.Partial > 0 ? $", {c.Partial} scored on partial windows" : ""));
+            }
+
+            sb.AppendLine("  A probe with skipped IDs cannot support a claim that a signal is absent.");
+            sb.AppendLine();
         }
 
         // --- 3. confounder marking --------------------------------------------
@@ -201,8 +314,100 @@ public static class ProbeAnalyzer
             }
         }
 
+        AppendProbeCollisionWarnings(sb, marked);
+
         report = sb.ToString();
         return marked;
+    }
+
+    /// <summary>
+    /// Flags probe pairs that look like the same physical action rather than two different ones.
+    ///
+    /// Two signatures matter, and both are operator errors rather than vehicle behaviour:
+    ///
+    ///   INVERTED - the probes share bits and every shared bit has the opposite on-value. That
+    ///     means one probe was performed on the wrong phase: pressed where the script said
+    ///     release. Observed for real on 2026-08-31, where `parking-brake` was actually the
+    ///     brake pedal worked in reverse, and the shared bits were wrongly written off as a
+    ///     confound when they were in fact the same finding confirmed twice.
+    ///
+    ///   DUPLICATE - the probes share bits and every shared bit has the SAME on-value, i.e. the
+    ///     same action was performed for both.
+    ///
+    /// Either way the pair cannot be treated as independent evidence, and the run should be
+    /// repeated with the control identified explicitly.
+    /// </summary>
+    private static void AppendProbeCollisionWarnings(StringBuilder sb, IReadOnlyList<Finding> findings)
+    {
+        const int MinShared = 3;
+
+        var probes = findings.Select(f => f.Probe).Distinct().OrderBy(p => p, StringComparer.Ordinal).ToList();
+        var warnings = new List<string>();
+
+        for (var i = 0; i < probes.Count; i++)
+        {
+            for (var j = i + 1; j < probes.Count; j++)
+            {
+                // Static findings only. A blink finding's OnValue records WHICH state oscillated,
+                // not a level, so comparing it against a static level is meaningless - and one
+                // such bit mixed into the set is enough to defeat a unanimity test.
+                var a = findings.Where(f => f.Probe == probes[i] && f.Kind == ResponseKind.Static)
+                    .ToDictionary(f => (f.Id, f.BitIndex), f => f.OnValue);
+                var b = findings.Where(f => f.Probe == probes[j] && f.Kind == ResponseKind.Static)
+                    .ToDictionary(f => (f.Id, f.BitIndex), f => f.OnValue);
+
+                var shared = a.Keys.Intersect(b.Keys).ToList();
+                if (shared.Count < MinShared)
+                {
+                    continue;
+                }
+
+                // A strong majority rather than unanimity: on real data one stray bit should not
+                // suppress a warning about eight that agree.
+                var opposite = shared.Count(k => a[k] != b[k]);
+                // Dominance is measured against each probe's TOTAL findings, blink included -
+                // only the polarity test needs static bits. `gear-b` and `gear-drive` share all
+                // three of their static bits, but B carries five further blink bits that D does
+                // not (B is D plus regen). Judging dominance on static bits alone called that a
+                // duplicate; judging it on everything found correctly calls it a nested state.
+                var totalA = findings.Count(f => f.Probe == probes[i]);
+                var totalB = findings.Count(f => f.Probe == probes[j]);
+
+                // Reported with its numbers rather than judged by a threshold. Tuning a cutoff
+                // against the handful of pairs seen so far kept flipping which cases it caught:
+                // a bar strict enough to reject `ac`/`fan-max` (3 shared of 26 and 14, an
+                // ordinary HVAC-byte overlap) also rejected `brake`/`parking-brake`, which was a
+                // genuine phase inversion. How much of each probe the overlap accounts for is the
+                // information a reader needs; the verdict is theirs.
+                var shareOfA = shared.Count / (double)Math.Max(totalA, 1);
+                var shareOfB = shared.Count / (double)Math.Max(totalB, 1);
+
+                var mostlyOpposite = opposite >= shared.Count * 0.8;
+                var mostlySame = (shared.Count - opposite) >= shared.Count * 0.8;
+
+                if (mostlyOpposite || mostlySame)
+                {
+                    var pattern = mostlyOpposite ? "INVERTED" : "SAME-PHASE";
+                    warnings.Add(
+                        $"  {pattern,-10} '{probes[i]}' vs '{probes[j]}': {shared.Count} shared static bits " +
+                        $"({opposite} inverted), = {shareOfA:P0} of '{probes[i]}' and {shareOfB:P0} of '{probes[j]}'.");
+                }
+            }
+        }
+
+        if (warnings.Count > 0)
+        {
+            sb.AppendLine("PROBE OVERLAPS (two probes moving the same bits):");
+            foreach (var w in warnings.OrderByDescending(w => w))
+            {
+                sb.AppendLine(w);
+            }
+
+            sb.AppendLine(
+                "  A high percentage of BOTH probes suggests the same action was performed twice - INVERTED " +
+                "meaning on opposite phases. A low percentage is ordinary: related controls share status bytes.");
+            sb.AppendLine();
+        }
     }
 
     public static string Format(Session session, IReadOnlyList<Finding> findings, string header)
@@ -233,7 +438,10 @@ public static class ProbeAnalyzer
                 var byteIndex = h.BitIndex / 8;
                 var bitInByte = h.BitIndex % 8;
                 var tag = h.Confounded ? $"  [also responds to {h.ConfoundedBy}]" : "  [specific]";
-                sb.AppendLine($"    0x{h.Id}  bit {h.BitIndex,2} (byte {byteIndex}, bit {bitInByte})  on={h.OnValue}  {h.Windows} windows{tag}");
+                var kind = h.Kind == ResponseKind.Blink
+                    ? $"BLINKS ({h.BlinkRate:F1} transitions/window" + (h.Undersampled ? $", UNDERSAMPLED at {h.SamplesPerWindow:F1} frames/window - rate is a lower bound" : "") + ")"
+                    : $"on={h.OnValue}";
+                sb.AppendLine($"    0x{h.Id}  bit {h.BitIndex,2} (byte {byteIndex}, bit {bitInByte})  {kind}  {h.Windows} windows{tag}");
             }
 
             if (hits.Count == 0)
@@ -253,22 +461,57 @@ public static class ProbeAnalyzer
         s.Frames.Where(f => f.Id == id && f.AtMs >= from && f.AtMs <= to);
 
     /// <summary>
-    /// Most common payload in the hold window following a marker. Modal rather than last, so a
-    /// single mid-window glitch frame does not decide the result.
+    /// Per-bit behaviour across the hold window following a marker: the modal value (majority,
+    /// so one glitch frame cannot decide the result), how many times the bit changed, and
+    /// whether it held still throughout.
+    ///
+    /// Transition counting is what makes blinking signals visible. A modal value alone reports
+    /// an indicator as "mostly 1" or "mostly 0" depending on where the window happened to fall,
+    /// which is noise; the transition count reports it as oscillating, which is the signal.
+    ///
+    /// Returns null when the ID produced no frames in the window.
     /// </summary>
-    private static byte[]? Modal(Session s, string id, double markerAt)
+    private static BitStats[]? WindowBits(Session s, string id, double markerAt)
     {
-        var window = FramesIn(s, id, markerAt + SettleMs, markerAt + SettleMs + HoldMs).ToList();
+        var window = FramesIn(s, id, markerAt + SettleMs, markerAt + SettleMs + HoldMs)
+            .OrderBy(f => f.AtMs)
+            .ToList();
+
         if (window.Count == 0)
         {
             return null;
         }
 
-        return window
-            .GroupBy(f => Convert.ToHexString(f.Payload), StringComparer.Ordinal)
-            .OrderByDescending(g => g.Count())
-            .First()
-            .First().Payload;
+        var width = window.Min(f => f.Payload.Length) * 8;
+        var stats = new BitStats[width];
+
+        for (var bit = 0; bit < width; bit++)
+        {
+            var ones = 0;
+            var transitions = 0;
+            var previous = -1;
+
+            foreach (var frame in window)
+            {
+                var v = GetBit(frame.Payload, bit);
+                if (v == 1)
+                {
+                    ones++;
+                }
+
+                if (previous >= 0 && v != previous)
+                {
+                    transitions++;
+                }
+
+                previous = v;
+            }
+
+            var modal = ones * 2 >= window.Count ? 1 : 0;
+            stats[bit] = new BitStats(modal, transitions, transitions == 0);
+        }
+
+        return stats;
     }
 
     private static byte[] ChangedMask(IEnumerable<Frame> frames)

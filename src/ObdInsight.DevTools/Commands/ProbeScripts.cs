@@ -47,11 +47,43 @@ public static class ProbeScripts
 
     public static IReadOnlyList<ProbeScript> All =>
     [
-        Lighting, Body, DriverInput, Hvac, DrivetrainStatic, Charging
+        Gaps, Lighting, Body, DriverInput, Hvac, DrivetrainStatic, Charging
     ];
 
     public static ProbeScript? Find(string name) =>
         All.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// The 2026-08-31 gaps, and nothing else. Re-running a full script to recover five probes
+    /// wastes the scarce resource, which is time with the vehicle - everything else from that
+    /// session stands.
+    ///
+    /// Covers: parking-brake (never actually operated - no control was found), driver-door (the
+    /// operator was seated in it), the four gear selections that did not engage, and the whole
+    /// HVAC group (that session captured ~25 frames/s against ~1000 elsewhere, so the bus was
+    /// near-idle and the run proves nothing).
+    ///
+    /// Hazards are deliberately absent: blink detection now finds them in the data already
+    /// recorded, so that gap closed offline.
+    /// </summary>
+    /// <remarks>
+    /// Computed on access, not a static initializer. Static field initializers run in textual
+    /// order, and this one composes scripts declared below it - as an initializer it would bind
+    /// them before they exist and yield an empty script that still compiles cleanly.
+    /// </remarks>
+    public static ProbeScript Gaps => Build(
+        "gaps",
+        "Re-run of the probes that failed or were never performed on 2026-08-31.",
+        "parked, WHEELS CHOCKED, ignition ON and staying in READY throughout",
+        [
+            DriverInput.Steps.Where(s => s.Label.StartsWith("parking-brake", StringComparison.Ordinal)),
+            Body.Steps.Where(s => s.Label.StartsWith("driver-door", StringComparison.Ordinal)),
+            DrivetrainStatic.Steps.Where(s => s.Label.StartsWith("gear-neutral", StringComparison.Ordinal)),
+            DrivetrainStatic.Steps.Where(s => s.Label.StartsWith("gear-drive", StringComparison.Ordinal)),
+            DrivetrainStatic.Steps.Where(s => s.Label.StartsWith("gear-b", StringComparison.Ordinal)),
+            DrivetrainStatic.Steps.Where(s => s.Label.StartsWith("eco-mode", StringComparison.Ordinal)),
+            Hvac.Steps.Where(s => s.Kind == ProbeStepKind.Action),
+        ]);
 
     public static ProbeScript Lighting { get; } = Build(
         "lighting",
@@ -71,7 +103,11 @@ public static class ProbeScripts
         "Doors, hood, hatch, central locking.",
         "parked",
         [
-            Toggle("DRIVER door: open, then close", "driver-door"),
+            // Seated in the car you cannot cycle your own door, which is why driver-door found
+            // nothing on 2026-08-31 while the other three doors resolved cleanly.
+            Toggle("DRIVER door", "driver-door",
+                "STAND OUTSIDE the car. Open the DRIVER door and leave it open",
+                "Close the DRIVER door"),
             Toggle("PASSENGER door: open, then close", "passenger-door"),
             Toggle("REAR LEFT door: open, then close", "rear-left-door"),
             Toggle("REAR RIGHT door: open, then close", "rear-right-door"),
@@ -85,8 +121,19 @@ public static class ProbeScripts
         "Brake, parking brake, horn, wipers, steering.",
         "parked",
         [
-            Toggle("BRAKE pedal: press firmly, then release", "brake"),
-            Toggle("PARKING brake: engage, then release", "parking-brake"),
+            Toggle("BRAKE pedal", "brake",
+                "Press the BRAKE pedal firmly and HOLD it",
+                "RELEASE the brake pedal completely"),
+
+            // The AZE0 Leaf has no parking-brake button or lever. It is a small foot pedal at
+            // the far left of the footwell, released by a pull handle under the dash. Saying
+            // only "parking brake" is what caused the 2026-08-31 mix-up.
+            Toggle("PARKING brake", "parking-brake",
+                "PARKING BRAKE: press the small pedal at the FAR LEFT of the footwell (left of "
+                + "the brake pedal) until it clicks. Keep your feet OFF the main brake pedal",
+                "RELEASE it with the pull handle under the dash labelled BRAKE RELEASE. Feet "
+                + "still OFF the main brake pedal"),
+
             Toggle("HORN: press briefly, then release", "horn"),
             Toggle("WIPERS: intermittent on, then off", "wipers-int"),
             Toggle("WIPERS: fast on, then off", "wipers-fast"),
@@ -112,11 +159,33 @@ public static class ProbeScripts
         "Gear selector and ignition states. Vehicle must not move.",
         "parked, WHEELS CHOCKED, foot on brake",
         [
-            Toggle("Shift to REVERSE, then back to PARK", "gear-reverse"),
-            Toggle("Shift to NEUTRAL, then back to PARK", "gear-neutral"),
-            Toggle("Shift to DRIVE, then back to PARK", "gear-drive"),
-            Toggle("Shift to B/ECO mode, then back to PARK", "gear-b"),
-            Toggle("ECO mode: on, then off", "eco-mode"),
+            // The Leaf shifter is a sprung joystick that springs back to centre; the GEAR stays
+            // engaged, and PARK is a separate button. Most selections also require the brake
+            // pedal held. On 2026-08-31 only gear-reverse resolved, almost certainly because
+            // the other selections were never actually engaged.
+            Toggle("REVERSE", "gear-reverse",
+                "Foot ON the brake. Nudge the shifter to R and let it spring back - the car "
+                + "stays in R. Confirm the dash shows R",
+                "Press the P button. Confirm the dash shows P"),
+
+            Toggle("NEUTRAL", "gear-neutral",
+                "Foot ON the brake. Hold the shifter toward N for ~2 s until the dash shows N, "
+                + "then let go. Confirm the dash shows N",
+                "Press the P button. Confirm the dash shows P"),
+
+            Toggle("DRIVE", "gear-drive",
+                "Foot ON the brake. Nudge the shifter to D and let it spring back. Confirm the "
+                + "dash shows D",
+                "Press the P button. Confirm the dash shows P"),
+
+            Toggle("B mode", "gear-b",
+                "Foot ON the brake, car in D. Nudge the shifter to D a second time to enter B. "
+                + "Confirm the dash shows B",
+                "Press the P button. Confirm the dash shows P"),
+
+            Toggle("ECO mode", "eco-mode",
+                "Press the ECO button. Confirm the ECO indicator is lit",
+                "Press the ECO button again. Confirm the ECO indicator is off"),
         ]);
 
     public static ProbeScript Charging { get; } = Build(
@@ -131,20 +200,25 @@ public static class ProbeScripts
     /// <summary>
     /// Expands one stimulus into the alternating sequence the scoring depends on:
     /// ON/OFF repeated <see cref="Alternations"/> times, each state held for a capture window.
+    ///
+    /// Supply <paramref name="onText"/> and <paramref name="offText"/> wherever "do the first
+    /// action / now reverse it" leaves any doubt about which control is meant. Ambiguity here is
+    /// not cosmetic: on 2026-08-31 a vaguely-worded parking-brake probe was performed on the
+    /// regular brake pedal in reverse phase, producing an entire session of misattributed data.
     /// </summary>
-    private static IEnumerable<ProbeStep> Toggle(string what, string label)
+    private static IEnumerable<ProbeStep> Toggle(string what, string label, string? onText = null, string? offText = null)
     {
         for (var i = 1; i <= Alternations; i++)
         {
             yield return new ProbeStep(
                 ProbeStepKind.Action,
-                $"{what} - do the FIRST action  (repetition {i}/{Alternations})",
+                $"{onText ?? what + " - do the FIRST action"}  (repetition {i}/{Alternations})",
                 $"{label}-on",
                 HoldSeconds);
 
             yield return new ProbeStep(
                 ProbeStepKind.Action,
-                $"{what} - now REVERSE it  (repetition {i}/{Alternations})",
+                $"{offText ?? what + " - now REVERSE it"}  (repetition {i}/{Alternations})",
                 $"{label}-off",
                 HoldSeconds);
         }

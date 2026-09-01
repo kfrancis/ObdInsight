@@ -630,10 +630,12 @@ public static class RawCaptureCommand
                 AnsiConsole.MarkupLine("\r      [green]done[/]                                   ");
                 result.AddMarker(clock.Elapsed.TotalMilliseconds, step.Label + "-end");
                 continue;
+
             }
 
             AnsiConsole.MarkupLine($"{n} [white]{step.Instruction.EscapeMarkup()}[/]");
             AnsiConsole.Markup("      [grey]press ENTER when done and held...[/]");
+            Bell();
 
             // Console.ReadLine blocks a thread; keep it off the loop that owns the read side.
             await Task.Run(Console.ReadLine, ct);
@@ -649,10 +651,42 @@ public static class RawCaptureCommand
             }
 
             AnsiConsole.MarkupLine($"\r      [green]recorded '{step.Label}'[/]                     ");
+            // Two: the hold window is measured, you can move on to the next control.
+            Bell(2);
         }
 
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[green]Script complete.[/]");
+
+        // Three, so the end of the run is distinguishable from yet another prompt.
+        Bell(3);
+    }
+
+    /// <summary>
+    /// ASCII BEL. During a guided run the operator is looking at the vehicle, not the screen, so
+    /// a prompt that only appears visually is a prompt that gets missed. Written straight to the
+    /// console rather than through AnsiConsole, which treats it as markup-free text and may
+    /// buffer it, and it survives an SSH session so a remotely-driven run signals too.
+    /// </summary>
+    private static void Bell(int times = 1)
+    {
+        try
+        {
+            for (var i = 0; i < times; i++)
+            {
+                Console.Out.Write('\a');
+                if (i + 1 < times)
+                {
+                    Thread.Sleep(120);
+                }
+            }
+
+            Console.Out.Flush();
+        }
+        catch
+        {
+            // A console that cannot beep must not abort a capture.
+        }
     }
 
     /// <summary>Reads pending keystrokes. Returns true if the display should refresh.</summary>
