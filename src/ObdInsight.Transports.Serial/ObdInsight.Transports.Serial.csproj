@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Serial-port IElmTransport, for USB-CAN adapters that present as a COM port.
+    Kept out of Core so Core stays free of platform dependencies: System.IO.Ports
+    carries native runtime assets per OS. Pairs with SlcanFrameSource for CANable
+    and compatible devices, and works equally for a serial ELM327.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <Description>Serial-port transport for ObdInsight: IElmTransport over System.IO.Ports, for USB-CAN adapters (CANable and compatible) and serial ELM327 devices.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ObdInsight.Core\ObdInsight.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -29,6 +29,7 @@
     <Project Path="src/ObdInsight.SourceGeneration/ObdInsight.SourceGeneration.csproj" Id="31a510ba-88f2-4d38-b601-005c0acfd9aa" />
     <Project Path="src/ObdInsight.Telemetry/ObdInsight.Telemetry.csproj" />
     <Project Path="src/ObdInsight.Transports.Ble/ObdInsight.Transports.Ble.csproj" />
+    <Project Path="src/ObdInsight.Transports.Serial/ObdInsight.Transports.Serial.csproj" />
     <Project Path="src/ObdInsight/ObdInsight.csproj" />
   </Folder>
   <Folder Name="/tests/">
