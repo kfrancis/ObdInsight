@@ -133,10 +133,15 @@ public partial class VcmFrame_176_AZE0
         MinValue = 0, MaxValue = 250)]
     public partial int AscdSpeedRequest { get; init; }
 
+    // The DBC calls byte 6 CRC_176, but 27,000 captured frames show it cycling 0x00..0x0F and
+    // wrapping - it counts, and a CRC over changing payloads would not. Kept 8 bits wide rather
+    // than narrowed to the observed nibble, since the upper half may carry something in states
+    // not yet captured; only the name is corrected, because "Crc" invites callers to treat a
+    // rolling counter as an integrity check.
     [CanSignal(48, 8,
-        Description = "CRC checksum",
+        Description = "Rolling message counter (observed cycling 0-15; DBC labels it CRC_176)",
         MinValue = 0, MaxValue = 255)]
-    public partial int Crc { get; init; }
+    public partial int MessageCounter { get; init; }
 
     [CanSignal(7, 16, Unit = "rpm",
         Description = "Transmission output revolutions (absolute)",

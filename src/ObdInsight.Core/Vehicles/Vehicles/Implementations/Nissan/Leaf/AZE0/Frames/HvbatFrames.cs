@@ -473,17 +473,21 @@ public partial class BatteryFrame_5C0_AZE0
         MinValue = 0, MaxValue = 10, MuxValue = 3)]
     public partial int? HistDataHighLowVoltageTimeMin { get; init; }
 
-    [CanSignal(24, 8, Factor = 0.6, Unit = "Ah",
+    // 8-bit SIGNED: byte 3 is only ever 0x00 or 0xFF across 447 captured frames. Unsigned that
+    // reads 0 or 153 Ah, more than the pack holds; signed it is 0 or -0.6 Ah. The DBC declares
+    // the field "+" but gives its range as [-76.2..76.2], which is exactly +/-127 x 0.6 - the
+    // range is right and the sign marker is wrong.
+    [CanSignal(24, 8, Factor = 0.6, IsSigned = true, Unit = "Ah",
         Description = "Historical data: Integrated current (AVG when mux=2)",
         MinValue = -76.2, MaxValue = 76.2, MuxValue = 2)]
     public partial double? HistDataIntegratedCurrentAvg { get; init; }
 
-    [CanSignal(24, 8, Factor = 0.6, Unit = "Ah",
+    [CanSignal(24, 8, Factor = 0.6, IsSigned = true, Unit = "Ah",
         Description = "Historical data: Integrated current (MAX when mux=1)",
         MinValue = -76.2, MaxValue = 76.2, MuxValue = 1)]
     public partial double? HistDataIntegratedCurrentMax { get; init; }
 
-    [CanSignal(24, 8, Factor = 0.6, Unit = "Ah",
+    [CanSignal(24, 8, Factor = 0.6, IsSigned = true, Unit = "Ah",
         Description = "Historical data: Integrated current (MIN when mux=3)",
         MinValue = -76.2, MaxValue = 76.2, MuxValue = 3)]
     public partial double? HistDataIntegratedCurrentMin { get; init; }

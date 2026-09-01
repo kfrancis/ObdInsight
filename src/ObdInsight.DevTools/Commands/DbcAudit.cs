@@ -437,6 +437,192 @@ public static class DbcAudit
         return 0;
     }
 
+    /// <summary>
+    ///     Decodes every declared signal across every captured payload and reports the ones whose
+    ///     own definition the data contradicts.
+    /// </summary>
+    /// <remarks>
+    ///     The oracle here is the code itself: a signal that leaves the MinValue/MaxValue its own
+    ///     attribute declares is either mis-positioned or mis-scaled, and no external reference is
+    ///     needed to say so. Two weaker signals are reported alongside it, since both have already
+    ///     produced real findings in this project:
+    ///     <list type="bullet">
+    ///         <item><description>
+    ///             Counter-like fields, which advance by a constant step every frame. 0x284's
+    ///             "vehicle speed" was one, decoding 61-496 km/h on a stationary car.
+    ///         </description></item>
+    ///         <item><description>
+    ///             Signals constant across every frame ever captured, which may be reading
+    ///             reserved padding rather than the field they are named for - though on a parked
+    ///             car many legitimately do not vary, so this is a hint and not a verdict.
+    ///         </description></item>
+    ///     </list>
+    /// </remarks>
+    public static int SignalSanity(string[] args)
+    {
+        var paths = args.Skip(1).Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToList();
+        if (paths.Count < 1)
+        {
+            Console.Error.WriteLine("usage: ObdInsight.DevTools.exe signal-sanity <captures-dir>");
+            return 2;
+        }
+
+        // Payloads in arrival order per ID: the counter check needs successive frames.
+        var observed = new Dictionary<int, List<byte[]>>();
+        var logs = Directory.GetFiles(paths[0], "capture.log", SearchOption.AllDirectories);
+        foreach (var log in logs)
+        {
+            foreach (var line in File.ReadLines(log))
+            {
+                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 4 || parts[1] != "F" ||
+                    !int.TryParse(parts[2], System.Globalization.NumberStyles.HexNumber, null, out var id))
+                {
+                    continue;
+                }
+
+                if (!observed.TryGetValue(id, out var list))
+                {
+                    observed[id] = list = [];
+                }
+
+                var bytes = ParseHex(parts[3]);
+                if (bytes.Length < 8)
+                {
+                    Array.Resize(ref bytes, 8);
+                }
+
+                list.Add(bytes);
+            }
+        }
+
+        Console.Error.WriteLine(
+            $"{logs.Length} captures, {observed.Count} CAN IDs, {observed.Sum(kv => kv.Value.Count)} frames");
+        Console.Error.WriteLine();
+
+        var outOfRange = new StringBuilder();
+        var counters = new StringBuilder();
+        var constants = new StringBuilder();
+        int rangeCount = 0, counterCount = 0, constantCount = 0, checkedCount = 0, noData = 0;
+
+        foreach (var frame in DiscoverFrames())
+        {
+            if (!observed.TryGetValue(frame.CanId, out var payloads) || payloads.Count < 2)
+            {
+                noData++;
+                continue;
+            }
+
+            var multiplexor = frame.Signals.FirstOrDefault(s => s.Attribute.IsMultiplexor);
+
+            foreach (var signal in frame.Signals)
+            {
+                var a = signal.Attribute;
+                var values = new List<double>(payloads.Count);
+
+                foreach (var payload in payloads)
+                {
+                    // A multiplexed signal is only meaningful in frames selecting its variant.
+                    if (a.MuxValue != CanSignalAttribute.NotMultiplexed && multiplexor is not null)
+                    {
+                        var selector = Read(payload, multiplexor.Attribute);
+                        if ((int)selector != a.MuxValue)
+                        {
+                            continue;
+                        }
+                    }
+
+                    values.Add(Read(payload, a) * a.Factor + a.Offset);
+                }
+
+                if (values.Count < 2)
+                {
+                    continue;
+                }
+
+                checkedCount++;
+                var lo = values.Min();
+                var hi = values.Max();
+
+                var bounded = !double.IsNaN(a.MinValue) && !double.IsNaN(a.MaxValue) && a.MaxValue > a.MinValue;
+                if (bounded && (lo < a.MinValue || hi > a.MaxValue))
+                {
+                    rangeCount++;
+                    outOfRange.AppendLine(
+                        $"  0x{frame.CanId:X3} {frame.TypeName}.{signal.Property,-32} " +
+                        $"observed {lo:G6}..{hi:G6}  declared [{a.MinValue:G6}..{a.MaxValue:G6}]  ({values.Count} frames)");
+                }
+
+                if (LooksLikeCounter(values))
+                {
+                    counterCount++;
+                    counters.AppendLine(
+                        $"  0x{frame.CanId:X3} {frame.TypeName}.{signal.Property,-32} " +
+                        $"advances by a constant step over {values.Count} frames ({lo:G6}..{hi:G6})");
+                }
+                else if (Math.Abs(hi - lo) < 1e-9)
+                {
+                    constantCount++;
+                    constants.AppendLine(
+                        $"  0x{frame.CanId:X3} {frame.TypeName}.{signal.Property,-32} " +
+                        $"constant {lo:G6} over {values.Count} frames");
+                }
+            }
+        }
+
+        Section("OUT OF ITS OWN DECLARED RANGE - mis-positioned or mis-scaled", outOfRange, rangeCount);
+        Section("COUNTER-LIKE - advances by a constant step, so probably not the named signal", counters, counterCount);
+        Section("CONSTANT across every captured frame - may be reading reserved bits", constants, constantCount);
+
+        Console.Out.WriteLine(
+            $"SUMMARY: {checkedCount} signals checked against captured data, {rangeCount} out of range, " +
+            $"{counterCount} counter-like, {constantCount} constant, {noData} frames with no captures.");
+
+        return rangeCount > 0 ? 1 : 0;
+    }
+
+    private static double Read(byte[] payload, CanSignalAttribute a)
+    {
+        var raw = a.ByteOrder == CanByteOrder.Motorola
+            ? CanBits.ReadUnsignedBe(payload, a.BitStart, a.BitLength)
+            : CanBits.ReadUnsigned(payload, a.BitStart, a.BitLength);
+
+        return a.IsSigned ? SignExtend(raw, a.BitLength) : raw;
+    }
+
+    /// <summary>
+    ///     True when successive values advance by one repeated non-zero step, allowing for
+    ///     wraparound. Requires the step to dominate rather than merely appear, so a signal that
+    ///     happens to change smoothly for a while is not mistaken for a counter.
+    /// </summary>
+    private static bool LooksLikeCounter(List<double> values)
+    {
+        if (values.Count < 8)
+        {
+            return false;
+        }
+
+        var steps = new Dictionary<double, int>();
+        for (var i = 1; i < values.Count; i++)
+        {
+            var delta = values[i] - values[i - 1];
+            if (delta <= 0)
+            {
+                continue;   // ignore wraparound and idle repeats
+            }
+
+            steps[delta] = steps.GetValueOrDefault(delta) + 1;
+        }
+
+        if (steps.Count == 0)
+        {
+            return false;
+        }
+
+        var dominant = steps.OrderByDescending(kv => kv.Value).First();
+        return dominant.Value >= (values.Count - 1) * 0.8;
+    }
+
     private static (bool InRange, double Lo, double Hi) Evaluate(
         HashSet<string> payloads, DbcSignal dbc, bool bigEndian)
     {

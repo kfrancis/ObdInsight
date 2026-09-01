@@ -89,6 +89,23 @@ public class GeneratedFrameDecodingTests
     }
 
     /// <summary>
+    /// 0x5C0's integrated-current field is 8-bit signed, not unsigned.
+    ///
+    /// Byte 3 is only ever 0x00 or 0xFF across all 447 captured frames. Read unsigned that is
+    /// 0 or 153 Ah - more than the pack holds, and impossible as a historical figure. Read signed
+    /// it is 0 or -0.6 Ah, which is ordinary. The DBC marks the field "+" but declares its range
+    /// as [-76.2..76.2], exactly +/-127 x 0.6: the range is right and the sign marker is wrong.
+    /// </summary>
+    [Test]
+    public async Task BatteryFrame5c0_IntegratedCurrent_IsSigned()
+    {
+        // Average branch (byte 0 = 0x80), byte 3 = 0xFF.
+        var frame = BatteryFrame_5C0_AZE0.Parse(Captured("807C7CFF80DC1F00"));
+
+        await Assert.That(frame.HistDataIntegratedCurrentAvg!.Value).IsEqualTo(-0.6).Within(1e-9);
+    }
+
+    /// <summary>
     /// 0x5C0 is multiplexed: bits 6-7 of byte 0 select whether the payload carries the maximum,
     /// average or minimum of the battery's recorded history, and every HistData* group reuses the
     /// same bit positions across all three.
@@ -381,7 +398,7 @@ public class GeneratedFrameDecodingTests
         var frame = VcmFrame_176_AZE0.Parse([0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0x5A]);
 
         await Assert.That(frame.AscdSpeedRequest).IsEqualTo(100);
-        await Assert.That(frame.Crc).IsEqualTo(0x5A);
+        await Assert.That(frame.MessageCounter).IsEqualTo(0x5A);
     }
 
     [Test]

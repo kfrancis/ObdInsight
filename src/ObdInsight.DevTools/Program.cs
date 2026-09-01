@@ -38,6 +38,12 @@ internal class Program
             return DbcAudit.CrossReference(args);
         }
 
+        // Offline: checks every declared signal against captured data using its own declared range.
+        if (args.Length > 0 && args[0].Equals("signal-sanity", StringComparison.OrdinalIgnoreCase))
+        {
+            return DbcAudit.SignalSanity(args);
+        }
+
         AnsiConsole.Write(new FigletText("OBD DevTools").Color(Color.Cyan1));
         AnsiConsole.MarkupLine("[grey]BLE OBD-II Development Tool[/]");
         AnsiConsole.WriteLine();

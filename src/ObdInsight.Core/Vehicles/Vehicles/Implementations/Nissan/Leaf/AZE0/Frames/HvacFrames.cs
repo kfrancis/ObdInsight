@@ -54,9 +54,11 @@ public partial class HvacFrame_54B_AZE0
         MinValue = 0, MaxValue = 255)]
     public partial int ClimateVentModeTarget { get; init; }
 
+    // Minimum is 0, not 1: 2460 captured frames include 0 with the fan off, which the previous
+    // range declared impossible. 1-7 describes the manual speed settings, not the field.
     [CanSignal(35, 5,
-        Description = "Fan speed level (1-7 for manual speed)",
-        MinValue = 1, MaxValue = 7)]
+        Description = "Fan speed level (0 = off, 1-7 for manual speed)",
+        MinValue = 0, MaxValue = 7)]
     public partial int FanSpeed { get; init; }
 }
 
