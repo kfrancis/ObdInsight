@@ -44,8 +44,17 @@ public sealed class CanSignalAttribute : Attribute
     /// <summary>
     ///     Starting bit position in the CAN frame (0-63).
     ///     Bit 0 is the least significant bit of byte 0.
+    ///     Under <see cref="CanByteOrder.Intel" /> this is the signal's LSB; under
+    ///     <see cref="CanByteOrder.Motorola" /> it is the signal's MSB.
     /// </summary>
     public int BitStart { get; }
+
+    /// <summary>
+    ///     Bit ordering of the signal. Defaults to <see cref="CanByteOrder.Intel" />, so existing
+    ///     definitions keep their meaning; set <see cref="CanByteOrder.Motorola" /> to use DBC
+    ///     big-endian positions directly instead of hand-converting them.
+    /// </summary>
+    public CanByteOrder ByteOrder { get; set; } = CanByteOrder.Intel;
 
     /// <summary>
     ///     Human-readable description of this signal.

@@ -153,15 +153,26 @@ namespace ObdInsight.SourceGeneration
             {
                 var location = signal.Location?.ToLocation() ?? Location.None;
 
-                if (signal.BitStart < 0 || signal.BitLength < 1 ||
-                    signal.BitStart + signal.BitLength > PayloadBits)
+                // The bound differs by order. Intel grows upward from the start bit, so the last
+                // bit is BitStart + BitLength - 1. Motorola's start bit is the signal's MSB and it
+                // grows downward through the big-endian view, so what must fit is
+                // MotorolaMsbIndex(BitStart) + BitLength. Applying the Intel rule to a Motorola
+                // signal both rejects valid layouts and accepts invalid ones - big-endian start 7
+                // length 10 is legal (it occupies bits 0..9 of the BE view) yet fails 7 + 10 <= 64
+                // nowhere, while big-endian start 63 length 2 is illegal and the Intel rule passes it.
+                var lastBitIndex = signal.IsBigEndian
+                    ? CanBits.MotorolaMsbIndex(signal.BitStart) + signal.BitLength - 1
+                    : signal.BitStart + signal.BitLength - 1;
+
+                if (signal.BitStart < 0 || signal.BitStart > PayloadBits - 1 || signal.BitLength < 1 ||
+                    lastBitIndex >= PayloadBits)
                 {
                     context.ReportDiagnostic(Diagnostic.Create(
                         SignalRangeOutsidePayload,
                         location,
                         signal.PropertyName,
                         signal.BitStart,
-                        signal.BitStart + signal.BitLength - 1,
+                        lastBitIndex,
                         PayloadBits));
                     continue;
                 }
@@ -275,6 +286,8 @@ namespace ObdInsight.SourceGeneration
                 double? maxValue = null;
                 var includeInGeneration = true;
 
+                var isBigEndian = false;
+
                 foreach (var namedArg in signalAttr.NamedArguments)
                 {
                     switch (namedArg.Key)
@@ -313,6 +326,15 @@ namespace ObdInsight.SourceGeneration
                         case "IncludeInGeneration":
                             includeInGeneration = (bool)namedArg.Value.Value!;
                             break;
+                        case "ByteOrder":
+                            // Roslyn hands an enum named argument to the generator as its boxed
+                            // UNDERLYING INT, not as the enum type. Casting straight to the enum
+                            // throws, and comparing against a member name silently never matches,
+                            // which would default every signal to Intel while looking correct -
+                            // the failure mode behind AUDIT.md C1 and the UDS FrameType bug.
+                            // Converting the int is the only form that is safe here.
+                            isBigEndian = Convert.ToInt32(namedArg.Value.Value) == (int)Attributes.CanByteOrder.Motorola;
+                            break;
                     }
                 }
 
@@ -334,6 +356,8 @@ namespace ObdInsight.SourceGeneration
                     signalDescription,
                     minValue,
                     maxValue,
+
+                    isBigEndian,
                     SignalLocation.From(member)));
             }
 
@@ -569,19 +593,23 @@ namespace ObdInsight.SourceGeneration
         /// </returns>
         private static string GenerateDecodeExpression(CanSignalModel signal)
         {
-            // Determine the read method based on type and signedness
+            // Determine the read method based on type, signedness and bit order. The Be suffix
+            // selects the Motorola readers; Intel keeps the original names so every existing
+            // definition emits byte-for-byte the same call it did before.
+            var suffix = signal.IsBigEndian ? "Be" : string.Empty;
+
             string readMethod;
             if (signal.PropertyType == "bool")
             {
-                readMethod = "CanBits.ReadBool";
+                readMethod = "CanBits.ReadBool" + suffix;
             }
             else if (signal.IsSigned)
             {
-                readMethod = "CanBits.ReadSigned";
+                readMethod = "CanBits.ReadSigned" + suffix;
             }
             else
             {
-                readMethod = "CanBits.ReadUnsigned";
+                readMethod = "CanBits.ReadUnsigned" + suffix;
             }
 
             // For bool, just read the bit
@@ -713,6 +741,60 @@ namespace ObdInsight.SourceGeneration
             sb.AppendLine("            var raw = ReadPayload(data);");
             sb.AppendLine("            var mask = bitLen == 32 ? 0xFFFF_FFFFul : ((1ul << bitLen) - 1ul);");
             sb.AppendLine("            return (uint)((raw >> bitPos) & mask);");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // Motorola readers. These mirror ObdInsight.SourceGeneration.CanBits exactly - the
+            // generator emits its own per-namespace copy, so a reader added to only one of the two
+            // makes generated frames and hand-written callers disagree without any build error.
+            sb.AppendLine("        public static bool ReadBoolBe(ReadOnlySpan<byte> data, int bitPos)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            return ReadUnsignedBe(data, bitPos, 1) != 0;");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            sb.AppendLine("        public static int ReadSignedBe(ReadOnlySpan<byte> data, int bitPos, int bitLen)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            var unsigned = ReadUnsignedBe(data, bitPos, bitLen);");
+            sb.AppendLine("            var signBitMask = 1u << (bitLen - 1);");
+            sb.AppendLine("            if ((unsigned & signBitMask) != 0)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                var signExtendMask = bitLen == 32 ? 0u : ~((1u << bitLen) - 1);");
+            sb.AppendLine("                return (int)(unsigned | signExtendMask);");
+            sb.AppendLine("            }");
+            sb.AppendLine();
+            sb.AppendLine("            return (int)unsigned;");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            sb.AppendLine("        // DBC big-endian (@0): bitPos is the signal's MOST significant bit, and the signal");
+            sb.AppendLine("        // descends within the byte, continuing at bit 7 of the next. Read as a big-endian");
+            sb.AppendLine("        // ulong it becomes one contiguous run, so it reduces to a shift and a mask.");
+            sb.AppendLine("        public static uint ReadUnsignedBe(ReadOnlySpan<byte> data, int bitPos, int bitLen)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            var raw = ReadPayloadBe(data);");
+            sb.AppendLine("            var msbIndex = ((bitPos / 8) * 8) + (7 - (bitPos % 8));");
+            sb.AppendLine("            var mask = bitLen == 32 ? 0xFFFF_FFFFul : ((1ul << bitLen) - 1ul);");
+            sb.AppendLine("            return (uint)((raw >> (64 - (msbIndex + bitLen))) & mask);");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            sb.AppendLine("        // Big-endian counterpart of ReadPayload: byte 0 is the MOST significant, so a short");
+            sb.AppendLine("        // payload zero-extends on the right rather than the left.");
+            sb.AppendLine("        private static ulong ReadPayloadBe(ReadOnlySpan<byte> data)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (data.Length >= 8)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                return BinaryPrimitives.ReadUInt64BigEndian(data);");
+            sb.AppendLine("            }");
+            sb.AppendLine();
+            sb.AppendLine("            ulong raw = 0;");
+            sb.AppendLine("            for (var i = 0; i < data.Length; i++)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                raw |= (ulong)data[i] << ((7 - i) * 8);");
+            sb.AppendLine("            }");
+            sb.AppendLine();
+            sb.AppendLine("            return raw;");
             sb.AppendLine("        }");
             sb.AppendLine();
 
@@ -922,6 +1004,7 @@ namespace ObdInsight.SourceGeneration
         string? Description,
         double? MinValue,
         double? MaxValue,
+        bool IsBigEndian,
         SignalLocation? Location);
 
     /// <summary>
