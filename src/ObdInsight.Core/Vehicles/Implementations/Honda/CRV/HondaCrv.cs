@@ -1,7 +1,7 @@
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
 
-namespace ObdInsight.Core.Vehicles.Implementations
+namespace ObdInsight.Core.Vehicles.Implementations.Honda.CRV
 {
     public static class HondaCrvGen5Contexts
     {

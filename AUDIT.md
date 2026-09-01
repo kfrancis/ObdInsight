@@ -50,7 +50,7 @@ IElmTransport (BLE/BT Classic implementations)
 
 **Surprises:**
 - The README and CLAUDE.md advertise a MAUI Android/iOS app; the actually-developed artifact is the Windows console app. The MAUI project is an empty template shell.
-- Concrete BLE transports live in the **console app** project but are declared in `ObdInsight.Core.Communication.*` namespaces (`src/ObdInsight/Core/Communication/Elm327/BleElmTransport.cs:6`, `.../Bluetooth/BleScanner.cs:5`) — app types masquerading as Core.
+- ~~Concrete BLE transports live in the **console app** project but are declared in `ObdInsight.Core.Communication.*` namespaces — app types masquerading as Core.~~ Fixed: the namespace masquerade was undone earlier, and the WinRT transports moved out to `src/ObdInsight.Transports.WindowsBle` (2026-08-31). DevTools still carries its own duplicate Windows BLE stack.
 - 3,511 lines of dead code checked in as `*.cs.broken` files under DevTools.
 
 **Lighter-review areas:** MAUI platform folders (template stubs), DevTools' Windows BLE stack internals, mockup/reference documents (`vehicle_nissanleaf.cpp`, glossaries). Nothing load-bearing was skipped.
@@ -254,7 +254,7 @@ Five themes explain nearly all findings.
 |---|---|---|
 | M3.1 | README rewrite (honest framing: console-first today, MAUI aspiration; current architecture diagram) | S |
 | M3.2 | Central package management (`Directory.Packages.props`); align Roslyn versions between generator and its tests | S |
-| M3.3 | Fix namespace masquerade + relocate transports (consolidate console/DevTools BLE stacks per Theme 4 design) | L |
+| M3.3 | ~~Fix namespace masquerade + relocate transports~~ (done — `ObdInsight.Transports.WindowsBle`); still to do: consolidate the DevTools BLE stack into it per Theme 4 design | M |
 | M3.4 | ~~Flatten `Vehicles/Vehicles/`; fix `OdbTestApp.Tests` namespaces~~ (done); remove csproj scaffolding leftovers | S |
 | M3.5 | Scrub personal MAC/VIN defaults into config; move mockups out of root (or to `docs/assets/`) | S |
 | M3.6 | Tighten integration assertions; convert assertion-free diagnostics into explicitly-named harness commands | M |

@@ -2,7 +2,8 @@ using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using Windows.Storage.Streams;
 using ObdInsight.Core.Communication.Elm327;
-using Serilog;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ObdInsight.Transports.WindowsBle
 {
@@ -13,15 +14,17 @@ namespace ObdInsight.Transports.WindowsBle
         private static readonly Guid s_writeCharacteristicUuid = new("0000fff2-0000-1000-8000-00805f9b34fb");
         private readonly SemaphoreSlim _bufferLock = new(1, 1);
         private readonly string _deviceId;
+        private readonly ILogger<BleElmTransport> _logger;
         private readonly Queue<byte> _receiveBuffer = new();
         private BluetoothLEDevice? _device;
         private GattCharacteristic? _notifyCharacteristic;
         private GattDeviceService? _serialService;
         private GattCharacteristic? _writeCharacteristic;
 
-        public BleElmTransport(string deviceId)
+        public BleElmTransport(string deviceId, ILogger<BleElmTransport>? logger = null)
         {
             _deviceId = deviceId ?? throw new ArgumentNullException(nameof(deviceId));
+            _logger = logger ?? NullLogger<BleElmTransport>.Instance;
         }
 
         public bool EnableDebugLogging { get; set; }
@@ -46,21 +49,21 @@ namespace ObdInsight.Transports.WindowsBle
             if (IsOpen) return;
 
             if (EnableDebugLogging)
-                Log.Debug("Connecting to BLE device {DeviceId}...", _deviceId);
+                _logger.LogDebug("Connecting to BLE device {DeviceId}...", _deviceId);
 
             _device = await BluetoothLEDevice.FromBluetoothAddressAsync(MAC802DOT3(_deviceId)).AsTask(ct);
             if (_device == null)
                 throw new IOException("BLE device not found");
 
             if (EnableDebugLogging)
-                Log.Debug("BLE device found. Name: {Name}, ConnectionStatus: {Status}",
+                _logger.LogDebug("BLE device found. Name: {Name}, ConnectionStatus: {Status}",
                     _device.Name ?? "Unknown", _device.ConnectionStatus);
 
             // Check connection status and wait for connection with exponential backoff
             if (_device.ConnectionStatus != BluetoothConnectionStatus.Connected)
             {
                 if (EnableDebugLogging)
-                    Log.Warning("Device not connected (status: {Status}), waiting for connection...",
+                    _logger.LogWarning("Device not connected (status: {Status}), waiting for connection...",
                         _device.ConnectionStatus);
 
                 // Subscribe to connection status changes
@@ -71,7 +74,7 @@ namespace ObdInsight.Transports.WindowsBle
                     if (sender.ConnectionStatus == BluetoothConnectionStatus.Connected)
                     {
                         if (EnableDebugLogging)
-                            Log.Debug("Device connected via status change event");
+                            _logger.LogDebug("Device connected via status change event");
                         connectionTcs.TrySetResult(true);
                     }
                 }
@@ -82,7 +85,7 @@ namespace ObdInsight.Transports.WindowsBle
                 {
                     // Try to trigger connection by requesting GATT services (forces Windows to connect)
                     if (EnableDebugLogging)
-                        Log.Debug("Requesting GATT services to trigger connection...");
+                        _logger.LogDebug("Requesting GATT services to trigger connection...");
 
                     var servicesResult = await _device.GetGattServicesAsync(BluetoothCacheMode.Uncached).AsTask(ct);
 
@@ -90,7 +93,7 @@ namespace ObdInsight.Transports.WindowsBle
                         _device.ConnectionStatus == BluetoothConnectionStatus.Connected)
                     {
                         if (EnableDebugLogging)
-                            Log.Debug("Connection established via GetGattServicesAsync");
+                            _logger.LogDebug("Connection established via GetGattServicesAsync");
                     }
                     else
                     {
@@ -101,7 +104,7 @@ namespace ObdInsight.Transports.WindowsBle
                                 break;
 
                             if (EnableDebugLogging && i == 0)
-                                Log.Debug("Waiting for device to connect... (attempt {Attempt}/10)", i + 1);
+                                _logger.LogDebug("Waiting for device to connect... (attempt {Attempt}/10)", i + 1);
 
                             await Task.Delay(500, ct);
                         }
@@ -121,7 +124,7 @@ namespace ObdInsight.Transports.WindowsBle
                     }
 
                     if (EnableDebugLogging)
-                        Log.Debug("Device connection established successfully");
+                        _logger.LogDebug("Device connection established successfully");
                 }
                 finally
                 {
@@ -130,7 +133,7 @@ namespace ObdInsight.Transports.WindowsBle
             }
 
             if (EnableDebugLogging)
-                Log.Debug("Retrieving GATT services...");
+                _logger.LogDebug("Retrieving GATT services...");
 
             var result = await _device.GetGattServicesForUuidAsync(s_serialServiceUuid).AsTask(ct);
             if (result.Status != GattCommunicationStatus.Success || result.Services.Count == 0)
@@ -139,7 +142,7 @@ namespace ObdInsight.Transports.WindowsBle
             _serialService = result.Services[0];
 
             if (EnableDebugLogging)
-                Log.Debug("Service found. Session Status: {SessionStatus}", _serialService.Session?.SessionStatus);
+                _logger.LogDebug("Service found. Session Status: {SessionStatus}", _serialService.Session?.SessionStatus);
 
             _writeCharacteristic = await FindCharacteristicAsync(_serialService, s_writeCharacteristicUuid, ct);
             _notifyCharacteristic = await FindCharacteristicAsync(_serialService, s_notifyCharacteristicUuid, ct);
@@ -153,14 +156,14 @@ namespace ObdInsight.Transports.WindowsBle
                 throw new IOException("Characteristic doesn't support notifications");
 
             if (EnableDebugLogging)
-                Log.Debug("Characteristic properties: {Props}", props);
+                _logger.LogDebug("Characteristic properties: {Props}", props);
 
             // Subscribe to value changes before enabling notifications
             _notifyCharacteristic.ValueChanged += OnNotifyValueChanged;
 
             // Allow more time for the BLE session to fully establish
             if (EnableDebugLogging)
-                Log.Debug("Waiting for BLE session to stabilize...");
+                _logger.LogDebug("Waiting for BLE session to stabilize...");
             await Task.Delay(500, ct);
 
             // Enable notifications with retry logic - Windows BLE stack can be flaky on first attempt
@@ -176,7 +179,7 @@ namespace ObdInsight.Transports.WindowsBle
                         : GattClientCharacteristicConfigurationDescriptorValue.Notify;
 
                     if (EnableDebugLogging)
-                        Log.Debug("Attempt {Attempt}: Writing CCCD ({CccdValue}) to characteristic...",
+                        _logger.LogDebug("Attempt {Attempt}: Writing CCCD ({CccdValue}) to characteristic...",
                             attempt + 1, cccdValue);
 
                     var status =
@@ -185,21 +188,21 @@ namespace ObdInsight.Transports.WindowsBle
                     if (status == GattCommunicationStatus.Success)
                     {
                         if (EnableDebugLogging)
-                            Log.Debug("✓ Notifications enabled successfully on attempt {Attempt}", attempt + 1);
+                            _logger.LogDebug("✓ Notifications enabled successfully on attempt {Attempt}", attempt + 1);
 
                         notificationsEnabled = true;
                         break;
                     }
 
                     if (EnableDebugLogging)
-                        Log.Warning(
+                        _logger.LogWarning(
                             "CCCD write attempt {Attempt} returned {Status}. Device connection: {ConnStatus}, Session: {SessionStatus}",
                             attempt + 1, status, _device.ConnectionStatus, _serialService.Session?.SessionStatus);
 
                     // If unreachable, provide helpful diagnostic info
                     if (status == GattCommunicationStatus.Unreachable)
                     {
-                        Log.Error("Device unreachable. Troubleshooting steps:\n" +
+                        _logger.LogError("Device unreachable. Troubleshooting steps:\n" +
                                   "  1. Check if device is powered on and in range\n" +
                                   "  2. Restart Windows Bluetooth service: Restart-Service bthserv\n" +
                                   "  3. Remove device from Windows Bluetooth settings and re-pair\n" +
@@ -211,7 +214,7 @@ namespace ObdInsight.Transports.WindowsBle
                 catch (Exception ex)
                 {
                     if (EnableDebugLogging)
-                        Log.Warning(ex, "CCCD write attempt {Attempt} threw exception", attempt + 1);
+                        _logger.LogWarning(ex, "CCCD write attempt {Attempt} threw exception", attempt + 1);
 
                     lastException = ex;
                 }
@@ -221,7 +224,7 @@ namespace ObdInsight.Transports.WindowsBle
                 {
                     var delayMs = 200 * (1 << attempt);
                     if (EnableDebugLogging)
-                        Log.Debug("Waiting {DelayMs}ms before retry...", delayMs);
+                        _logger.LogDebug("Waiting {DelayMs}ms before retry...", delayMs);
                     await Task.Delay(delayMs, ct);
                 }
             }
@@ -301,7 +304,7 @@ namespace ObdInsight.Transports.WindowsBle
             }
             catch (Exception ex)
             {
-                Log.Warning(ex, "Cleanup error: {Message}", ex.Message);
+                _logger.LogWarning(ex, "Cleanup error: {Message}", ex.Message);
             }
             finally
             {

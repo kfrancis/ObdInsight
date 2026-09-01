@@ -405,7 +405,13 @@ namespace ObdInsight
             AnsiConsole.MarkupLine(
                 $"[cyan]Connecting to:[/] {selectedDevice.Name.EscapeMarkup()} [grey]({selectedDevice.Address.EscapeMarkup()})[/]");
 
-            await using var transport = new BleElmTransport(selectedDevice.Address);
+            // Bridge Core's ILogger-based logging into the app's Serilog pipeline
+            // (console + file sinks configured in Main).
+            using var loggerFactory = new SerilogLoggerFactory(Log.Logger);
+
+            await using var transport = new BleElmTransport(
+                selectedDevice.Address,
+                loggerFactory.CreateLogger<BleElmTransport>());
 
             // Enable debug logging
             transport.EnableDebugLogging = true;
@@ -419,10 +425,6 @@ namespace ObdInsight
                 Log.Information("BLE transport opened successfully");
                 AnsiConsole.MarkupLine("[green]✓[/] Bluetooth connected.");
                 AnsiConsole.WriteLine();
-
-                // Bridge Core's ILogger-based logging into the app's Serilog pipeline
-                // (console + file sinks configured in Main).
-                using var loggerFactory = new SerilogLoggerFactory(Log.Logger);
 
                 var framer = new ElmFramer(transport, loggerFactory.CreateLogger<ElmFramer>())
                 {

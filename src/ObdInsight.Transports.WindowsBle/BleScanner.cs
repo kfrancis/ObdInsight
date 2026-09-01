@@ -1,8 +1,9 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Storage.Streams;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ObdInsight.Core.Communication.Bluetooth;
 
 namespace ObdInsight.Transports.WindowsBle;
@@ -10,11 +11,13 @@ namespace ObdInsight.Transports.WindowsBle;
 public sealed class BleScanner : IBleScanner
 {
     private readonly ConcurrentDictionary<string, BleDeviceInfo> _discoveredDevices = new();
+    private readonly ILogger<BleScanner> _logger;
     private readonly BluetoothLEAdvertisementWatcher _watcher;
     private BleScanFilter? _currentFilter;
 
-    public BleScanner()
+    public BleScanner(ILogger<BleScanner>? logger = null)
     {
+        _logger = logger ?? NullLogger<BleScanner>.Instance;
         _watcher = new BluetoothLEAdvertisementWatcher { ScanningMode = BluetoothLEScanningMode.Active };
         _watcher.Received += OnAdvertisementReceived;
         _watcher.Stopped += OnWatcherStopped;
@@ -141,7 +144,7 @@ public sealed class BleScanner : IBleScanner
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error processing advertisement: {ex.Message}");
+            _logger.LogWarning(ex, "Error processing advertisement");
         }
     }
 

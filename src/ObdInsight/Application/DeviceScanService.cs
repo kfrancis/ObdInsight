@@ -1,7 +1,9 @@
+using Microsoft.Extensions.Logging;
 using ObdInsight.Core.Communication.Bluetooth;
 using ObdInsight.Transports.WindowsBle;
 using ObdInsight.UI;
 using Serilog;
+using Serilog.Extensions.Logging;
 using Spectre.Console;
 
 namespace ObdInsight.Application;
@@ -25,7 +27,9 @@ public class DeviceScanService
         DevicePreferences preferences,
         CancellationToken ct)
     {
-        using var scanner = new BleScanner();
+        // Bridge the scanner's ILogger output into the app's Serilog pipeline.
+        using var loggerFactory = new SerilogLoggerFactory(Log.Logger);
+        using var scanner = new BleScanner(loggerFactory.CreateLogger<BleScanner>());
 
         while (true)
         {

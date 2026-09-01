@@ -1,4 +1,4 @@
-using ObdInsight.Core.Vehicles.Implementations;
+using ObdInsight.Core.Vehicles.Implementations.Honda.CRV;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf;
 
 namespace ObdInsight.Core.Vehicles;

@@ -22,11 +22,12 @@ on the broadcast capabilities, typed `ITelemetrySession.Stream<T>`, short-frame 
 | Project | What it is |
 |---|---|
 | `src/ObdInsight.Core` | The library: ELM327 session, protocols, vehicle capabilities, Leaf implementation. net10.0, no UI/platform deps, logging via `ILogger` (never Serilog/Console here) |
-| `src/ObdInsight` | Windows console app: WinRT BLE transports (`Transports/`, namespace `ObdInsight.Transports.WindowsBle`), Spectre UI, Serilog wiring |
+| `src/ObdInsight` | Windows console app: Spectre UI, Serilog wiring, diagnostic runs. Owns no transports — they come from the `Transports.*` packages |
 | `src/ObdInsight.SourceGeneration` | Roslyn incremental generators (netstandard2.0): CAN signal decoders + UDS query methods. Analyzer-only reference from Core; compiles the Annotations sources as linked source |
 | `src/ObdInsight.Annotations` | Runtime annotations (net10.0, dependency-free): `[CanFrame]`/`[CanSignal]`/`[Uds*]` attribute types + `CanBits`. Namespaces stay `ObdInsight.SourceGeneration.*` (generator matches by full name) |
 | `src/ObdInsight.Telemetry` | Consumer telemetry facade (net10.0, refs Core): `ITelemetrySession` — cadence-tiered polling, decimal DTOs, availability report, snapshots. See `docs/TELEMETRY_SESSION_DESIGN.md` |
 | `src/ObdInsight.Simulation` | Shippable sim package (net10.0, refs Core, no test deps): `ReplayElmTransport` (scripted, test workhorse), `LeafGoldenData` (golden captures), `SimulatedLeafAze0Transport` + `LeafDriveProfile` (time-driven fake Leaf for zero-hardware dev) |
+| `src/ObdInsight.Transports.WindowsBle` | Windows BLE transport on WinRT (`Windows.Devices.Bluetooth`): `BleElmTransport` + `BleScanner`. Extracted from the console app 2026-08-31; logs via `ILogger`, not Serilog |
 | `src/ObdInsight.Transports.Ble` | Cross-platform BLE transport (net10.0;-android;-ios) on Plugin.BLE: GATT profile table + pure auto-probe resolver, `PluginBleElmTransport`. See `docs/BLE_TRANSPORT_DESIGN.md` |
 | `src/ObdInsight.DevTools` | Windows diagnostic console. Partially ported to current architecture; several commands stubbed; `*.cs.broken` files are dead old code |
 | `src/ObdInsight.Maui` | Empty MAUI template. `src/ObdInsight.Drivers` is an empty leftover folder |
@@ -102,8 +103,13 @@ public partial class BatteryFrame_1DB_AZE0
   (see `LeafBmsDiagnostics` in `BmsFrames.cs`). Partial classes must supply
   `ParseIsoTpFrames`/`ReassembleIsoTpPayload`/`_session`/`_context`.
 - `MinValue`/`MaxValue` are **documentation only** — no runtime validation is emitted.
-- **Limitations:** 11-bit CAN IDs only; Intel (little-endian) bit order only — no Motorola
-  support. Bit 0 = LSB of byte 0.
+- **Bit order:** both DBC conventions are supported. `ByteOrder = CanByteOrder.Motorola`
+  (DBC `@0`) makes the start bit the signal's MSB; the default `Intel` (DBC `@1`) makes it
+  the LSB. Both number bits the same way — bit `N` = byte `N/8`, bit `N%8`, bit 7 being
+  that byte's MSB. Most Leaf signals are Motorola; see `CanByteOrder` for why the
+  hand-conversion this replaced produced several wrong layouts.
+- **Limitations:** the generator places no constraint on CAN ID width, but only 11-bit IDs
+  are defined and tested today.
 - Generators report no diagnostics; malformed attributes are silently skipped. Enum named
   arguments arrive from Roslyn as boxed ints — convert to member names before string-matching
   (two past production bugs came from getting this layer wrong; see AUDIT.md C1 and the UDS
