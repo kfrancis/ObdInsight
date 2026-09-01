@@ -19,15 +19,22 @@ public partial class BcmFrame_60D_AZE0
         MinValue = 0, MaxValue = 3)]
     public partial int ParkingLights { get; init; }
 
+    // Bits 3 and 4 were transposed until 2026-08-31. Both decoded, so nothing looked wrong -
+    // only physically opening one door at a time distinguishes them. Guided stimulus probes on
+    // a 2017 AZE0, three repetitions each, identical every time:
+    //   all closed        byte0 = 0x06 = 0000 0110
+    //   driver open       byte0 = 0x0E = 0000 1110   -> bit 3
+    //   passenger open    byte0 = 0x16 = 0001 0110   -> bit 4
+    // Pinned by BcmFrame60DDoorTests.
     [CanSignal(3, 1,
-        Description = "Passenger door open (1=open)",
-        MinValue = 0, MaxValue = 1)]
-    public partial bool PassengerDoorOpen { get; init; }
-
-    [CanSignal(4, 1,
         Description = "Driver door open (1=open)",
         MinValue = 0, MaxValue = 1)]
     public partial bool DriverDoorOpen { get; init; }
+
+    [CanSignal(4, 1,
+        Description = "Passenger door open (1=open)",
+        MinValue = 0, MaxValue = 1)]
+    public partial bool PassengerDoorOpen { get; init; }
 
     [CanSignal(5, 1,
         Description = "Rear left door open (1=open)",

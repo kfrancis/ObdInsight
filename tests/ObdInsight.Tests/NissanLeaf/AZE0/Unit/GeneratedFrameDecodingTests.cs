@@ -284,4 +284,61 @@ public class GeneratedFrameDecodingTests
         await Assert.That(frame.RightTurnSignalFeedback).IsFalse();
         await Assert.That(frame.VehicleState).IsEqualTo(3); // ON/Ready (parked in READY)
     }
+
+    /// <summary>
+    /// Pins 0x60D bits 3 and 4 to the correct doors.
+    ///
+    /// These were transposed until 2026-08-31 and nothing caught it: both bits decoded, and the
+    /// only existing 0x60D test used the all-doors-closed payload, where the two are
+    /// indistinguishable. Telling them apart requires knowing which door was physically open,
+    /// which is why these payloads come from guided stimulus probes on a 2017 AZE0 rather than
+    /// from a DBC or a passive capture.
+    ///
+    /// Captured, three repetitions each, byte 0 identical every time:
+    ///   all closed       0x06 = 0000 0110
+    ///   driver open      0x0E = 0000 1110   (bit 3)
+    ///   passenger open   0x16 = 0001 0110   (bit 4)
+    ///
+    /// Bits 1-2 stay set throughout (ParkingLights) and bits 5-7 stay clear, so the difference
+    /// between the two payloads is exactly the one bit under test.
+    /// </summary>
+    [Test]
+    public async Task BcmFrame60d_DriverDoorOpen_SetsBit3Only()
+    {
+        var frame = BcmFrame_60D_AZE0.Parse(Captured("0E06000000000000"));
+
+        await Assert.That(frame.DriverDoorOpen).IsTrue();
+        await Assert.That(frame.PassengerDoorOpen).IsFalse();
+        await Assert.That(frame.RearLeftDoorOpen).IsFalse();
+        await Assert.That(frame.RearRightDoorOpen).IsFalse();
+        await Assert.That(frame.TrunkOpen).IsFalse();
+    }
+
+    [Test]
+    public async Task BcmFrame60d_PassengerDoorOpen_SetsBit4Only()
+    {
+        var frame = BcmFrame_60D_AZE0.Parse(Captured("1606000000000000"));
+
+        await Assert.That(frame.PassengerDoorOpen).IsTrue();
+        await Assert.That(frame.DriverDoorOpen).IsFalse();
+        await Assert.That(frame.RearLeftDoorOpen).IsFalse();
+        await Assert.That(frame.RearRightDoorOpen).IsFalse();
+        await Assert.That(frame.TrunkOpen).IsFalse();
+    }
+
+    /// <summary>
+    /// The confirmed-correct neighbours, pinned alongside the fix. Their being right either side
+    /// of the swap is what made the swap unambiguous rather than a shifted field.
+    /// </summary>
+    [Test]
+    public async Task BcmFrame60d_LightingAndLocks_MatchGuidedProbeBits()
+    {
+        // fog (bit 8) and high beam (bit 11) both on: byte 1 = 0x09 over the closed baseline.
+        var lights = BcmFrame_60D_AZE0.Parse(Captured("0609000000000000"));
+
+        await Assert.That(lights.FogLights).IsTrue();
+        await Assert.That(lights.MainBeam).IsTrue();
+        await Assert.That(lights.DriverDoorOpen).IsFalse();
+        await Assert.That(lights.PassengerDoorOpen).IsFalse();
+    }
 }
