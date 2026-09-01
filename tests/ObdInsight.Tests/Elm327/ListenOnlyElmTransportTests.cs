@@ -60,7 +60,7 @@ public class ListenOnlyElmTransportTests
         await Assert.That(async () => await WriteAsync(guarded, command, token))
             .Throws<InvalidOperationException>();
 
-        await Assert.That(guarded.BlockedAttempts).HasCount().EqualTo(1);
+        await Assert.That(guarded.BlockedAttempts).Count().IsEqualTo(1);
     }
 
     /// <summary>

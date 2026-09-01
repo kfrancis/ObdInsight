@@ -341,4 +341,90 @@ public class GeneratedFrameDecodingTests
         await Assert.That(lights.DriverDoorOpen).IsFalse();
         await Assert.That(lights.PassengerDoorOpen).IsFalse();
     }
+
+    /// <summary>
+    /// The three remaining openings, each captured with only that one open. Byte 0 walks
+    /// 0x26 / 0x46 / 0x86 over the 0x06 closed baseline - one bit at a time, which is what makes
+    /// each assignment unambiguous.
+    /// </summary>
+    [Test]
+    [Arguments("2606000000000000", "rear-left")]
+    [Arguments("4606000000000000", "rear-right")]
+    [Arguments("8606000000000000", "hatch")]
+    public async Task BcmFrame60d_EachRearOpening_SetsOnlyItsOwnBit(string payload, string which)
+    {
+        var frame = BcmFrame_60D_AZE0.Parse(Captured(payload));
+
+        await Assert.That(frame.RearLeftDoorOpen).IsEqualTo(which == "rear-left");
+        await Assert.That(frame.RearRightDoorOpen).IsEqualTo(which == "rear-right");
+        await Assert.That(frame.TrunkOpen).IsEqualTo(which == "hatch");
+
+        // The front doors stay shut throughout, so a future off-by-one into bits 3/4 fails here.
+        await Assert.That(frame.DriverDoorOpen).IsFalse();
+        await Assert.That(frame.PassengerDoorOpen).IsFalse();
+    }
+
+    [Test]
+    public async Task BcmFrame60d_Locked_SetsBothDoorLockBits()
+    {
+        var frame = BcmFrame_60D_AZE0.Parse(Captured("0606180000000000"));
+
+        await Assert.That(frame.DoorLockStatusOtherDoors).IsTrue();
+        await Assert.That(frame.DoorLockStatusDriverDoor).IsTrue();
+    }
+
+    /// <summary>
+    /// Indicator lamp feedback, captured mid-flash. Both phases are asserted because a blinking
+    /// bit is only meaningful as a pair - a test pinning one phase would pass against a decoder
+    /// that returned a constant.
+    /// </summary>
+    [Test]
+    public async Task BcmFrame60d_LeftIndicatorLamp_TracksBothBlinkPhases()
+    {
+        var lit = BcmFrame_60D_AZE0.Parse(Captured("0026000000000000"));
+        var dark = BcmFrame_60D_AZE0.Parse(Captured("0006000000000000"));
+
+        await Assert.That(lit.LeftTurnSignalFeedback).IsTrue();
+        await Assert.That(dark.LeftTurnSignalFeedback).IsFalse();
+
+        // The right lamp is dark in both frames - only the left stalk was operated.
+        await Assert.That(lit.RightTurnSignalFeedback).IsFalse();
+        await Assert.That(dark.RightTurnSignalFeedback).IsFalse();
+    }
+
+    /// <summary>
+    /// 0x174 byte 3 carries the shifter position: 0xAA in Park, 0x99 in Reverse. The guided probe
+    /// flagged bits 24, 25, 28 and 29 as responding, and 0xAA ^ 0x99 = 0x33 - precisely those
+    /// four bits. Byte 4 is a free-running counter and is deliberately not asserted.
+    /// </summary>
+    [Test]
+    [Arguments("000000AA0A000000", 170)]
+    [Arguments("0000009908000000", 153)]
+    public async Task VcmFrame174_ShifterPosition_MatchesCapturedGearStates(string payload, int expected)
+    {
+        var frame = VcmFrame_174_AZE0.Parse(Captured(payload));
+
+        await Assert.That(frame.ShifterPosition).IsEqualTo(expected);
+    }
+
+    /// <summary>
+    /// 0x54B FanSpeed occupies bits 35-39. Captured with the fan at maximum and off:
+    /// byte 4 = 0x3C vs 0x04, giving (0x3C &gt;&gt; 3) &amp; 0x1F = 7 and 0.
+    ///
+    /// ClimateControlStatus is asserted alongside it because byte 0 is claimed by three separate
+    /// signals in the current definition with incompatible scalings; these bytes match its
+    /// documented 0x10/0x11 values and nothing else.
+    /// </summary>
+    [Test]
+    public async Task HvacFrame54b_FanSpeed_MatchesCapturedMaxAndOff()
+    {
+        var max = HvacFrame_54B_AZE0.Parse(Captured("104888123C000001"));
+        var off = HvacFrame_54B_AZE0.Parse(Captured("1108800A04000000"));
+
+        await Assert.That(max.FanSpeed).IsEqualTo(7);
+        await Assert.That(off.FanSpeed).IsEqualTo(0);
+
+        await Assert.That(max.ClimateControlStatus).IsEqualTo(0x10);
+        await Assert.That(off.ClimateControlStatus).IsEqualTo(0x11);
+    }
 }
