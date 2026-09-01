@@ -88,6 +88,60 @@ public class GeneratedFrameDecodingTests
         await Assert.That(frame.HistDataTemperatureAvg).IsEqualTo(5.0);
     }
 
+    /// <summary>
+    /// 0x5C0 is multiplexed: bits 6-7 of byte 0 select whether the payload carries the maximum,
+    /// average or minimum of the battery's recorded history, and every HistData* group reuses the
+    /// same bit positions across all three.
+    ///
+    /// Before multiplexor support each group's three variants decoded identical bits and returned
+    /// identical values, so two of every three were wrong on every frame. These payloads are real,
+    /// one per branch, taken from the 2026-08-31 captures - 447 frames of 0x5C0 were recorded with
+    /// all three selectors present.
+    ///
+    /// The assertion that matters is as much about the nulls as the values: a variant that does
+    /// not apply must report absent rather than a number, because zero is a legitimate reading for
+    /// these fields and a default would be indistinguishable from a real measurement.
+    /// </summary>
+    [Test]
+    [Arguments("407E7E0042081F00", 1)]   // byte 0 = 0x40 -> maximum
+    [Arguments("807C7CFF80DC1F00", 2)]   // byte 0 = 0x80 -> average
+    [Arguments("C07C7CFF42DC1F00", 3)]   // byte 0 = 0xC0 -> minimum
+    public async Task BatteryFrame5c0_PopulatesOnlyTheSelectedMuxBranch(string payload, int expectedMux)
+    {
+        var frame = BatteryFrame_5C0_AZE0.Parse(Captured(payload));
+
+        await Assert.That(frame.HistoricalDataSwitchFlag).IsEqualTo(expectedMux);
+
+        await Assert.That(frame.HistDataTemperatureMax.HasValue).IsEqualTo(expectedMux == 1);
+        await Assert.That(frame.HistDataTemperatureAvg.HasValue).IsEqualTo(expectedMux == 2);
+        await Assert.That(frame.HistDataTemperatureMin.HasValue).IsEqualTo(expectedMux == 3);
+
+        await Assert.That(frame.HistDataCellVoltageMax.HasValue).IsEqualTo(expectedMux == 1);
+        await Assert.That(frame.HistDataCellVoltageAvg.HasValue).IsEqualTo(expectedMux == 2);
+        await Assert.That(frame.HistDataCellVoltageMin.HasValue).IsEqualTo(expectedMux == 3);
+
+        // Unmultiplexed signals are present whatever the selector says.
+        await Assert.That(frame.DiagnosisTroubleCode).IsEqualTo(0);
+    }
+
+    /// <summary>
+    /// The three variants of a group share bit positions, so the one that is populated must carry
+    /// the value those bits actually hold - the mux gate must not disturb the decode itself.
+    /// </summary>
+    [Test]
+    public async Task BatteryFrame5c0_SelectedBranchDecodesTheSharedBits()
+    {
+        // byte 2 = 0x7E (126) -> 126 * 0.5 - 40 = 23.0 degC, on the maximum branch.
+        var max = BatteryFrame_5C0_AZE0.Parse(Captured("407E7E0042081F00"));
+        await Assert.That(max.HistDataTemperatureMax).IsEqualTo(23.0);
+        await Assert.That(max.HistDataTemperatureAvg).IsNull();
+
+        // Same bits, average branch: byte 2 = 0x7C (124) -> 22.0 degC.
+        var avg = BatteryFrame_5C0_AZE0.Parse(Captured("807C7CFF80DC1F00"));
+        await Assert.That(avg.HistDataTemperatureAvg).IsEqualTo(22.0);
+        await Assert.That(avg.HistDataTemperatureMax).IsNull();
+    }
+
     // ------------------------------------------------------------------------------------
     // Hardware-capture regression tests. Raw bytes below are verbatim from a 2017 Leaf AZE0
     // (30 kWh, parked in READY, charging, ambient ~22 °C, pack ~96%) captured 2026-07-18 —

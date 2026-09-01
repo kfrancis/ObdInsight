@@ -67,6 +67,43 @@ namespace ObdInsight.SourceGeneration
             true);
 
         /// <summary>
+        ///     Reported when a frame declares more than one multiplexor. Which one selects the
+        ///     variants would be arbitrary, and the generated decoder can only branch on one.
+        /// </summary>
+        private static readonly DiagnosticDescriptor MultipleMultiplexors = new(
+            "OBDCAN003",
+            "CAN frame declares more than one multiplexor",
+            "Frame '{0}' marks both '{1}' and '{2}' as the multiplexor; a frame may have only one",
+            "ObdInsight.SourceGeneration",
+            DiagnosticSeverity.Error,
+            true);
+
+        /// <summary>
+        ///     Reported when a signal declares a MuxValue in a frame with no multiplexor. There is
+        ///     nothing to compare it against, so the signal could never be populated.
+        /// </summary>
+        private static readonly DiagnosticDescriptor MuxValueWithoutMultiplexor = new(
+            "OBDCAN004",
+            "CAN signal declares a MuxValue but its frame has no multiplexor",
+            "Signal '{0}' declares a MuxValue, but frame '{1}' marks no signal with IsMultiplexor",
+            "ObdInsight.SourceGeneration",
+            DiagnosticSeverity.Error,
+            true);
+
+        /// <summary>
+        ///     Reported when a multiplexed signal is not nullable. It has no value in frames
+        ///     selecting a different variant, and for most fields zero is a legitimate reading -
+        ///     so a non-nullable property cannot distinguish "absent" from "measured zero".
+        /// </summary>
+        private static readonly DiagnosticDescriptor MuxSignalMustBeNullable = new(
+            "OBDCAN005",
+            "Multiplexed CAN signal must have a nullable property type",
+            "Signal '{0}' is multiplexed and must be declared nullable, but its type is '{1}'",
+            "ObdInsight.SourceGeneration",
+            DiagnosticSeverity.Error,
+            true);
+
+        /// <summary>
         ///     Initializes the incremental source generator by registering syntax providers and source outputs for classes
         ///     marked with the [CanFrame] attribute.
         /// </summary>
@@ -149,6 +186,50 @@ namespace ObdInsight.SourceGeneration
         /// </summary>
         private static void ReportInvalidSignals(SourceProductionContext context, CanFrameModel model)
         {
+            // Multiplexing is declared across two attributes that have to agree. Getting it wrong
+            // would otherwise emit code referencing an undeclared __mux, which surfaces as a
+            // confusing cascade of errors in generated source rather than at the declaration.
+            var multiplexors = model.Signals.Where(s => s.IsMultiplexor).ToList();
+            if (multiplexors.Count > 1)
+            {
+                foreach (var extra in multiplexors.Skip(1))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        MultipleMultiplexors,
+                        extra.Location?.ToLocation() ?? Location.None,
+                        model.ClassName,
+                        multiplexors[0].PropertyName,
+                        extra.PropertyName));
+                }
+            }
+
+            if (multiplexors.Count == 0)
+            {
+                foreach (var orphan in model.Signals.Where(s => s.MuxValue != Attributes.CanSignalAttribute.NotMultiplexed))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        MuxValueWithoutMultiplexor,
+                        orphan.Location?.ToLocation() ?? Location.None,
+                        orphan.PropertyName,
+                        model.ClassName));
+                }
+            }
+
+            foreach (var signal in model.Signals)
+            {
+                // A multiplexed signal is absent from frames selecting another variant, so its
+                // property must be able to say so.
+                if (signal.MuxValue != Attributes.CanSignalAttribute.NotMultiplexed &&
+                    !signal.PropertyType.EndsWith("?", StringComparison.Ordinal))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        MuxSignalMustBeNullable,
+                        signal.Location?.ToLocation() ?? Location.None,
+                        signal.PropertyName,
+                        signal.PropertyType));
+                }
+            }
+
             foreach (var signal in model.Signals)
             {
                 var location = signal.Location?.ToLocation() ?? Location.None;
@@ -288,6 +369,12 @@ namespace ObdInsight.SourceGeneration
 
                 var isBigEndian = false;
 
+
+                var isMultiplexor = false;
+
+
+                var muxValue = Attributes.CanSignalAttribute.NotMultiplexed;
+
                 foreach (var namedArg in signalAttr.NamedArguments)
                 {
                     switch (namedArg.Key)
@@ -326,6 +413,18 @@ namespace ObdInsight.SourceGeneration
                         case "IncludeInGeneration":
                             includeInGeneration = (bool)namedArg.Value.Value!;
                             break;
+                        case "IsMultiplexor":
+
+                            isMultiplexor = (bool)namedArg.Value.Value!;
+
+                            break;
+
+                        case "MuxValue":
+
+                            muxValue = (int)namedArg.Value.Value!;
+
+                            break;
+
                         case "ByteOrder":
                             // Roslyn hands an enum named argument to the generator as its boxed
                             // UNDERLYING INT, not as the enum type. Casting straight to the enum
@@ -358,6 +457,12 @@ namespace ObdInsight.SourceGeneration
                     maxValue,
 
                     isBigEndian,
+
+
+                    isMultiplexor,
+
+
+                    muxValue,
                     SignalLocation.From(member)));
             }
 
@@ -483,6 +588,19 @@ namespace ObdInsight.SourceGeneration
             sb.AppendLine(
                 $"                throw new ArgumentException($\"CAN frame data must be at least {minimumLength} byte(s), got {{data.Length}}\", nameof(data));");
             sb.AppendLine();
+
+            // The selector has to be read before the initializer, because the multiplexed
+            // signals' expressions branch on it. Emitted only when the frame declares one, so
+            // non-multiplexed frames generate exactly what they did before.
+            var multiplexor = model.Signals.FirstOrDefault(s => s.IsMultiplexor);
+            if (multiplexor is not null)
+            {
+                sb.AppendLine(
+                    $"            // Multiplexor: signals tagged with a MuxValue exist only when this matches.");
+                sb.AppendLine($"            var __mux = {GenerateReadExpression(multiplexor)};");
+                sb.AppendLine();
+            }
+
             sb.AppendLine($"            return new {model.ClassName}");
             sb.AppendLine("            {");
 
@@ -601,13 +719,38 @@ namespace ObdInsight.SourceGeneration
         /// </returns>
         private static string GenerateDecodeExpression(CanSignalModel signal)
         {
+            var expression = GenerateReadExpression(signal);
+
+            if (signal.MuxValue == Attributes.CanSignalAttribute.NotMultiplexed)
+            {
+                return expression;
+            }
+
+            // A multiplexed signal exists only in frames selecting its variant. Elsewhere it is
+            // null rather than a default: zero is a legitimate reading for most of these fields,
+            // so a default would be indistinguishable from real data.
+            return $"__mux == {signal.MuxValue} ? ({BaseType(signal.PropertyType)}?)({expression}) : null";
+        }
+
+        /// <summary>The property type without its nullable marker; mux'd signals declare one.</summary>
+        private static string BaseType(string propertyType) =>
+            propertyType.EndsWith("?", StringComparison.Ordinal)
+                ? propertyType.Substring(0, propertyType.Length - 1)
+                : propertyType;
+
+        private static string GenerateReadExpression(CanSignalModel signal)
+        {
+            // Multiplexed signals are declared nullable, but the read and cast decisions below
+            // are about the underlying type.
+            var propertyType = BaseType(signal.PropertyType);
+
             // Determine the read method based on type, signedness and bit order. The Be suffix
             // selects the Motorola readers; Intel keeps the original names so every existing
             // definition emits byte-for-byte the same call it did before.
             var suffix = signal.IsBigEndian ? "Be" : string.Empty;
 
             string readMethod;
-            if (signal.PropertyType == "bool")
+            if (propertyType == "bool")
             {
                 readMethod = "CanBits.ReadBool" + suffix;
             }
@@ -621,7 +764,7 @@ namespace ObdInsight.SourceGeneration
             }
 
             // For bool, just read the bit
-            if (signal.PropertyType == "bool")
+            if (propertyType == "bool")
             {
                 return $"{readMethod}(data, {signal.BitStart})";
             }
@@ -637,7 +780,7 @@ namespace ObdInsight.SourceGeneration
 
             if (!needsScaling)
             {
-                return CastExpression(rawExpr, signal.PropertyType);
+                return CastExpression(rawExpr, propertyType);
             }
 
             // Build scaling expression: (raw * factor) + offset
@@ -656,12 +799,12 @@ namespace ObdInsight.SourceGeneration
             }
 
             // ALWAYS wrap scaled expressions in explicit cast for clarity
-            if (signal.PropertyType is "double" or "float")
+            if (propertyType is "double" or "float")
             {
-                return $"({signal.PropertyType})({scaledExpr})";
+                return $"({propertyType})({scaledExpr})";
             }
 
-            return CastExpression(scaledExpr, signal.PropertyType);
+            return CastExpression(scaledExpr, propertyType);
         }
 
         /// <summary>
@@ -1013,6 +1156,10 @@ namespace ObdInsight.SourceGeneration
         double? MinValue,
         double? MaxValue,
         bool IsBigEndian,
+
+        bool IsMultiplexor,
+
+        int MuxValue,
         SignalLocation? Location);
 
     /// <summary>
