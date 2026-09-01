@@ -252,6 +252,99 @@ namespace ObdInsight.SourceGeneration.Tests
             await Verify(result);
         }
 
+        /// <summary>
+        /// Motorola signals must emit the *Be readers. The interesting part is not that they
+        /// differ but that reading the attribute works at all: Roslyn delivers an enum named
+        /// argument as its boxed underlying int, so a generator that casts to the enum type
+        /// throws and one that matches on the member name silently never matches - defaulting
+        /// every signal to Intel while the snapshot still looks plausible.
+        ///
+        /// The frame mixes both orders so the snapshot shows the two call forms side by side.
+        /// LB_Current here is the real 0x1DB definition from EV-can_AZE0.dbc: big-endian,
+        /// start 7, length 11, signed, 0.5 A per bit.
+        /// </summary>
+        [Test]
+        public async Task GeneratesMotorolaSignals()
+        {
+            var source = """
+            using ObdInsight.SourceGeneration.Attributes;
+
+            namespace TestNamespace
+            {
+                [CanFrame(0x1DB)]
+                public partial class BatteryFrame
+                {
+                    [CanSignal(7, 11, ByteOrder = CanByteOrder.Motorola, IsSigned = true,
+                        Factor = 0.5, Unit = "A", Description = "Pack current, DBC big-endian")]
+                    public partial double Current { get; }
+
+                    [CanSignal(7, 10, ByteOrder = CanByteOrder.Motorola,
+                        Description = "State of charge, DBC big-endian")]
+                    public partial int Soc { get; }
+
+                    [CanSignal(11, 2, ByteOrder = CanByteOrder.Motorola,
+                        Description = "Relay cut request")]
+                    public partial bool RelayCutRequested { get; }
+
+                    [CanSignal(32, 8, Description = "Left as Intel, to prove the default holds")]
+                    public partial int IntelByte { get; }
+                }
+            }
+            """;
+
+            var result = GeneratorTestHelper.RunGenerator(source);
+            await Verify(result);
+        }
+
+        /// <summary>
+        /// A multiplexed frame reuses the same bit positions for different signals depending on a
+        /// selector. Modelled on Leaf 0x5C0, where a two-bit flag says whether the frame carries
+        /// the minimum, maximum or average of the battery's recorded history - the same bytes
+        /// meaning three different things.
+        ///
+        /// The generated Parse must read the selector first and populate only the matching
+        /// variant, leaving the others null. Null rather than default matters: zero is a
+        /// legitimate reading for these fields, so a default would be indistinguishable from a
+        /// real measurement.
+        /// </summary>
+        [Test]
+        public async Task GeneratesMultiplexedSignals()
+        {
+            var source = """
+            using ObdInsight.SourceGeneration.Attributes;
+
+            namespace TestNamespace
+            {
+                [CanFrame(0x5C0)]
+                public partial class HistoryFrame
+                {
+                    [CanSignal(6, 2, IsMultiplexor = true,
+                        Description = "Selects which history variant this frame carries")]
+                    public partial int HistoricalDataSwitchFlag { get; }
+
+                    [CanSignal(17, 7, MuxValue = 1, Offset = -40.0, Unit = "degC",
+                        Description = "Highest recorded pack temperature")]
+                    public partial double? TemperatureMax { get; }
+
+                    [CanSignal(17, 7, MuxValue = 3, Offset = -40.0, Unit = "degC",
+                        Description = "Lowest recorded pack temperature")]
+                    public partial double? TemperatureMin { get; }
+
+                    [CanSignal(42, 6, MuxValue = 2, Factor = 40.0, Offset = 1900.0, Unit = "mV",
+                        Description = "Average recorded cell voltage")]
+                    public partial int? CellVoltageAvg { get; }
+
+                    [CanSignal(24, 8,
+                        Description = "Present in every frame regardless of the selector")]
+                    public partial int AlwaysPresent { get; }
+                }
+            }
+            """;
+
+            var result = GeneratorTestHelper.RunGenerator(source);
+            await Verify(result);
+        }
+
         [Test]
         public async Task GeneratesSignedScaledDoubleSignal()
         {

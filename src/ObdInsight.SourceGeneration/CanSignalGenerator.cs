@@ -67,6 +67,43 @@ namespace ObdInsight.SourceGeneration
             true);
 
         /// <summary>
+        ///     Reported when a frame declares more than one multiplexor. Which one selects the
+        ///     variants would be arbitrary, and the generated decoder can only branch on one.
+        /// </summary>
+        private static readonly DiagnosticDescriptor MultipleMultiplexors = new(
+            "OBDCAN003",
+            "CAN frame declares more than one multiplexor",
+            "Frame '{0}' marks both '{1}' and '{2}' as the multiplexor; a frame may have only one",
+            "ObdInsight.SourceGeneration",
+            DiagnosticSeverity.Error,
+            true);
+
+        /// <summary>
+        ///     Reported when a signal declares a MuxValue in a frame with no multiplexor. There is
+        ///     nothing to compare it against, so the signal could never be populated.
+        /// </summary>
+        private static readonly DiagnosticDescriptor MuxValueWithoutMultiplexor = new(
+            "OBDCAN004",
+            "CAN signal declares a MuxValue but its frame has no multiplexor",
+            "Signal '{0}' declares a MuxValue, but frame '{1}' marks no signal with IsMultiplexor",
+            "ObdInsight.SourceGeneration",
+            DiagnosticSeverity.Error,
+            true);
+
+        /// <summary>
+        ///     Reported when a multiplexed signal is not nullable. It has no value in frames
+        ///     selecting a different variant, and for most fields zero is a legitimate reading -
+        ///     so a non-nullable property cannot distinguish "absent" from "measured zero".
+        /// </summary>
+        private static readonly DiagnosticDescriptor MuxSignalMustBeNullable = new(
+            "OBDCAN005",
+            "Multiplexed CAN signal must have a nullable property type",
+            "Signal '{0}' is multiplexed and must be declared nullable, but its type is '{1}'",
+            "ObdInsight.SourceGeneration",
+            DiagnosticSeverity.Error,
+            true);
+
+        /// <summary>
         ///     Initializes the incremental source generator by registering syntax providers and source outputs for classes
         ///     marked with the [CanFrame] attribute.
         /// </summary>
@@ -149,19 +186,74 @@ namespace ObdInsight.SourceGeneration
         /// </summary>
         private static void ReportInvalidSignals(SourceProductionContext context, CanFrameModel model)
         {
+            // Multiplexing is declared across two attributes that have to agree. Getting it wrong
+            // would otherwise emit code referencing an undeclared __mux, which surfaces as a
+            // confusing cascade of errors in generated source rather than at the declaration.
+            var multiplexors = model.Signals.Where(s => s.IsMultiplexor).ToList();
+            if (multiplexors.Count > 1)
+            {
+                foreach (var extra in multiplexors.Skip(1))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        MultipleMultiplexors,
+                        extra.Location?.ToLocation() ?? Location.None,
+                        model.ClassName,
+                        multiplexors[0].PropertyName,
+                        extra.PropertyName));
+                }
+            }
+
+            if (multiplexors.Count == 0)
+            {
+                foreach (var orphan in model.Signals.Where(s => s.MuxValue != Attributes.CanSignalAttribute.NotMultiplexed))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        MuxValueWithoutMultiplexor,
+                        orphan.Location?.ToLocation() ?? Location.None,
+                        orphan.PropertyName,
+                        model.ClassName));
+                }
+            }
+
+            foreach (var signal in model.Signals)
+            {
+                // A multiplexed signal is absent from frames selecting another variant, so its
+                // property must be able to say so.
+                if (signal.MuxValue != Attributes.CanSignalAttribute.NotMultiplexed &&
+                    !signal.PropertyType.EndsWith("?", StringComparison.Ordinal))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        MuxSignalMustBeNullable,
+                        signal.Location?.ToLocation() ?? Location.None,
+                        signal.PropertyName,
+                        signal.PropertyType));
+                }
+            }
+
             foreach (var signal in model.Signals)
             {
                 var location = signal.Location?.ToLocation() ?? Location.None;
 
-                if (signal.BitStart < 0 || signal.BitLength < 1 ||
-                    signal.BitStart + signal.BitLength > PayloadBits)
+                // The bound differs by order. Intel grows upward from the start bit, so the last
+                // bit is BitStart + BitLength - 1. Motorola's start bit is the signal's MSB and it
+                // grows downward through the big-endian view, so what must fit is
+                // MotorolaMsbIndex(BitStart) + BitLength. Applying the Intel rule to a Motorola
+                // signal both rejects valid layouts and accepts invalid ones - big-endian start 7
+                // length 10 is legal (it occupies bits 0..9 of the BE view) yet fails 7 + 10 <= 64
+                // nowhere, while big-endian start 63 length 2 is illegal and the Intel rule passes it.
+                var lastBitIndex = signal.IsBigEndian
+                    ? CanBits.MotorolaMsbIndex(signal.BitStart) + signal.BitLength - 1
+                    : signal.BitStart + signal.BitLength - 1;
+
+                if (signal.BitStart < 0 || signal.BitStart > PayloadBits - 1 || signal.BitLength < 1 ||
+                    lastBitIndex >= PayloadBits)
                 {
                     context.ReportDiagnostic(Diagnostic.Create(
                         SignalRangeOutsidePayload,
                         location,
                         signal.PropertyName,
                         signal.BitStart,
-                        signal.BitStart + signal.BitLength - 1,
+                        lastBitIndex,
                         PayloadBits));
                     continue;
                 }
@@ -275,6 +367,14 @@ namespace ObdInsight.SourceGeneration
                 double? maxValue = null;
                 var includeInGeneration = true;
 
+                var isBigEndian = false;
+
+
+                var isMultiplexor = false;
+
+
+                var muxValue = Attributes.CanSignalAttribute.NotMultiplexed;
+
                 foreach (var namedArg in signalAttr.NamedArguments)
                 {
                     switch (namedArg.Key)
@@ -313,6 +413,27 @@ namespace ObdInsight.SourceGeneration
                         case "IncludeInGeneration":
                             includeInGeneration = (bool)namedArg.Value.Value!;
                             break;
+                        case "IsMultiplexor":
+
+                            isMultiplexor = (bool)namedArg.Value.Value!;
+
+                            break;
+
+                        case "MuxValue":
+
+                            muxValue = (int)namedArg.Value.Value!;
+
+                            break;
+
+                        case "ByteOrder":
+                            // Roslyn hands an enum named argument to the generator as its boxed
+                            // UNDERLYING INT, not as the enum type. Casting straight to the enum
+                            // throws, and comparing against a member name silently never matches,
+                            // which would default every signal to Intel while looking correct -
+                            // the failure mode behind AUDIT.md C1 and the UDS FrameType bug.
+                            // Converting the int is the only form that is safe here.
+                            isBigEndian = Convert.ToInt32(namedArg.Value.Value) == (int)Attributes.CanByteOrder.Motorola;
+                            break;
                     }
                 }
 
@@ -334,6 +455,14 @@ namespace ObdInsight.SourceGeneration
                     signalDescription,
                     minValue,
                     maxValue,
+
+                    isBigEndian,
+
+
+                    isMultiplexor,
+
+
+                    muxValue,
                     SignalLocation.From(member)));
             }
 
@@ -459,6 +588,19 @@ namespace ObdInsight.SourceGeneration
             sb.AppendLine(
                 $"                throw new ArgumentException($\"CAN frame data must be at least {minimumLength} byte(s), got {{data.Length}}\", nameof(data));");
             sb.AppendLine();
+
+            // The selector has to be read before the initializer, because the multiplexed
+            // signals' expressions branch on it. Emitted only when the frame declares one, so
+            // non-multiplexed frames generate exactly what they did before.
+            var multiplexor = model.Signals.FirstOrDefault(s => s.IsMultiplexor);
+            if (multiplexor is not null)
+            {
+                sb.AppendLine(
+                    $"            // Multiplexor: signals tagged with a MuxValue exist only when this matches.");
+                sb.AppendLine($"            var __mux = {GenerateReadExpression(multiplexor)};");
+                sb.AppendLine();
+            }
+
             sb.AppendLine($"            return new {model.ClassName}");
             sb.AppendLine("            {");
 
@@ -539,7 +681,15 @@ namespace ObdInsight.SourceGeneration
             var highestBit = 0;
             foreach (var signal in model.Signals)
             {
-                var lastBit = signal.BitStart + signal.BitLength - 1;
+                // Endianness-aware, for the same reason the range diagnostic is. A Motorola
+                // signal grows downward through the big-endian view, so the Intel expression
+                // overstates how many bytes it needs: 0x260's PowerConsumptMotor (23|12@0) ends
+                // at bit 27 - four bytes, exactly the DLC the vehicle sends - but the Intel
+                // formula gives 34 and would demand five, making Parse throw on every real frame.
+                var lastBit = signal.IsBigEndian
+                    ? CanBits.MotorolaMsbIndex(signal.BitStart) + signal.BitLength - 1
+                    : signal.BitStart + signal.BitLength - 1;
+
                 if (lastBit > highestBit)
                 {
                     highestBit = lastBit;
@@ -569,23 +719,52 @@ namespace ObdInsight.SourceGeneration
         /// </returns>
         private static string GenerateDecodeExpression(CanSignalModel signal)
         {
-            // Determine the read method based on type and signedness
-            string readMethod;
-            if (signal.PropertyType == "bool")
+            var expression = GenerateReadExpression(signal);
+
+            if (signal.MuxValue == Attributes.CanSignalAttribute.NotMultiplexed)
             {
-                readMethod = "CanBits.ReadBool";
+                return expression;
+            }
+
+            // A multiplexed signal exists only in frames selecting its variant. Elsewhere it is
+            // null rather than a default: zero is a legitimate reading for most of these fields,
+            // so a default would be indistinguishable from real data.
+            return $"__mux == {signal.MuxValue} ? ({BaseType(signal.PropertyType)}?)({expression}) : null";
+        }
+
+        /// <summary>The property type without its nullable marker; mux'd signals declare one.</summary>
+        private static string BaseType(string propertyType) =>
+            propertyType.EndsWith("?", StringComparison.Ordinal)
+                ? propertyType.Substring(0, propertyType.Length - 1)
+                : propertyType;
+
+        private static string GenerateReadExpression(CanSignalModel signal)
+        {
+            // Multiplexed signals are declared nullable, but the read and cast decisions below
+            // are about the underlying type.
+            var propertyType = BaseType(signal.PropertyType);
+
+            // Determine the read method based on type, signedness and bit order. The Be suffix
+            // selects the Motorola readers; Intel keeps the original names so every existing
+            // definition emits byte-for-byte the same call it did before.
+            var suffix = signal.IsBigEndian ? "Be" : string.Empty;
+
+            string readMethod;
+            if (propertyType == "bool")
+            {
+                readMethod = "CanBits.ReadBool" + suffix;
             }
             else if (signal.IsSigned)
             {
-                readMethod = "CanBits.ReadSigned";
+                readMethod = "CanBits.ReadSigned" + suffix;
             }
             else
             {
-                readMethod = "CanBits.ReadUnsigned";
+                readMethod = "CanBits.ReadUnsigned" + suffix;
             }
 
             // For bool, just read the bit
-            if (signal.PropertyType == "bool")
+            if (propertyType == "bool")
             {
                 return $"{readMethod}(data, {signal.BitStart})";
             }
@@ -601,7 +780,7 @@ namespace ObdInsight.SourceGeneration
 
             if (!needsScaling)
             {
-                return CastExpression(rawExpr, signal.PropertyType);
+                return CastExpression(rawExpr, propertyType);
             }
 
             // Build scaling expression: (raw * factor) + offset
@@ -620,12 +799,12 @@ namespace ObdInsight.SourceGeneration
             }
 
             // ALWAYS wrap scaled expressions in explicit cast for clarity
-            if (signal.PropertyType is "double" or "float")
+            if (propertyType is "double" or "float")
             {
-                return $"({signal.PropertyType})({scaledExpr})";
+                return $"({propertyType})({scaledExpr})";
             }
 
-            return CastExpression(scaledExpr, signal.PropertyType);
+            return CastExpression(scaledExpr, propertyType);
         }
 
         /// <summary>
@@ -713,6 +892,60 @@ namespace ObdInsight.SourceGeneration
             sb.AppendLine("            var raw = ReadPayload(data);");
             sb.AppendLine("            var mask = bitLen == 32 ? 0xFFFF_FFFFul : ((1ul << bitLen) - 1ul);");
             sb.AppendLine("            return (uint)((raw >> bitPos) & mask);");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // Motorola readers. These mirror ObdInsight.SourceGeneration.CanBits exactly - the
+            // generator emits its own per-namespace copy, so a reader added to only one of the two
+            // makes generated frames and hand-written callers disagree without any build error.
+            sb.AppendLine("        public static bool ReadBoolBe(ReadOnlySpan<byte> data, int bitPos)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            return ReadUnsignedBe(data, bitPos, 1) != 0;");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            sb.AppendLine("        public static int ReadSignedBe(ReadOnlySpan<byte> data, int bitPos, int bitLen)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            var unsigned = ReadUnsignedBe(data, bitPos, bitLen);");
+            sb.AppendLine("            var signBitMask = 1u << (bitLen - 1);");
+            sb.AppendLine("            if ((unsigned & signBitMask) != 0)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                var signExtendMask = bitLen == 32 ? 0u : ~((1u << bitLen) - 1);");
+            sb.AppendLine("                return (int)(unsigned | signExtendMask);");
+            sb.AppendLine("            }");
+            sb.AppendLine();
+            sb.AppendLine("            return (int)unsigned;");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            sb.AppendLine("        // DBC big-endian (@0): bitPos is the signal's MOST significant bit, and the signal");
+            sb.AppendLine("        // descends within the byte, continuing at bit 7 of the next. Read as a big-endian");
+            sb.AppendLine("        // ulong it becomes one contiguous run, so it reduces to a shift and a mask.");
+            sb.AppendLine("        public static uint ReadUnsignedBe(ReadOnlySpan<byte> data, int bitPos, int bitLen)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            var raw = ReadPayloadBe(data);");
+            sb.AppendLine("            var msbIndex = ((bitPos / 8) * 8) + (7 - (bitPos % 8));");
+            sb.AppendLine("            var mask = bitLen == 32 ? 0xFFFF_FFFFul : ((1ul << bitLen) - 1ul);");
+            sb.AppendLine("            return (uint)((raw >> (64 - (msbIndex + bitLen))) & mask);");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            sb.AppendLine("        // Big-endian counterpart of ReadPayload: byte 0 is the MOST significant, so a short");
+            sb.AppendLine("        // payload zero-extends on the right rather than the left.");
+            sb.AppendLine("        private static ulong ReadPayloadBe(ReadOnlySpan<byte> data)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (data.Length >= 8)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                return BinaryPrimitives.ReadUInt64BigEndian(data);");
+            sb.AppendLine("            }");
+            sb.AppendLine();
+            sb.AppendLine("            ulong raw = 0;");
+            sb.AppendLine("            for (var i = 0; i < data.Length; i++)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                raw |= (ulong)data[i] << ((7 - i) * 8);");
+            sb.AppendLine("            }");
+            sb.AppendLine();
+            sb.AppendLine("            return raw;");
             sb.AppendLine("        }");
             sb.AppendLine();
 
@@ -922,6 +1155,11 @@ namespace ObdInsight.SourceGeneration
         string? Description,
         double? MinValue,
         double? MaxValue,
+        bool IsBigEndian,
+
+        bool IsMultiplexor,
+
+        int MuxValue,
         SignalLocation? Location);
 
     /// <summary>

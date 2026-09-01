@@ -88,6 +88,60 @@ public class GeneratedFrameDecodingTests
         await Assert.That(frame.HistDataTemperatureAvg).IsEqualTo(5.0);
     }
 
+    /// <summary>
+    /// 0x5C0 is multiplexed: bits 6-7 of byte 0 select whether the payload carries the maximum,
+    /// average or minimum of the battery's recorded history, and every HistData* group reuses the
+    /// same bit positions across all three.
+    ///
+    /// Before multiplexor support each group's three variants decoded identical bits and returned
+    /// identical values, so two of every three were wrong on every frame. These payloads are real,
+    /// one per branch, taken from the 2026-08-31 captures - 447 frames of 0x5C0 were recorded with
+    /// all three selectors present.
+    ///
+    /// The assertion that matters is as much about the nulls as the values: a variant that does
+    /// not apply must report absent rather than a number, because zero is a legitimate reading for
+    /// these fields and a default would be indistinguishable from a real measurement.
+    /// </summary>
+    [Test]
+    [Arguments("407E7E0042081F00", 1)]   // byte 0 = 0x40 -> maximum
+    [Arguments("807C7CFF80DC1F00", 2)]   // byte 0 = 0x80 -> average
+    [Arguments("C07C7CFF42DC1F00", 3)]   // byte 0 = 0xC0 -> minimum
+    public async Task BatteryFrame5c0_PopulatesOnlyTheSelectedMuxBranch(string payload, int expectedMux)
+    {
+        var frame = BatteryFrame_5C0_AZE0.Parse(Captured(payload));
+
+        await Assert.That(frame.HistoricalDataSwitchFlag).IsEqualTo(expectedMux);
+
+        await Assert.That(frame.HistDataTemperatureMax.HasValue).IsEqualTo(expectedMux == 1);
+        await Assert.That(frame.HistDataTemperatureAvg.HasValue).IsEqualTo(expectedMux == 2);
+        await Assert.That(frame.HistDataTemperatureMin.HasValue).IsEqualTo(expectedMux == 3);
+
+        await Assert.That(frame.HistDataCellVoltageMax.HasValue).IsEqualTo(expectedMux == 1);
+        await Assert.That(frame.HistDataCellVoltageAvg.HasValue).IsEqualTo(expectedMux == 2);
+        await Assert.That(frame.HistDataCellVoltageMin.HasValue).IsEqualTo(expectedMux == 3);
+
+        // Unmultiplexed signals are present whatever the selector says.
+        await Assert.That(frame.DiagnosisTroubleCode).IsEqualTo(0);
+    }
+
+    /// <summary>
+    /// The three variants of a group share bit positions, so the one that is populated must carry
+    /// the value those bits actually hold - the mux gate must not disturb the decode itself.
+    /// </summary>
+    [Test]
+    public async Task BatteryFrame5c0_SelectedBranchDecodesTheSharedBits()
+    {
+        // byte 2 = 0x7E (126) -> 126 * 0.5 - 40 = 23.0 degC, on the maximum branch.
+        var max = BatteryFrame_5C0_AZE0.Parse(Captured("407E7E0042081F00"));
+        await Assert.That(max.HistDataTemperatureMax).IsEqualTo(23.0);
+        await Assert.That(max.HistDataTemperatureAvg).IsNull();
+
+        // Same bits, average branch: byte 2 = 0x7C (124) -> 22.0 degC.
+        var avg = BatteryFrame_5C0_AZE0.Parse(Captured("807C7CFF80DC1F00"));
+        await Assert.That(avg.HistDataTemperatureAvg).IsEqualTo(22.0);
+        await Assert.That(avg.HistDataTemperatureMax).IsNull();
+    }
+
     // ------------------------------------------------------------------------------------
     // Hardware-capture regression tests. Raw bytes below are verbatim from a 2017 Leaf AZE0
     // (30 kWh, parked in READY, charging, ambient ~22 °C, pack ~96%) captured 2026-07-18 —
@@ -130,13 +184,35 @@ public class GeneratedFrameDecodingTests
     [Test]
     public async Task BatteryFrame55b_NearFullCapture_SocDecodesTenthsOfPercent()
     {
-        // Motorola 10-bit SOC (byte0 + byte1[7..6]): E8 00 => 928 = 92.8% (pack ~96% full).
-        // The pre-audit Intel transcription decoded 1.
+        // Every 0x55B signal the DBC marks @0, decoded through the Motorola reader.
+        //
+        // Soc is unchanged at 928: it previously reached the same value by splitting the field
+        // into two Intel signals and recombining them by hand, so this asserts the direct
+        // mapping produces identical output.
+        //
+        // IrSensorWaveVoltage and SleepEnabled were NOT previously correct - both are @0 in
+        // EV-can_AZE0.dbc but were declared as Intel, so they read unrelated bits.
+        // SleepEnabled is the clearest evidence: Intel gave 0, which the DBC documents as
+        // Reserved rather than a state the controller reports, while Motorola gives 1
+        // (RefuseToSleep) - correct for a vehicle that was awake when this was captured.
         var frame = BatteryFrame_55B_AZE0.Parse(Captured("E800AA00E380135D"));
 
         await Assert.That(frame.Soc).IsEqualTo(928);
-        await Assert.That(frame.AluAnswer).IsEqualTo(0xAA);
-        await Assert.That(frame.IrSensorWaveVoltage).IsEqualTo(769);
+        await Assert.That(frame.AluAnswer).IsEqualTo(0xAA);      // 16|8@1 - Intel, unchanged
+        await Assert.That(frame.IrSensorWaveVoltage).IsEqualTo(910);
+        await Assert.That(frame.SleepEnabled).IsEqualTo(1);
+    }
+
+    /// <summary>
+    /// A second capture five weeks later at a different charge level, so SOC is pinned by two
+    /// independent observations rather than one. 972 = 97.2 %, matching the vehicle display.
+    /// </summary>
+    [Test]
+    public async Task BatteryFrame55b_SecondCapture_SocTracksActualCharge()
+    {
+        var frame = BatteryFrame_55B_AZE0.Parse(Captured("F3005500E2C011B2"));
+
+        await Assert.That(frame.Soc).IsEqualTo(972);
     }
 
     [Test]
@@ -191,6 +267,53 @@ public class GeneratedFrameDecodingTests
         await Assert.That(frame.OutsideAmbientTemperature).IsEqualTo(22.5);
         await Assert.That(frame.ChargeMode).IsEqualTo(2);
         await Assert.That(frame.ClimateControlActive).IsFalse();
+    }
+
+    /// <summary>
+    /// Pins the byte order of 0x284's three 16-bit speed fields.
+    ///
+    /// The captured parked payloads read 0 for all of them, and zero is zero under either order,
+    /// so they cannot show that these are big-endian. These payloads are therefore synthetic:
+    /// each places a single 0x01 byte where only a Motorola read can see it.
+    ///
+    /// Wheel_Speed_FR is 7|16@0, so byte 0 is its high byte: 0x0100 = 256, x0.005 = 1.28 km/h.
+    /// Read as Intel from bit 7 the same payload yields 0. The factors themselves stay unverified
+    /// until the vehicle is driven - a stationary capture cannot confirm a scale.
+    /// </summary>
+    [Test]
+    [Arguments("0100000000000000", 1.28, 0.0, 0.0)]   // byte 0 -> FR high byte
+    [Arguments("0000010000000000", 0.0, 1.28, 0.0)]   // byte 2 -> FL high byte
+    [Arguments("0000000001000000", 0.0, 0.0, 2.56)]   // byte 4 -> vehicle speed high byte, x0.01
+    public async Task AbsFrame284_SpeedFields_ReadBigEndian(
+        string payload, double fr, double fl, double vehicle)
+    {
+        var frame = AbsFrame_284_AZE0.Parse(Captured(payload));
+
+        await Assert.That(frame.WheelSpeedFr).IsEqualTo(fr).Within(1e-9);
+        await Assert.That(frame.WheelSpeedFl).IsEqualTo(fl).Within(1e-9);
+        await Assert.That(frame.VehicleSpeedFromAbs).IsEqualTo(vehicle).Within(1e-9);
+    }
+
+    /// <summary>
+    /// 0x260 is a 4-byte frame whose three signals are all Motorola in CAR-can_AZE0.dbc. They
+    /// were declared Intel, which put every one outside its own declared range on real payloads.
+    ///
+    /// <c>C8127D00</c> is the most common payload across the 2026-08-31 captures, taken with the
+    /// vehicle parked. PowerConsumptMotor is the physical check: ~0 kW is right for a stationary
+    /// car, whereas the Intel reading claimed a constant -100 kW draw.
+    ///
+    /// This also exercises a 4-byte payload against Motorola signals, which is what forced
+    /// GetMinimumLength to become endianness-aware - the Intel expression demanded 5 bytes for
+    /// a frame the vehicle only ever sends as 4, so Parse threw on every real frame.
+    /// </summary>
+    [Test]
+    public async Task VcmFrame260_ParkedCapture_MotorPowerDecodesWithinRange()
+    {
+        var frame = VcmFrame_260_AZE0.Parse(Captured("C8127D00"));
+
+        await Assert.That(frame.PowerConsumptMotor).IsBetween(-1.0, 1.0);
+        await Assert.That(frame.AvailableMotorPower).IsBetween(0, 90);
+        await Assert.That(frame.MotorRegenerationPowerMax).IsBetween(0, 50);
     }
 
     [Test]
@@ -340,5 +463,91 @@ public class GeneratedFrameDecodingTests
         await Assert.That(lights.MainBeam).IsTrue();
         await Assert.That(lights.DriverDoorOpen).IsFalse();
         await Assert.That(lights.PassengerDoorOpen).IsFalse();
+    }
+
+    /// <summary>
+    /// The three remaining openings, each captured with only that one open. Byte 0 walks
+    /// 0x26 / 0x46 / 0x86 over the 0x06 closed baseline - one bit at a time, which is what makes
+    /// each assignment unambiguous.
+    /// </summary>
+    [Test]
+    [Arguments("2606000000000000", "rear-left")]
+    [Arguments("4606000000000000", "rear-right")]
+    [Arguments("8606000000000000", "hatch")]
+    public async Task BcmFrame60d_EachRearOpening_SetsOnlyItsOwnBit(string payload, string which)
+    {
+        var frame = BcmFrame_60D_AZE0.Parse(Captured(payload));
+
+        await Assert.That(frame.RearLeftDoorOpen).IsEqualTo(which == "rear-left");
+        await Assert.That(frame.RearRightDoorOpen).IsEqualTo(which == "rear-right");
+        await Assert.That(frame.TrunkOpen).IsEqualTo(which == "hatch");
+
+        // The front doors stay shut throughout, so a future off-by-one into bits 3/4 fails here.
+        await Assert.That(frame.DriverDoorOpen).IsFalse();
+        await Assert.That(frame.PassengerDoorOpen).IsFalse();
+    }
+
+    [Test]
+    public async Task BcmFrame60d_Locked_SetsBothDoorLockBits()
+    {
+        var frame = BcmFrame_60D_AZE0.Parse(Captured("0606180000000000"));
+
+        await Assert.That(frame.DoorLockStatusOtherDoors).IsTrue();
+        await Assert.That(frame.DoorLockStatusDriverDoor).IsTrue();
+    }
+
+    /// <summary>
+    /// Indicator lamp feedback, captured mid-flash. Both phases are asserted because a blinking
+    /// bit is only meaningful as a pair - a test pinning one phase would pass against a decoder
+    /// that returned a constant.
+    /// </summary>
+    [Test]
+    public async Task BcmFrame60d_LeftIndicatorLamp_TracksBothBlinkPhases()
+    {
+        var lit = BcmFrame_60D_AZE0.Parse(Captured("0026000000000000"));
+        var dark = BcmFrame_60D_AZE0.Parse(Captured("0006000000000000"));
+
+        await Assert.That(lit.LeftTurnSignalFeedback).IsTrue();
+        await Assert.That(dark.LeftTurnSignalFeedback).IsFalse();
+
+        // The right lamp is dark in both frames - only the left stalk was operated.
+        await Assert.That(lit.RightTurnSignalFeedback).IsFalse();
+        await Assert.That(dark.RightTurnSignalFeedback).IsFalse();
+    }
+
+    /// <summary>
+    /// 0x174 byte 3 carries the shifter position: 0xAA in Park, 0x99 in Reverse. The guided probe
+    /// flagged bits 24, 25, 28 and 29 as responding, and 0xAA ^ 0x99 = 0x33 - precisely those
+    /// four bits. Byte 4 is a free-running counter and is deliberately not asserted.
+    /// </summary>
+    [Test]
+    [Arguments("000000AA0A000000", 170)]
+    [Arguments("0000009908000000", 153)]
+    public async Task VcmFrame174_ShifterPosition_MatchesCapturedGearStates(string payload, int expected)
+    {
+        var frame = VcmFrame_174_AZE0.Parse(Captured(payload));
+
+        await Assert.That(frame.ShifterPosition).IsEqualTo(expected);
+    }
+
+    /// <summary>
+    /// 0x54B FanSpeed occupies bits 35-39. Captured with the fan at maximum and off:
+    /// byte 4 = 0x3C vs 0x04, giving (0x3C &gt;&gt; 3) &amp; 0x1F = 7 and 0.
+    ///
+    /// ClimateControlStatus is asserted alongside it because byte 0 is claimed by three separate
+    /// signals in the current definition with incompatible scalings; these bytes match its
+    /// documented 0x10/0x11 values and nothing else.
+    /// </summary>
+    [Test]
+    public async Task HvacFrame54b_FanSpeed_MatchesCapturedMaxAndOff()
+    {
+        var max = HvacFrame_54B_AZE0.Parse(Captured("104888123C000001"));
+        var off = HvacFrame_54B_AZE0.Parse(Captured("1108800A04000000"));
+
+        await Assert.That(max.FanSpeed).IsEqualTo(7);
+        await Assert.That(off.FanSpeed).IsEqualTo(0);
+
+        await Assert.That(max.ClimateControlStatus).IsEqualTo(0x10);
+        await Assert.That(off.ClimateControlStatus).IsEqualTo(0x11);
     }
 }

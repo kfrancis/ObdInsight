@@ -120,35 +120,27 @@ public partial class AbsFrame_245_AZE0
 [CanFrame(0x284, Description = "ABS front wheel speeds and vehicle speed (20ms)")]
 public partial class AbsFrame_284_AZE0
 {
-    [CanSignal(0, 8,
-        Description = "Front right wheel speed, raw high byte (byte 0 of big-endian u16)",
-        MinValue = 0, MaxValue = 255)]
-    public partial int WheelSpeedFrRawHigh { get; init; }
+    // Three 16-bit big-endian fields, matching CAR-can_AZE0.dbc exactly:
+    //   Wheel_Speed_FR       7|16@0+ (0.005,0) km/h
+    //   Wheel_Speed_FL      23|16@0+ (0.005,0) km/h
+    //   VehicleSpeedFromABS 39|16@0+ (0.01,0)
+    // Each was previously declared as two Intel byte halves and shifted together in a computed
+    // property, because a Motorola field could not be expressed directly. Same workaround 0x55B
+    // Soc used, and the recombination produced identical values - this is a simplification, not
+    // a behaviour change.
+    [CanSignal(7, 16, ByteOrder = CanByteOrder.Motorola, Factor = 0.005, Unit = "km/h",
+        Description = "Front right wheel speed",
+        MinValue = 0, MaxValue = 327)]
+    public partial double WheelSpeedFr { get; init; }
 
-    [CanSignal(8, 8,
-        Description = "Front right wheel speed, raw low byte (byte 1 of big-endian u16)",
-        MinValue = 0, MaxValue = 255)]
-    public partial int WheelSpeedFrRawLow { get; init; }
+    [CanSignal(23, 16, ByteOrder = CanByteOrder.Motorola, Factor = 0.005, Unit = "km/h",
+        Description = "Front left wheel speed",
+        MinValue = 0, MaxValue = 327)]
+    public partial double WheelSpeedFl { get; init; }
 
-    [CanSignal(16, 8,
-        Description = "Front left wheel speed, raw high byte (byte 2 of big-endian u16)",
-        MinValue = 0, MaxValue = 255)]
-    public partial int WheelSpeedFlRawHigh { get; init; }
-
-    [CanSignal(24, 8,
-        Description = "Front left wheel speed, raw low byte (byte 3 of big-endian u16)",
-        MinValue = 0, MaxValue = 255)]
-    public partial int WheelSpeedFlRawLow { get; init; }
-
-    [CanSignal(32, 8,
-        Description = "Vehicle speed, raw high byte (byte 4 of big-endian u16)",
-        MinValue = 0, MaxValue = 255)]
-    public partial int VehicleSpeedRawHigh { get; init; }
-
-    [CanSignal(40, 8,
-        Description = "Vehicle speed, raw low byte (byte 5 of big-endian u16)",
-        MinValue = 0, MaxValue = 255)]
-    public partial int VehicleSpeedRawLow { get; init; }
+    [CanSignal(39, 16, ByteOrder = CanByteOrder.Motorola, Factor = 0.01, Unit = "km/h",
+        Description = "Vehicle speed from ABS")]
+    public partial double VehicleSpeedFromAbs { get; init; }
 
     [CanSignal(48, 8,
         Description = "Free-running message counter (byte 6, increments every frame)",
@@ -160,17 +152,8 @@ public partial class AbsFrame_284_AZE0
         MinValue = 0, MaxValue = 255)]
     public partial int MessageCounter2 { get; init; }
 
-    /// <summary>Front right wheel speed in km/h (bytes 0-1 big-endian, 0.005 km/h/bit).
-    /// Factor unverified beyond the parked zero capture.</summary>
-    public double WheelSpeedFr => ((WheelSpeedFrRawHigh << 8) | WheelSpeedFrRawLow) * 0.005;
-
-    /// <summary>Front left wheel speed in km/h (bytes 2-3 big-endian, 0.005 km/h/bit).
-    /// Factor unverified beyond the parked zero capture.</summary>
-    public double WheelSpeedFl => ((WheelSpeedFlRawHigh << 8) | WheelSpeedFlRawLow) * 0.005;
-
-    /// <summary>Vehicle speed from ABS in km/h (bytes 4-5 big-endian, 0.01 km/h/bit).
-    /// Factor unverified beyond the parked zero capture.</summary>
-    public double VehicleSpeedFromAbs => ((VehicleSpeedRawHigh << 8) | VehicleSpeedRawLow) * 0.01;
+    // Factors come from the DBC and remain unverified beyond the parked zero capture: a
+    // stationary vehicle reads 0 whatever the scaling. Confirming them needs a drive.
 }
 
 /// <summary>
@@ -184,27 +167,21 @@ public partial class AbsFrame_284_AZE0
 [CanFrame(0x285, Description = "ABS rear wheel speeds (20ms)")]
 public partial class AbsFrame_285_AZE0
 {
-    [CanSignal(0, 8,
-        Description = "Rear right wheel speed, raw high byte (byte 0 of big-endian u16)",
-        MinValue = 0, MaxValue = 255)]
-    public partial int WheelSpeedRrRawHigh { get; init; }
+    // Same layout as 0x284, per CAR-can_AZE0.dbc:
+    //   Wheel_Speed_RR   7|16@0+ (0.005,0) km/h
+    //   Wheel_Speed_RL  23|16@0+ (0.005,0) km/h
+    //   NotUsed_285_4_5 39|16@0+ (1,0)
+    [CanSignal(7, 16, ByteOrder = CanByteOrder.Motorola, Factor = 0.005, Unit = "km/h",
+        Description = "Rear right wheel speed",
+        MinValue = 0, MaxValue = 327)]
+    public partial double WheelSpeedRr { get; init; }
 
-    [CanSignal(8, 8,
-        Description = "Rear right wheel speed, raw low byte (byte 1 of big-endian u16)",
-        MinValue = 0, MaxValue = 255)]
-    public partial int WheelSpeedRrRawLow { get; init; }
+    [CanSignal(23, 16, ByteOrder = CanByteOrder.Motorola, Factor = 0.005, Unit = "km/h",
+        Description = "Rear left wheel speed",
+        MinValue = 0, MaxValue = 327)]
+    public partial double WheelSpeedRl { get; init; }
 
-    [CanSignal(16, 8,
-        Description = "Rear left wheel speed, raw high byte (byte 2 of big-endian u16)",
-        MinValue = 0, MaxValue = 255)]
-    public partial int WheelSpeedRlRawHigh { get; init; }
-
-    [CanSignal(24, 8,
-        Description = "Rear left wheel speed, raw low byte (byte 3 of big-endian u16)",
-        MinValue = 0, MaxValue = 255)]
-    public partial int WheelSpeedRlRawLow { get; init; }
-
-    [CanSignal(32, 16,
+    [CanSignal(39, 16, ByteOrder = CanByteOrder.Motorola,
         Description = "Not used (bytes 4-5, reserved)",
         MinValue = 0, MaxValue = 65535)]
     public partial int NotUsed { get; init; }
@@ -219,13 +196,7 @@ public partial class AbsFrame_285_AZE0
         MinValue = 0, MaxValue = 255)]
     public partial int MessageCounter2 { get; init; }
 
-    /// <summary>Rear right wheel speed in km/h (bytes 0-1 big-endian, 0.005 km/h/bit).
-    /// Factor unverified beyond the parked zero capture.</summary>
-    public double WheelSpeedRr => ((WheelSpeedRrRawHigh << 8) | WheelSpeedRrRawLow) * 0.005;
-
-    /// <summary>Rear left wheel speed in km/h (bytes 2-3 big-endian, 0.005 km/h/bit).
-    /// Factor unverified beyond the parked zero capture.</summary>
-    public double WheelSpeedRl => ((WheelSpeedRlRawHigh << 8) | WheelSpeedRlRawLow) * 0.005;
+    // Factors come from the DBC and remain unverified beyond the parked zero capture.
 }
 
 /// <summary>

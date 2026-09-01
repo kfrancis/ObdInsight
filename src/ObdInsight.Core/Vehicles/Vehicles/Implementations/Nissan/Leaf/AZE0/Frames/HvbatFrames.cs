@@ -228,7 +228,9 @@ public partial class BatteryFrame_55B_AZE0
         MinValue = 0, MaxValue = 1)]
     public partial bool IrSensorMalfunction { get; init; }
 
-    [CanSignal(39, 10, Unit = "mV",
+    // EV-can_AZE0.dbc: LB_IR_Sensor_Wave_Voltage : 39|10@0+ — Motorola. Decoded as Intel until
+    // 2026-08-31, which read a different 10 bits and returned 769 instead of 910.
+    [CanSignal(39, 10, ByteOrder = CanByteOrder.Motorola, Unit = "mV",
         Description = "Internal resistance sensor wave voltage (5000/1024)",
         MinValue = 0, MaxValue = 4990)]
     public partial int IrSensorWaveVoltage { get; init; }
@@ -238,28 +240,28 @@ public partial class BatteryFrame_55B_AZE0
         MinValue = 0, MaxValue = 3)]
     public partial int Prun { get; init; }
 
-    [CanSignal(53, 2,
+    // EV-can_AZE0.dbc: LB_SleepEnabled : 53|2@0+ — Motorola. Decoded as Intel until 2026-08-31,
+    // which returned 0 on a captured frame. 0 is documented as Reserved, i.e. not a state the
+    // controller reports; Motorola gives 1 = RefuseToSleep, correct for a vehicle that was awake.
+    [CanSignal(53, 2, ByteOrder = CanByteOrder.Motorola,
         Description = "Sleep enabled status (0=Reserved, 1=RefuseToSleep, 2=ReadyToSleep, 3=Reserved)",
         MinValue = 0, MaxValue = 3)]
     public partial int SleepEnabled { get; init; }
 
-    [CanSignal(0, 8,
-        Description = "State of charge, raw high 8 bits (byte 0; Motorola DBC start-bit 7)",
-        MinValue = 0, MaxValue = 255)]
-    public partial int SocRawHigh { get; init; }
-
-    [CanSignal(14, 2,
-        Description = "State of charge, raw low 2 bits (byte 1 bits 7-6)",
-        MinValue = 0, MaxValue = 3)]
-    public partial int SocRawLow { get; init; }
-
     /// <summary>
-    /// State of charge in 0.1% units (e.g. 928 = 92.8%). The DBC source is a Motorola-order
-    /// 10-bit field starting at bit 7 (byte0[7..0] + byte1[7..6]), which cannot be expressed
-    /// as a single Intel signal — recombined from the two raw parts.
-    /// Hardware-verified 2026-07-18: raw E8 00 → 928 with pack near full (~96%).
+    /// State of charge in 0.1% units (e.g. 928 = 92.8%).
     /// </summary>
-    public int Soc => (SocRawHigh << 2) | SocRawLow;
+    /// <remarks>
+    /// EV-can_AZE0.dbc: <c>LB_SOC : 7|10@0+</c>. This was previously split into two Intel
+    /// signals (byte 0, plus byte 1 bits 7-6) and recombined by hand, because a Motorola field
+    /// could not be expressed directly. It now maps straight onto the DBC position.
+    /// Hardware-verified: raw E8 00 -> 928 (pack ~96% full, 2026-07-18) and F3 00 -> 972
+    /// (2026-08-31). Reading the same bits as Intel returns 1.
+    /// </remarks>
+    [CanSignal(7, 10, ByteOrder = CanByteOrder.Motorola, Unit = "0.1%",
+        Description = "Battery state of charge",
+        MinValue = 0, MaxValue = 1000)]
+    public partial int Soc { get; init; }
 }
 
 /// <summary>
@@ -427,100 +429,105 @@ public partial class BatteryFrame_5C0_AZE0
 
     [CanSignal(42, 6, Factor = 40, Offset = 1900, Unit = "mV",
         Description = "Historical data: Cell voltage (AVG when mux=2)",
-        MinValue = 0, MaxValue = 4380)]
-    public partial int HistDataCellVoltageAvg { get; init; }
+        MinValue = 0, MaxValue = 4380, MuxValue = 2)]
+    public partial int? HistDataCellVoltageAvg { get; init; }
 
     [CanSignal(42, 6, Factor = 40, Offset = 1900, Unit = "mV",
         Description = "Historical data: Cell voltage (MAX when mux=1)",
-        MinValue = 0, MaxValue = 4380)]
-    public partial int HistDataCellVoltageMax { get; init; }
+        MinValue = 0, MaxValue = 4380, MuxValue = 1)]
+    public partial int? HistDataCellVoltageMax { get; init; }
 
     [CanSignal(42, 6, Factor = 40, Offset = 1900, Unit = "mV",
         Description = "Historical data: Cell voltage (MIN when mux=3)",
-        MinValue = 0, MaxValue = 4380)]
-    public partial int HistDataCellVoltageMin { get; init; }
+        MinValue = 0, MaxValue = 4380, MuxValue = 3)]
+    public partial int? HistDataCellVoltageMin { get; init; }
 
     [CanSignal(33, 7, Unit = "%",
         Description = "Historical data: Degradation internal resistance coefficient (AVG when mux=2)",
-        MinValue = 0, MaxValue = 100)]
-    public partial int HistDataDegrIntResCoeffAvg { get; init; }
+        MinValue = 0, MaxValue = 100, MuxValue = 2)]
+    public partial int? HistDataDegrIntResCoeffAvg { get; init; }
 
     [CanSignal(33, 7, Unit = "%",
         Description = "Historical data: Degradation internal resistance coefficient (MAX when mux=1)",
-        MinValue = 0, MaxValue = 100)]
-    public partial int HistDataDegrIntResCoeffMax { get; init; }
+        MinValue = 0, MaxValue = 100, MuxValue = 1)]
+    public partial int? HistDataDegrIntResCoeffMax { get; init; }
 
     [CanSignal(33, 7, Unit = "%",
         Description = "Historical data: Degradation internal resistance coefficient (MIN when mux=3)",
-        MinValue = 0, MaxValue = 100)]
-    public partial int HistDataDegrIntResCoeffMin { get; init; }
+        MinValue = 0, MaxValue = 100, MuxValue = 3)]
+    public partial int? HistDataDegrIntResCoeffMin { get; init; }
 
     [CanSignal(0, 4,
         Description = "Historical data: High/Low voltage times (AVG when mux=2)",
-        MinValue = 0, MaxValue = 10)]
-    public partial int HistDataHighLowVoltageTimeAvg { get; init; }
+        MinValue = 0, MaxValue = 10, MuxValue = 2)]
+    public partial int? HistDataHighLowVoltageTimeAvg { get; init; }
 
     [CanSignal(0, 4,
         Description = "Historical data: High/Low voltage times (MAX when mux=1)",
-        MinValue = 0, MaxValue = 10)]
-    public partial int HistDataHighLowVoltageTimeMax { get; init; }
+        MinValue = 0, MaxValue = 10, MuxValue = 1)]
+    public partial int? HistDataHighLowVoltageTimeMax { get; init; }
 
     // Historical data signals (multiplexed based on HistoricalDataSwitchFlag)
     [CanSignal(0, 4,
         Description = "Historical data: High/Low voltage times (MIN when mux=3)",
-        MinValue = 0, MaxValue = 10)]
-    public partial int HistDataHighLowVoltageTimeMin { get; init; }
+        MinValue = 0, MaxValue = 10, MuxValue = 3)]
+    public partial int? HistDataHighLowVoltageTimeMin { get; init; }
 
     [CanSignal(24, 8, Factor = 0.6, Unit = "Ah",
         Description = "Historical data: Integrated current (AVG when mux=2)",
-        MinValue = -76.2, MaxValue = 76.2)]
-    public partial double HistDataIntegratedCurrentAvg { get; init; }
+        MinValue = -76.2, MaxValue = 76.2, MuxValue = 2)]
+    public partial double? HistDataIntegratedCurrentAvg { get; init; }
 
     [CanSignal(24, 8, Factor = 0.6, Unit = "Ah",
         Description = "Historical data: Integrated current (MAX when mux=1)",
-        MinValue = -76.2, MaxValue = 76.2)]
-    public partial double HistDataIntegratedCurrentMax { get; init; }
+        MinValue = -76.2, MaxValue = 76.2, MuxValue = 1)]
+    public partial double? HistDataIntegratedCurrentMax { get; init; }
 
     [CanSignal(24, 8, Factor = 0.6, Unit = "Ah",
         Description = "Historical data: Integrated current (MIN when mux=3)",
-        MinValue = -76.2, MaxValue = 76.2)]
-    public partial double HistDataIntegratedCurrentMin { get; init; }
+        MinValue = -76.2, MaxValue = 76.2, MuxValue = 3)]
+    public partial double? HistDataIntegratedCurrentMin { get; init; }
 
     // Temperature is the full byte 2 at 0.5 °C/bit − 40 (bottom bit always 0, so effective
     // 7-bit precision) — confirmed vs OVMS (case 0x5c0: d[2]/2 − 40). The previous (17,7)
     // definition halved the value a second time.
     [CanSignal(16, 8, Factor = 0.5, Offset = -40, Unit = "degC",
         Description = "Historical data: Temperature (AVG when mux=2)",
-        MinValue = -40, MaxValue = 87.5)]
-    public partial double HistDataTemperatureAvg { get; init; }
+        MinValue = -40, MaxValue = 87.5, MuxValue = 2)]
+    public partial double? HistDataTemperatureAvg { get; init; }
 
     [CanSignal(16, 8, Factor = 0.5, Offset = -40, Unit = "degC",
         Description = "Historical data: Temperature (MAX when mux=1)",
-        MinValue = -40, MaxValue = 87.5)]
-    public partial double HistDataTemperatureMax { get; init; }
+        MinValue = -40, MaxValue = 87.5, MuxValue = 1)]
+    public partial double? HistDataTemperatureMax { get; init; }
 
     [CanSignal(16, 8, Factor = 0.5, Offset = -40, Unit = "degC",
         Description = "Historical data: Temperature (MIN when mux=3)",
-        MinValue = -40, MaxValue = 87.5)]
-    public partial double HistDataTemperatureMin { get; init; }
+        MinValue = -40, MaxValue = 87.5, MuxValue = 3)]
+    public partial double? HistDataTemperatureMin { get; init; }
 
     [CanSignal(9, 7, Factor = 0.5, Offset = -40, Unit = "degC",
         Description = "Historical data: Temperature wakeup phase (AVG when mux=2)",
-        MinValue = -40, MaxValue = 86)]
-    public partial double HistDataTempWakeupPhaseAvg { get; init; }
+        MinValue = -40, MaxValue = 86, MuxValue = 2)]
+    public partial double? HistDataTempWakeupPhaseAvg { get; init; }
 
     [CanSignal(9, 7, Factor = 0.5, Offset = -40, Unit = "degC",
         Description = "Historical data: Temperature wakeup phase (MAX when mux=1)",
-        MinValue = -40, MaxValue = 86)]
-    public partial double HistDataTempWakeupPhaseMax { get; init; }
+        MinValue = -40, MaxValue = 86, MuxValue = 1)]
+    public partial double? HistDataTempWakeupPhaseMax { get; init; }
 
     [CanSignal(9, 7, Factor = 0.5, Offset = -40, Unit = "degC",
         Description = "Historical data: Temperature wakeup phase (MIN when mux=3)",
-        MinValue = -40, MaxValue = 86)]
-    public partial double HistDataTempWakeupPhaseMin { get; init; }
+        MinValue = -40, MaxValue = 86, MuxValue = 3)]
+    public partial double? HistDataTempWakeupPhaseMin { get; init; }
 
-    [CanSignal(6, 2,
-                                                                                                    Description = "Historical data switch flag (0=Not Calculated, 1=Maximum Data, 2=Average Data, 3=Minimum Data)",
+    // The multiplexor. Every HistData* signal above shares its bit positions with two siblings
+    // and is distinguished only by this flag: the same bytes carry the maximum, average or
+    // minimum of the battery's recorded history depending on its value. Before mux support
+    // existed all three variants of each group decoded the same bits and returned identical
+    // values, so two thirds of them were wrong on every frame.
+    [CanSignal(6, 2, IsMultiplexor = true,
+        Description = "Historical data switch flag (0=Not Calculated, 1=Maximum Data, 2=Average Data, 3=Minimum Data)",
         MinValue = 0, MaxValue = 3)]
     public partial int HistoricalDataSwitchFlag { get; init; }
     [CanSignal(48, 5, Unit = "minutes",

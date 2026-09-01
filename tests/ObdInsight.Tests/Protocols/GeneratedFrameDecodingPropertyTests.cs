@@ -52,7 +52,7 @@ public class GeneratedFrameDecodingPropertyTests
                     var decoded = frame.Decode(payload);
                     foreach (var signal in frame.Signals)
                     {
-                        if (!Matches(signal, payload, decoded))
+                        if (!Matches(frame, signal, payload, decoded))
                         {
                             return false;
                         }
@@ -128,13 +128,50 @@ public class GeneratedFrameDecodingPropertyTests
     }
 
     /// <summary>Compares one generated property value against the DBC decode of the same bits.</summary>
-    private static bool Matches(SignalUnderTest signal, byte[] payload, object decoded)
+    private static bool Matches(FrameUnderTest frame, SignalUnderTest signal, byte[] payload, object decoded)
     {
         var actual = signal.Property.GetValue(decoded);
         var attribute = signal.Attribute;
-        var unsigned = ReadUnsigned(payload, attribute.BitStart, attribute.BitLength);
+        var unsigned = attribute.ByteOrder == CanByteOrder.Motorola
+            ? ReadUnsignedMotorola(payload, attribute.BitStart, attribute.BitLength)
+            : ReadUnsigned(payload, attribute.BitStart, attribute.BitLength);
 
-        if (signal.Property.PropertyType == typeof(bool))
+        // A multiplexed signal exists only in frames whose selector chooses its variant. When it
+        // does not, the only correct answer is null - and asserting that is the point, since the
+        // bug this replaced was three variants of a group all decoding the same bits and
+        // returning the same number regardless of the selector.
+        if (attribute.MuxValue != CanSignalAttribute.NotMultiplexed)
+        {
+            var multiplexor = frame.Signals.FirstOrDefault(s => s.Attribute.IsMultiplexor);
+            if (multiplexor is null)
+            {
+                return false;   // generator should have rejected this frame outright
+            }
+
+            var muxAttribute = multiplexor.Attribute;
+            var selector = muxAttribute.ByteOrder == CanByteOrder.Motorola
+                ? ReadUnsignedMotorola(payload, muxAttribute.BitStart, muxAttribute.BitLength)
+                : ReadUnsigned(payload, muxAttribute.BitStart, muxAttribute.BitLength);
+
+            if (selector != attribute.MuxValue)
+            {
+                return actual is null;
+            }
+        }
+
+        // Nullable properties box to their underlying type once populated, so the comparisons
+        // below work unchanged for an active multiplexed signal.
+        if (Nullable.GetUnderlyingType(signal.Property.PropertyType) is { } underlying)
+        {
+            return MatchesValue(actual, underlying, attribute, unsigned);
+        }
+
+        return MatchesValue(actual, signal.Property.PropertyType, attribute, unsigned);
+    }
+
+    private static bool MatchesValue(object? actual, Type type, CanSignalAttribute attribute, uint unsigned)
+    {
+        if (type == typeof(bool))
         {
             return Equals(actual, unsigned != 0);
         }
@@ -144,13 +181,13 @@ public class GeneratedFrameDecodingPropertyTests
             Math.Abs(attribute.Factor - 1.0) > ScalingTolerance ||
             Math.Abs(attribute.Offset) > ScalingTolerance;
 
-        if (signal.Property.PropertyType == typeof(double))
+        if (type == typeof(double))
         {
             var expected = needsScaling ? (raw * attribute.Factor) + attribute.Offset : raw;
             return actual is double d && Math.Abs(d - expected) <= 1e-9 * Math.Max(1.0, Math.Abs(expected));
         }
 
-        if (signal.Property.PropertyType == typeof(int))
+        if (type == typeof(int))
         {
             // Unscaled signals are cast straight from the raw integer, so a 32-bit unsigned signal
             // wraps rather than saturating; scaled ones go through double and truncate.
@@ -164,8 +201,7 @@ public class GeneratedFrameDecodingPropertyTests
         }
 
         throw new NotSupportedException(
-            $"{signal.Property.DeclaringType?.Name}.{signal.Property.Name} has unhandled signal type " +
-            $"{signal.Property.PropertyType.Name}; extend this oracle.");
+            $"Signal type {type.Name} is unhandled; extend this oracle.");
     }
 
     /// <summary>Reads a little-endian bit field, zero-extending payloads shorter than 8 bytes.</summary>
@@ -179,6 +215,42 @@ public class GeneratedFrameDecodingPropertyTests
 
         var mask = bitLength == 32 ? 0xFFFF_FFFFul : (1ul << bitLength) - 1ul;
         return (uint)((raw >> bitStart) & mask);
+    }
+
+    /// <summary>
+    /// Reads a Motorola (DBC <c>@0</c>) bit field by walking the bits the way the format
+    /// describes, rather than by the shift-and-mask the production reader uses.
+    /// </summary>
+    /// <remarks>
+    /// The start bit is the signal's most significant bit. Each subsequent bit is the next one
+    /// down within the byte; on falling below bit 0 the walk continues at bit 7 of the following
+    /// byte. Written literally, one bit at a time, so this oracle is an independent statement of
+    /// the rule - agreeing with the production reader is then evidence its
+    /// <c>64 - (msbIndex + bitLen)</c> shift is the same thing, not merely evidence that two
+    /// copies of the same arithmetic agree.
+    /// </remarks>
+    private static uint ReadUnsignedMotorola(byte[] payload, int bitStart, int bitLength)
+    {
+        uint value = 0;
+        var byteIndex = bitStart / 8;
+        var bitInByte = bitStart % 8;
+
+        for (var i = 0; i < bitLength; i++)
+        {
+            var bit = byteIndex < payload.Length && byteIndex < 8
+                ? (payload[byteIndex] >> bitInByte) & 1
+                : 0;   // short payloads zero-extend, matching the generated reader
+
+            value = (value << 1) | (uint)bit;
+
+            if (--bitInByte < 0)
+            {
+                bitInByte = 7;
+                byteIndex++;
+            }
+        }
+
+        return value;
     }
 
     private static int SignExtend(uint value, int bitLength)
