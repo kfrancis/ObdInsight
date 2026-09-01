@@ -4,7 +4,7 @@ using ObdInsight.IntegrationTests;
 using ObdInsight.Transports.WindowsBle;
 using TUnit.Core.Interfaces;
 
-namespace OdbTestApp.Tests.Fixtures;
+namespace ObdInsight.IntegrationTests.Fixtures;
 
 /// <summary>
 ///     TUnit fixture for managing a real BLE connection to a Nissan Leaf OBD adapter.

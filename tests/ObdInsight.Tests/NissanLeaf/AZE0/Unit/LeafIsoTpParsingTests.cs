@@ -1,7 +1,7 @@
 using ObdInsight.Core.Protocols;
 using ObdInsight.Simulation;
 
-namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
+namespace ObdInsight.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
 ///     Unit tests for the PRODUCTION ISO-TP parser (ObdInsight.Core.Protocols.IsoTpParser)

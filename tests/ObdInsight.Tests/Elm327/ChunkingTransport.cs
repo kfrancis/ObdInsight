@@ -1,6 +1,6 @@
 using ObdInsight.Core.Communication.Elm327;
 
-namespace OdbTestApp.Tests.Elm327;
+namespace ObdInsight.Tests.Elm327;
 
 /// <summary>
 ///     Serves a fixed byte stream to <see cref="ElmFramer" /> in caller-specified chunk sizes,

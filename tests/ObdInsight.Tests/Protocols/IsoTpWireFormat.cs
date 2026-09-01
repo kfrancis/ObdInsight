@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace OdbTestApp.Tests.Protocols;
+namespace ObdInsight.Tests.Protocols;
 
 /// <summary>
 ///     Encodes a payload into the ISO-TP (ISO 15765-2) wire lines an ELM327 emits with spaces off:

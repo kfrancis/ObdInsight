@@ -2,9 +2,9 @@ using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities;
 using ObdInsight.IntegrationTests;
-using OdbTestApp.Tests.Fixtures;
+using ObdInsight.IntegrationTests.Fixtures;
 
-namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
+namespace ObdInsight.IntegrationTests.Nissan.Leaf.AZE0;
 
 /// <summary>
 ///     Integration tests for Nissan Leaf AZE0 passive monitoring capabilities using source-generated frames.

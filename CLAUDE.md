@@ -74,7 +74,7 @@ IElmTransport            byte I/O (BLE impls live in the console app; ReplayElmT
        │                 CanMonitor.Subscribe<T>() / TryGetLatest<T>() for ICanFrame<T> frame types;
        │                 StreamSnapshots() backs the capabilities' StreamStatusAsync
        └─ Capabilities   IHvac, IBatteryManagementSystem, ... (vehicle-specific impls under
-                         Vehicles/Vehicles/Implementations/), wired by LeafAze0CommandSet,
+                         Vehicles/Implementations/), wired by LeafAze0CommandSet,
                          looked up via VehicleSession.TryGet<T>()
 ```
 

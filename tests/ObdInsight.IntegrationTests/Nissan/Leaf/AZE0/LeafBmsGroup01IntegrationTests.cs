@@ -1,9 +1,9 @@
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.IntegrationTests;
-using OdbTestApp.Tests.Fixtures;
+using ObdInsight.IntegrationTests.Fixtures;
 using static ObdInsight.IntegrationTests.BmsParsingHelpers;
 
-namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
+namespace ObdInsight.IntegrationTests.Nissan.Leaf.AZE0;
 
 /// <summary>
 ///     Integration tests for Nissan Leaf BMS Group 01 using a real BLE connection.

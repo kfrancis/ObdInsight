@@ -3,7 +3,7 @@ using ObdInsight.Core.Protocols;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities;
 using ObdInsight.Simulation;
 
-namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
+namespace ObdInsight.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
 ///     Streaming members on the broadcast capability interfaces (docs/STREAMING_MONITOR_DESIGN.md

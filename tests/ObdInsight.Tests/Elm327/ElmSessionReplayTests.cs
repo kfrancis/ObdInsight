@@ -3,7 +3,7 @@ using ObdInsight.Core.Protocols;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf;
 using ObdInsight.Simulation;
 
-namespace OdbTestApp.Tests.Elm327;
+namespace ObdInsight.Tests.Elm327;
 
 /// <summary>
 ///     Deterministic ElmSession tests running against <see cref="ReplayElmTransport" /> —

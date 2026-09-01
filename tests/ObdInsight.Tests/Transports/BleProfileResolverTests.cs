@@ -1,6 +1,6 @@
 using ObdInsight.Transports.Ble;
 
-namespace OdbTestApp.Tests.Transports;
+namespace ObdInsight.Tests.Transports;
 
 /// <summary>
 ///     Roadmap B9: pure GATT profile auto-probe tests (docs/BLE_TRANSPORT_DESIGN.md §4).

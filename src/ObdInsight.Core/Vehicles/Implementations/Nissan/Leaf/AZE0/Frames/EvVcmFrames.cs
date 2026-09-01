@@ -1,6 +1,6 @@
 using ObdInsight.SourceGeneration.Attributes;
 
-namespace ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
+namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 
 /// <summary>
 ///     VCM shift controller frame for Nissan Leaf AZE0 platform (0x11A)

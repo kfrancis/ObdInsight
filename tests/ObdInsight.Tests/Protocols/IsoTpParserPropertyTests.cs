@@ -1,7 +1,7 @@
 using CsCheck;
 using ObdInsight.Core.Protocols;
 
-namespace OdbTestApp.Tests.Protocols;
+namespace ObdInsight.Tests.Protocols;
 
 /// <summary>
 ///     Property-based tests (CsCheck) for <see cref="IsoTpParser" />: any payload encoded to the

@@ -3,7 +3,7 @@ using System.Text.Json;
 using ObdInsight.Transports.Ble;
 using Plugin.BLE.Abstractions.Contracts;
 
-namespace OdbTestApp.Tests.Transports;
+namespace ObdInsight.Tests.Transports;
 
 [Timeout(30_000)]
 public sealed class BleProbeReportTests

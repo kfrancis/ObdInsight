@@ -4,7 +4,7 @@ using ObdInsight.Simulation;
 using ObdInsight.Telemetry;
 using ConnectionState = ObdInsight.Core.Communication.Elm327.ConnectionState;
 
-namespace OdbTestApp.Tests.Telemetry;
+namespace ObdInsight.Tests.Telemetry;
 
 /// <summary>
 ///     Roadmap B10 acceptance: transport death mid-drive over the fully composed stack

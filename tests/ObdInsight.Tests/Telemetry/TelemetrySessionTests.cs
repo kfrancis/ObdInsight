@@ -3,7 +3,7 @@ using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Simulation;
 using ObdInsight.Telemetry;
 
-namespace OdbTestApp.Tests.Telemetry;
+namespace ObdInsight.Tests.Telemetry;
 
 /// <summary>
 ///     Roadmap B1 acceptance: a three-tier telemetry session over scripted Leaf data

@@ -1,7 +1,6 @@
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
-using CanFrameRouter = ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames.CanFrameRouter;
 
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities;
 

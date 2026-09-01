@@ -2,7 +2,7 @@ using System.Text;
 using CsCheck;
 using ObdInsight.Core.Communication.Elm327;
 
-namespace OdbTestApp.Tests.Elm327;
+namespace ObdInsight.Tests.Elm327;
 
 /// <summary>
 ///     Property-based tests (CsCheck) for <see cref="ElmFramer" /> framing: the bytes a caller gets

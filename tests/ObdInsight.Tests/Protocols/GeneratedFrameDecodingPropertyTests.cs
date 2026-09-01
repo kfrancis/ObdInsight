@@ -3,7 +3,7 @@ using CsCheck;
 using ObdInsight.Core.Protocols;
 using ObdInsight.SourceGeneration.Attributes;
 
-namespace OdbTestApp.Tests.Protocols;
+namespace ObdInsight.Tests.Protocols;
 
 /// <summary>
 ///     Property-based tests (CsCheck) covering every source-generated CAN frame decoder in Core at

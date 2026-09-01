@@ -1,9 +1,9 @@
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
-using ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
+using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 using ObdInsight.Simulation;
 
-namespace OdbTestApp.Tests.Elm327;
+namespace ObdInsight.Tests.Elm327;
 
 /// <summary>
 ///     Phase 1 tests for <see cref="CanMonitor" /> (docs/STREAMING_MONITOR_DESIGN.md) over the

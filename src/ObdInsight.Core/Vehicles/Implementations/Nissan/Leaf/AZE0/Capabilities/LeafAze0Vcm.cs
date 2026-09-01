@@ -1,5 +1,5 @@
 using ObdInsight.Core.Communication.Elm327;
-using ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
+using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 {

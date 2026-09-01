@@ -4,7 +4,7 @@ using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Simulation;
 using ObdInsight.Telemetry;
 
-namespace OdbTestApp.Tests.Telemetry;
+namespace ObdInsight.Tests.Telemetry;
 
 /// <summary>
 ///     Regression tests for <see cref="SimulatedLeafAze0Transport" /> at the session level:

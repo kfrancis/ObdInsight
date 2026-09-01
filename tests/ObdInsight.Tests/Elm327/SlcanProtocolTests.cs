@@ -1,6 +1,6 @@
 using ObdInsight.Core.Communication.Slcan;
 
-namespace OdbTestApp.Tests.Elm327;
+namespace ObdInsight.Tests.Elm327;
 
 /// <summary>
 ///     Tests for the SLCAN line protocol used by CANable-class USB-CAN adapters.

@@ -3,7 +3,7 @@ using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Simulation;
 
-namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
+namespace ObdInsight.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
 ///     Unit tests for Nissan Leaf BMS Group 01 parsing using golden sample data.

@@ -1,6 +1,6 @@
 using ObdInsight.Core.Protocols;
 
-namespace OdbTestApp.Tests.Protocols;
+namespace ObdInsight.Tests.Protocols;
 
 /// <summary>
 ///     ATMA monitor-mode line parsing: 11-bit/29-bit CAN IDs, spaced ("AT S1") and contiguous

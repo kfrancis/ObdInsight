@@ -1,7 +1,6 @@
-using ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 
-namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
+namespace ObdInsight.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
 ///     Regression tests for source-generated CAN frame decoders, exercising the actual

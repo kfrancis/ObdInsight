@@ -51,7 +51,6 @@ IElmTransport (BLE/BT Classic implementations)
 **Surprises:**
 - The README and CLAUDE.md advertise a MAUI Android/iOS app; the actually-developed artifact is the Windows console app. The MAUI project is an empty template shell.
 - Concrete BLE transports live in the **console app** project but are declared in `ObdInsight.Core.Communication.*` namespaces (`src/ObdInsight/Core/Communication/Elm327/BleElmTransport.cs:6`, `.../Bluetooth/BleScanner.cs:5`) — app types masquerading as Core.
-- Doubled folder nesting: all vehicle code lives under `src/ObdInsight.Core/Vehicles/Vehicles/`.
 - 3,511 lines of dead code checked in as `*.cs.broken` files under DevTools.
 
 **Lighter-review areas:** MAUI platform folders (template stubs), DevTools' Windows BLE stack internals, mockup/reference documents (`vehicle_nissanleaf.cpp`, glossaries). Nothing load-bearing was skipped.
@@ -111,9 +110,8 @@ Concrete `BleElmTransport` (327 lines) and `BleScanner` (150 lines) live in the 
 `src/ObdInsight/Program.cs` is 1,074 lines; `RunElm327SessionAsync` spans lines 307–963 with ten copy-pasted diagnostic blocks. A literal VIN `"<scrubbed-vin>"` and `new NissanLeaf()` are baked in (`Program.cs:276-278`); the generic vehicle-selection path is commented out (`Program.cs:253-274`), making `Application/VehicleSelector.cs` dead code. Two competing VIN parsers exist in the same file (`DecodeVin` at 20–112, `TryParseVin` at 971–1072, the latter writing UI output from inside parsing).
 
 **A7 — Smaller design debts. [Low] [Fact + judgment]**
-- "Generic" records drifting Leaf-specific: `VcmStatus.EcoTree`, `EcoIndicator`, `ChargeMode` (`src/ObdInsight.Core/Vehicles/Vehicles/VehicleCapabilities.cs:294-301`). Vehicle #2 will strain these; keep generic records physics-only.
+- "Generic" records drifting Leaf-specific: `VcmStatus.EcoTree`, `EcoIndicator`, `ChargeMode` (`src/ObdInsight.Core/Vehicles/VehicleCapabilities.cs:294-301`). Vehicle #2 will strain these; keep generic records physics-only.
 - `BUFFER FULL` during monitoring → silent `yield break` (`ElmSession.cs:893-899`); callers cannot distinguish "adapter died" from "stream ended."
-- Doubled folder `Vehicles/Vehicles/` in Core — refactor artifact.
 
 ### 3.3 Testing
 
@@ -127,7 +125,7 @@ No fake or replay `IElmTransport` exists despite the interface; the sole fixture
 The sign-extension/bit-extraction logic exists three times (runtime `CanBits.cs`, test-project copy `tests/ObdInsight.SourceGeneration.Tests/CanBits.cs`, generated per-namespace copy) and none has a direct unit test. This is exactly the code C1 lives in.
 
 **T4 — Weak assertions and missing tooling. [Medium] [Fact]**
-Tautological assertions (`IsTypeOf<bool>()` on a bool field, `LeafAze0PassiveMonitoringIntegrationTests.cs:200`; similar at :157-159); two diagnostic "tests" contain no assertions (Console output only, `LeafAze0SessionActivationDiagnosticsTests.cs`); a test named `..._ReturnsErrorCodes` asserts `HasValue == false`. No coverage tooling anywhere (no coverlet, no runsettings). VIN detection in `VehicleProfile`/`VehicleProfileRegistry` untested. Test assembly name typo: `OdbTestApp.Tests`.
+Tautological assertions (`IsTypeOf<bool>()` on a bool field, `LeafAze0PassiveMonitoringIntegrationTests.cs:200`; similar at :157-159); two diagnostic "tests" contain no assertions (Console output only, `LeafAze0SessionActivationDiagnosticsTests.cs`); a test named `..._ReturnsErrorCodes` asserts `HasValue == false`. No coverage tooling anywhere (no coverlet, no runsettings). VIN detection in `VehicleProfile`/`VehicleProfileRegistry` untested. ~~Test assembly name typo: `OdbTestApp.Tests`.~~ (fixed — test namespaces are now `ObdInsight.Tests.*` / `ObdInsight.IntegrationTests.*`)
 
 **Strength:** the source-generator snapshot tests are genuinely good — Verify baselines (~30), diagnostics assertions, scrubbed headers (`ModuleInitializer.cs:5-25`). The strongest testing in the repo; the model for the rest.
 
@@ -257,7 +255,7 @@ Five themes explain nearly all findings.
 | M3.1 | README rewrite (honest framing: console-first today, MAUI aspiration; current architecture diagram) | S |
 | M3.2 | Central package management (`Directory.Packages.props`); align Roslyn versions between generator and its tests | S |
 | M3.3 | Fix namespace masquerade + relocate transports (consolidate console/DevTools BLE stacks per Theme 4 design) | L |
-| M3.4 | Flatten `Vehicles/Vehicles/`; fix `OdbTestApp.Tests` assembly name; remove csproj scaffolding leftovers | S |
+| M3.4 | ~~Flatten `Vehicles/Vehicles/`; fix `OdbTestApp.Tests` namespaces~~ (done); remove csproj scaffolding leftovers | S |
 | M3.5 | Scrub personal MAC/VIN defaults into config; move mockups out of root (or to `docs/assets/`) | S |
 | M3.6 | Tighten integration assertions; convert assertion-free diagnostics into explicitly-named harness commands | M |
 | M3.7 | Split `Program.cs`: extract the 10 diagnostic blocks into a table-driven runner; restore vehicle selection | M/L |

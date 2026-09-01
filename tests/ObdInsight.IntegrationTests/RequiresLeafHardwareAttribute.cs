@@ -1,4 +1,4 @@
-using OdbTestApp.Tests.Fixtures;
+using ObdInsight.IntegrationTests.Fixtures;
 
 namespace ObdInsight.IntegrationTests;
 
@@ -7,7 +7,7 @@ namespace ObdInsight.IntegrationTests;
 ///     The integration suite needs a real Nissan Leaf plus a BLE OBD adapter; on machines
 ///     without them (developer laptops, CI) the tests skip instead of failing during
 ///     fixture initialization. Setting the environment variable to the adapter's MAC both
-///     opts in and tells <see cref="OdbTestApp.Tests.Fixtures.BleSessionFixture" /> which device to use.
+///     opts in and tells <see cref="ObdInsight.IntegrationTests.Fixtures.BleSessionFixture" /> which device to use.
 /// </summary>
 public sealed class RequiresLeafHardwareAttribute : SkipAttribute
 {

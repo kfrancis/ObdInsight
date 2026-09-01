@@ -3,7 +3,7 @@ using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Simulation;
 using ObdInsight.Telemetry;
 
-namespace OdbTestApp.Tests.Telemetry;
+namespace ObdInsight.Tests.Telemetry;
 
 /// <summary>
 ///     Roadmap B2 acceptance: a full pre-check → live drive → post-check flow through the

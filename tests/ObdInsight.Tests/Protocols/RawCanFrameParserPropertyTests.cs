@@ -1,7 +1,7 @@
 using CsCheck;
 using ObdInsight.Core.Protocols;
 
-namespace OdbTestApp.Tests.Protocols;
+namespace ObdInsight.Tests.Protocols;
 
 /// <summary>
 ///     Property-based tests (CsCheck) for <see cref="RawCanFrameParser" />: every frame an ELM327 can

@@ -2,9 +2,9 @@ using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.IntegrationTests;
-using OdbTestApp.Tests.Fixtures;
+using ObdInsight.IntegrationTests.Fixtures;
 
-namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
+namespace ObdInsight.IntegrationTests.Nissan.Leaf.AZE0;
 
 /// <summary>
 ///     Diagnostic tests for determining which Nissan Leaf AZE0 ECUs require session activation.

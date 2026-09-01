@@ -5,7 +5,7 @@ using ObdInsight.Core.Communication.Bluetooth;
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
 using ObdInsight.Core.Vehicles;
-using ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
+using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Transports.WindowsBle;
@@ -202,9 +202,7 @@ namespace ObdInsight
                 return $"(len={data.Length}, decoders need 8 bytes)";
             }
 
-            var decoded =
-                CanFrameRouter.TryParseAny(canId, data)
-                ?? Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames.CanFrameRouter.TryParseAny(canId, data);
+            var decoded = CanFrameRouter.TryParseAny(canId, data);
 
             return decoded is null
                 ? null

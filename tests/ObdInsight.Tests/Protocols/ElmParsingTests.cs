@@ -1,7 +1,7 @@
 using CsCheck;
 using ObdInsight.Core.Protocols;
 
-namespace OdbTestApp.Tests.Protocols;
+namespace ObdInsight.Tests.Protocols;
 
 /// <summary>
 ///     Unit and property tests for <see cref="ElmParsing" />. The Mode 01 tests pin the PID match:

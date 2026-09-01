@@ -3,7 +3,7 @@ using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
 using ObdInsight.Simulation;
 
-namespace OdbTestApp.Tests.Elm327;
+namespace ObdInsight.Tests.Elm327;
 
 /// <summary>
 ///     Roadmap B10 (docs/RESILIENCE_DESIGN.md): reconnecting transport decorator +

@@ -2,7 +2,7 @@ using ObdInsight.Core.Communication.Slcan;
 using ObdInsight.Core.Protocols;
 using ObdInsight.Simulation;
 
-namespace OdbTestApp.Tests.Elm327;
+namespace ObdInsight.Tests.Elm327;
 
 /// <summary>
 ///     Drives <see cref="SlcanFrameSource" /> end to end over the replay transport, so the whole path

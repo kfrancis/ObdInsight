@@ -2,7 +2,7 @@ using System.Text;
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Simulation;
 
-namespace OdbTestApp.Tests.Elm327;
+namespace ObdInsight.Tests.Elm327;
 
 /// <summary>
 ///     Tests for <see cref="ListenOnlyElmTransport" />, the guard that keeps request frames off a

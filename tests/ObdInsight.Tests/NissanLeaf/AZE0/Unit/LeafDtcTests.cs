@@ -3,7 +3,7 @@ using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Simulation;
 
-namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
+namespace ObdInsight.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
 ///     Roadmap B5: OBD-II Mode 03/07 DTC reading through the production path —

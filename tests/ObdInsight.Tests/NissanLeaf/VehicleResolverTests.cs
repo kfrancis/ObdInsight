@@ -4,7 +4,7 @@ using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Simulation;
 
-namespace OdbTestApp.Tests.NissanLeaf;
+namespace ObdInsight.Tests.NissanLeaf;
 
 /// <summary>
 ///     Roadmap B6: VIN-driven vehicle selection over replay — the session connects, reads

@@ -3,7 +3,7 @@ using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Simulation;
 
-namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
+namespace ObdInsight.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
 ///     Gear position via the CAR-CAN 0x421 shifter relay — the path that actually fires on

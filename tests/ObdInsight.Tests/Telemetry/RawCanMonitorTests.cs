@@ -2,7 +2,7 @@ using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Simulation;
 using ObdInsight.Telemetry;
 
-namespace OdbTestApp.Tests.Telemetry;
+namespace ObdInsight.Tests.Telemetry;
 
 /// <summary>
 ///     Lifecycle + parsing coverage for <see cref="IRawCanMonitor" />: start/stream/stop over the
