@@ -228,7 +228,9 @@ public partial class BatteryFrame_55B_AZE0
         MinValue = 0, MaxValue = 1)]
     public partial bool IrSensorMalfunction { get; init; }
 
-    [CanSignal(39, 10, Unit = "mV",
+    // EV-can_AZE0.dbc: LB_IR_Sensor_Wave_Voltage : 39|10@0+ — Motorola. Decoded as Intel until
+    // 2026-08-31, which read a different 10 bits and returned 769 instead of 910.
+    [CanSignal(39, 10, ByteOrder = CanByteOrder.Motorola, Unit = "mV",
         Description = "Internal resistance sensor wave voltage (5000/1024)",
         MinValue = 0, MaxValue = 4990)]
     public partial int IrSensorWaveVoltage { get; init; }
@@ -238,28 +240,28 @@ public partial class BatteryFrame_55B_AZE0
         MinValue = 0, MaxValue = 3)]
     public partial int Prun { get; init; }
 
-    [CanSignal(53, 2,
+    // EV-can_AZE0.dbc: LB_SleepEnabled : 53|2@0+ — Motorola. Decoded as Intel until 2026-08-31,
+    // which returned 0 on a captured frame. 0 is documented as Reserved, i.e. not a state the
+    // controller reports; Motorola gives 1 = RefuseToSleep, correct for a vehicle that was awake.
+    [CanSignal(53, 2, ByteOrder = CanByteOrder.Motorola,
         Description = "Sleep enabled status (0=Reserved, 1=RefuseToSleep, 2=ReadyToSleep, 3=Reserved)",
         MinValue = 0, MaxValue = 3)]
     public partial int SleepEnabled { get; init; }
 
-    [CanSignal(0, 8,
-        Description = "State of charge, raw high 8 bits (byte 0; Motorola DBC start-bit 7)",
-        MinValue = 0, MaxValue = 255)]
-    public partial int SocRawHigh { get; init; }
-
-    [CanSignal(14, 2,
-        Description = "State of charge, raw low 2 bits (byte 1 bits 7-6)",
-        MinValue = 0, MaxValue = 3)]
-    public partial int SocRawLow { get; init; }
-
     /// <summary>
-    /// State of charge in 0.1% units (e.g. 928 = 92.8%). The DBC source is a Motorola-order
-    /// 10-bit field starting at bit 7 (byte0[7..0] + byte1[7..6]), which cannot be expressed
-    /// as a single Intel signal — recombined from the two raw parts.
-    /// Hardware-verified 2026-07-18: raw E8 00 → 928 with pack near full (~96%).
+    /// State of charge in 0.1% units (e.g. 928 = 92.8%).
     /// </summary>
-    public int Soc => (SocRawHigh << 2) | SocRawLow;
+    /// <remarks>
+    /// EV-can_AZE0.dbc: <c>LB_SOC : 7|10@0+</c>. This was previously split into two Intel
+    /// signals (byte 0, plus byte 1 bits 7-6) and recombined by hand, because a Motorola field
+    /// could not be expressed directly. It now maps straight onto the DBC position.
+    /// Hardware-verified: raw E8 00 -> 928 (pack ~96% full, 2026-07-18) and F3 00 -> 972
+    /// (2026-08-31). Reading the same bits as Intel returns 1.
+    /// </remarks>
+    [CanSignal(7, 10, ByteOrder = CanByteOrder.Motorola, Unit = "0.1%",
+        Description = "Battery state of charge",
+        MinValue = 0, MaxValue = 1000)]
+    public partial int Soc { get; init; }
 }
 
 /// <summary>

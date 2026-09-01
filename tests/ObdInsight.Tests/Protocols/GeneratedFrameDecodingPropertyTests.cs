@@ -132,7 +132,9 @@ public class GeneratedFrameDecodingPropertyTests
     {
         var actual = signal.Property.GetValue(decoded);
         var attribute = signal.Attribute;
-        var unsigned = ReadUnsigned(payload, attribute.BitStart, attribute.BitLength);
+        var unsigned = attribute.ByteOrder == CanByteOrder.Motorola
+            ? ReadUnsignedMotorola(payload, attribute.BitStart, attribute.BitLength)
+            : ReadUnsigned(payload, attribute.BitStart, attribute.BitLength);
 
         if (signal.Property.PropertyType == typeof(bool))
         {
@@ -179,6 +181,42 @@ public class GeneratedFrameDecodingPropertyTests
 
         var mask = bitLength == 32 ? 0xFFFF_FFFFul : (1ul << bitLength) - 1ul;
         return (uint)((raw >> bitStart) & mask);
+    }
+
+    /// <summary>
+    /// Reads a Motorola (DBC <c>@0</c>) bit field by walking the bits the way the format
+    /// describes, rather than by the shift-and-mask the production reader uses.
+    /// </summary>
+    /// <remarks>
+    /// The start bit is the signal's most significant bit. Each subsequent bit is the next one
+    /// down within the byte; on falling below bit 0 the walk continues at bit 7 of the following
+    /// byte. Written literally, one bit at a time, so this oracle is an independent statement of
+    /// the rule - agreeing with the production reader is then evidence its
+    /// <c>64 - (msbIndex + bitLen)</c> shift is the same thing, not merely evidence that two
+    /// copies of the same arithmetic agree.
+    /// </remarks>
+    private static uint ReadUnsignedMotorola(byte[] payload, int bitStart, int bitLength)
+    {
+        uint value = 0;
+        var byteIndex = bitStart / 8;
+        var bitInByte = bitStart % 8;
+
+        for (var i = 0; i < bitLength; i++)
+        {
+            var bit = byteIndex < payload.Length && byteIndex < 8
+                ? (payload[byteIndex] >> bitInByte) & 1
+                : 0;   // short payloads zero-extend, matching the generated reader
+
+            value = (value << 1) | (uint)bit;
+
+            if (--bitInByte < 0)
+            {
+                bitInByte = 7;
+                byteIndex++;
+            }
+        }
+
+        return value;
     }
 
     private static int SignExtend(uint value, int bitLength)

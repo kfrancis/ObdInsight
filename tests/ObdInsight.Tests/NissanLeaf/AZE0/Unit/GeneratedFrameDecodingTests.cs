@@ -130,13 +130,35 @@ public class GeneratedFrameDecodingTests
     [Test]
     public async Task BatteryFrame55b_NearFullCapture_SocDecodesTenthsOfPercent()
     {
-        // Motorola 10-bit SOC (byte0 + byte1[7..6]): E8 00 => 928 = 92.8% (pack ~96% full).
-        // The pre-audit Intel transcription decoded 1.
+        // Every 0x55B signal the DBC marks @0, decoded through the Motorola reader.
+        //
+        // Soc is unchanged at 928: it previously reached the same value by splitting the field
+        // into two Intel signals and recombining them by hand, so this asserts the direct
+        // mapping produces identical output.
+        //
+        // IrSensorWaveVoltage and SleepEnabled were NOT previously correct - both are @0 in
+        // EV-can_AZE0.dbc but were declared as Intel, so they read unrelated bits.
+        // SleepEnabled is the clearest evidence: Intel gave 0, which the DBC documents as
+        // Reserved rather than a state the controller reports, while Motorola gives 1
+        // (RefuseToSleep) - correct for a vehicle that was awake when this was captured.
         var frame = BatteryFrame_55B_AZE0.Parse(Captured("E800AA00E380135D"));
 
         await Assert.That(frame.Soc).IsEqualTo(928);
-        await Assert.That(frame.AluAnswer).IsEqualTo(0xAA);
-        await Assert.That(frame.IrSensorWaveVoltage).IsEqualTo(769);
+        await Assert.That(frame.AluAnswer).IsEqualTo(0xAA);      // 16|8@1 - Intel, unchanged
+        await Assert.That(frame.IrSensorWaveVoltage).IsEqualTo(910);
+        await Assert.That(frame.SleepEnabled).IsEqualTo(1);
+    }
+
+    /// <summary>
+    /// A second capture five weeks later at a different charge level, so SOC is pinned by two
+    /// independent observations rather than one. 972 = 97.2 %, matching the vehicle display.
+    /// </summary>
+    [Test]
+    public async Task BatteryFrame55b_SecondCapture_SocTracksActualCharge()
+    {
+        var frame = BatteryFrame_55B_AZE0.Parse(Captured("F3005500E2C011B2"));
+
+        await Assert.That(frame.Soc).IsEqualTo(972);
     }
 
     [Test]
