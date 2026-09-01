@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
+using ObdInsight.SourceGeneration;
 using ObdInsight.SourceGeneration.Attributes;
 
 namespace ObdInsight.DevTools.Commands;
@@ -29,14 +30,17 @@ public static class DbcAudit
         bool IsBigEndian,
         bool IsSigned,
         double Factor,
-        double Offset);
+        double Offset,
+        double Min,
+        double Max);
 
     /// <summary>
     /// <c>SG_ Name : start|len@order sign (factor,offset) [min|max] "unit" receivers</c>
     /// Order is 0 for Motorola/big-endian and 1 for Intel; sign is + for unsigned, - for signed.
     /// </summary>
     private static readonly Regex SignalLine = new(
-        @"^\s*SG_\s+(?<name>[A-Za-z0-9_]+)\s*:\s*(?<start>\d+)\|(?<len>\d+)@(?<order>[01])(?<sign>[+-])\s*\((?<factor>[^,]+),(?<offset>[^)]+)\)",
+        @"^\s*SG_\s+(?<name>[A-Za-z0-9_]+)\s*:\s*(?<start>\d+)\|(?<len>\d+)@(?<order>[01])(?<sign>[+-])\s*" +
+        @"\((?<factor>[^,]+),(?<offset>[^)]+)\)\s*\[(?<min>[^|]*)\|(?<max>[^\]]*)\]",
         RegexOptions.Compiled);
 
     /// <summary><c>BO_ &lt;decimal id&gt; &lt;name&gt;: &lt;dlc&gt; &lt;transmitter&gt;</c></summary>
@@ -139,7 +143,9 @@ public static class DbcAudit
                 s.Groups["order"].Value == "0",
                 s.Groups["sign"].Value == "-",
                 ParseDouble(s.Groups["factor"].Value),
-                ParseDouble(s.Groups["offset"].Value));
+                ParseDouble(s.Groups["offset"].Value),
+                ParseDouble(s.Groups["min"].Value),
+                ParseDouble(s.Groups["max"].Value));
         }
     }
 
@@ -296,4 +302,200 @@ public static class DbcAudit
 
     private static bool NearlyEqual(double a, double b) =>
         (double.IsNaN(a) && double.IsNaN(b)) || Math.Abs(a - b) < 1e-9;
+
+    // ------------------------------------------------------- capture evidence
+
+    /// <summary>
+    /// Decides byte-order disputes using captured frames instead of argument.
+    ///
+    /// For each disputed signal both interpretations are decoded across every payload observed
+    /// for that CAN ID, scaled, and checked against the range the DBC declares. A reading that
+    /// leaves the declared range is reporting something the ECU does not emit, which is how
+    /// 0x55B SleepEnabled was settled: Intel returned 0, documented as Reserved, while Motorola
+    /// returned RefuseToSleep on a vehicle that was plainly awake.
+    ///
+    /// Where both interpretations stay in range the evidence is genuinely inconclusive and the
+    /// report says so rather than guessing - several of these signals read 0 throughout a
+    /// stationary capture, and 0 is 0 under either order.
+    /// </summary>
+    public static int CrossReference(string[] args)
+    {
+        var paths = args.Skip(1).Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToList();
+        if (paths.Count < 2)
+        {
+            Console.Error.WriteLine("usage: ObdInsight.DevTools.exe dbc-crosscheck <dbc-dir> <captures-dir>");
+            return 2;
+        }
+
+        var dbc = Directory.GetFiles(paths[0], "*.dbc", SearchOption.AllDirectories)
+            .SelectMany(ParseDbc)
+            .ToList();
+
+        // Distinct payloads per CAN ID across every capture: repeats add no information.
+        var observed = new Dictionary<int, HashSet<string>>();
+        var logs = Directory.GetFiles(paths[1], "capture.log", SearchOption.AllDirectories);
+        foreach (var log in logs)
+        {
+            foreach (var line in File.ReadLines(log))
+            {
+                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 4 || parts[1] != "F")
+                {
+                    continue;
+                }
+
+                if (!int.TryParse(parts[2], System.Globalization.NumberStyles.HexNumber, null, out var id))
+                {
+                    continue;
+                }
+
+                if (!observed.TryGetValue(id, out var set))
+                {
+                    observed[id] = set = new HashSet<string>(StringComparer.Ordinal);
+                }
+
+                set.Add(parts[3]);
+            }
+        }
+
+        Console.Error.WriteLine(
+            $"{logs.Length} captures, {observed.Count} CAN IDs, " +
+            $"{observed.Sum(kv => kv.Value.Count)} distinct payloads");
+        Console.Error.WriteLine();
+
+        var frames = DiscoverFrames();
+        int decided = 0, inconclusive = 0, nodata = 0;
+
+        foreach (var frame in frames)
+        {
+            var candidates = dbc.Where(d => d.CanId == frame.CanId).ToList();
+
+            foreach (var signal in frame.Signals)
+            {
+                var match = candidates.FirstOrDefault(d =>
+                    d.StartBit == signal.Attribute.BitStart && d.Length == signal.Attribute.BitLength);
+
+                if (match is null || signal.Attribute.BitLength == 1)
+                {
+                    continue;
+                }
+
+                var codeIsBe = signal.Attribute.ByteOrder == CanByteOrder.Motorola;
+                if (codeIsBe == match.IsBigEndian)
+                {
+                    continue;
+                }
+
+                if (!observed.TryGetValue(frame.CanId, out var payloads) || payloads.Count == 0)
+                {
+                    nodata++;
+                    continue;
+                }
+
+                var (intelOk, intelLo, intelHi) = Evaluate(payloads, match, bigEndian: false);
+                var (motoOk, motoLo, motoHi) = Evaluate(payloads, match, bigEndian: true);
+
+                string verdict;
+                if (intelOk && !motoOk)
+                {
+                    verdict = "KEEP INTEL   (Motorola leaves the DBC range)";
+                    decided++;
+                }
+                else if (motoOk && !intelOk)
+                {
+                    verdict = "USE MOTOROLA (Intel leaves the DBC range)";
+                    decided++;
+                }
+                else if (intelLo == intelHi && motoLo == motoHi && intelLo == motoLo)
+                {
+                    verdict = "INCONCLUSIVE (both constant and equal - captures do not discriminate)";
+                    inconclusive++;
+                }
+                else
+                {
+                    verdict = "INCONCLUSIVE (both within range)";
+                    inconclusive++;
+                }
+
+                Console.Out.WriteLine(
+                    $"0x{frame.CanId:X3} {frame.TypeName}.{signal.Property}");
+                Console.Out.WriteLine(
+                    $"    dbc {match.Name} {match.StartBit}|{match.Length}@{(match.IsBigEndian ? 0 : 1)} " +
+                    $"range [{match.Min}..{match.Max}]  over {payloads.Count} payloads");
+                Console.Out.WriteLine(
+                    $"    Intel    {intelLo,12:G6} .. {intelHi,-12:G6} {(intelOk ? "in range" : "OUT OF RANGE")}");
+                Console.Out.WriteLine(
+                    $"    Motorola {motoLo,12:G6} .. {motoHi,-12:G6} {(motoOk ? "in range" : "OUT OF RANGE")}");
+                Console.Out.WriteLine($"    => {verdict}");
+                Console.Out.WriteLine();
+            }
+        }
+
+        Console.Out.WriteLine(
+            $"SUMMARY: {decided} decided by captured data, {inconclusive} inconclusive, " +
+            $"{nodata} with no captured frames for that ID.");
+        return 0;
+    }
+
+    private static (bool InRange, double Lo, double Hi) Evaluate(
+        HashSet<string> payloads, DbcSignal dbc, bool bigEndian)
+    {
+        var lo = double.MaxValue;
+        var hi = double.MinValue;
+
+        foreach (var hex in payloads)
+        {
+            var bytes = ParseHex(hex);
+            if (bytes.Length < 8)
+            {
+                // Zero-extend, matching the generated reader.
+                Array.Resize(ref bytes, 8);
+            }
+
+            uint raw;
+            try
+            {
+                raw = bigEndian
+                    ? CanBits.ReadUnsignedBe(bytes, dbc.StartBit, dbc.Length)
+                    : CanBits.ReadUnsigned(bytes, dbc.StartBit, dbc.Length);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                // A Motorola signal that runs past the payload cannot be the right reading.
+                return (false, double.NaN, double.NaN);
+            }
+
+            var value = dbc.IsSigned
+                ? SignExtend(raw, dbc.Length) * dbc.Factor + dbc.Offset
+                : raw * dbc.Factor + dbc.Offset;
+
+            lo = Math.Min(lo, value);
+            hi = Math.Max(hi, value);
+        }
+
+        // A DBC range of [0|0] means "unspecified", not "must be zero".
+        var bounded = !double.IsNaN(dbc.Min) && !double.IsNaN(dbc.Max) && dbc.Max > dbc.Min;
+        var inRange = !bounded || (lo >= dbc.Min && hi <= dbc.Max);
+
+        return (inRange, lo, hi);
+    }
+
+    private static int SignExtend(uint value, int bitLength)
+    {
+        var signBit = 1u << (bitLength - 1);
+        return (value & signBit) == 0
+            ? (int)value
+            : (int)(value | (bitLength == 32 ? 0u : ~((1u << bitLength) - 1)));
+    }
+
+    private static byte[] ParseHex(string hex)
+    {
+        var bytes = new byte[hex.Length / 2];
+        for (var i = 0; i < bytes.Length; i++)
+        {
+            bytes[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
+        }
+
+        return bytes;
+    }
 }

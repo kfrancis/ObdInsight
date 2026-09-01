@@ -215,6 +215,28 @@ public class GeneratedFrameDecodingTests
         await Assert.That(frame.ClimateControlActive).IsFalse();
     }
 
+    /// <summary>
+    /// 0x260 is a 4-byte frame whose three signals are all Motorola in CAR-can_AZE0.dbc. They
+    /// were declared Intel, which put every one outside its own declared range on real payloads.
+    ///
+    /// <c>C8127D00</c> is the most common payload across the 2026-08-31 captures, taken with the
+    /// vehicle parked. PowerConsumptMotor is the physical check: ~0 kW is right for a stationary
+    /// car, whereas the Intel reading claimed a constant -100 kW draw.
+    ///
+    /// This also exercises a 4-byte payload against Motorola signals, which is what forced
+    /// GetMinimumLength to become endianness-aware - the Intel expression demanded 5 bytes for
+    /// a frame the vehicle only ever sends as 4, so Parse threw on every real frame.
+    /// </summary>
+    [Test]
+    public async Task VcmFrame260_ParkedCapture_MotorPowerDecodesWithinRange()
+    {
+        var frame = VcmFrame_260_AZE0.Parse(Captured("C8127D00"));
+
+        await Assert.That(frame.PowerConsumptMotor).IsBetween(-1.0, 1.0);
+        await Assert.That(frame.AvailableMotorPower).IsBetween(0, 90);
+        await Assert.That(frame.MotorRegenerationPowerMax).IsBetween(0, 50);
+    }
+
     [Test]
     public async Task VcmFrame5a9_ChargingCapture_RangeDecodesKm()
     {

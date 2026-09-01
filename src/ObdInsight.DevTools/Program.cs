@@ -32,6 +32,12 @@ internal class Program
             return DbcAudit.Run(args);
         }
 
+        // Offline: settles the byte-order disputes that audit reports, using captured frames.
+        if (args.Length > 0 && args[0].Equals("dbc-crosscheck", StringComparison.OrdinalIgnoreCase))
+        {
+            return DbcAudit.CrossReference(args);
+        }
+
         AnsiConsole.Write(new FigletText("OBD DevTools").Color(Color.Cyan1));
         AnsiConsole.MarkupLine("[grey]BLE OBD-II Development Tool[/]");
         AnsiConsole.WriteLine();

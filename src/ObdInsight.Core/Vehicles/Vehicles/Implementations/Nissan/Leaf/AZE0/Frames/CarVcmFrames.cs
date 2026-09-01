@@ -13,6 +13,14 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
 [CanFrame(0x510, Description = "VCM power consumption, climate, and eco data (CAR-CAN)")]
 public partial class VcmFrame_510_AZE0
 {
+    // UNRESOLVED: CAR-can_AZE0.dbc marks this @0, but the evidence does not support switching.
+    //   Intel     July capture (vehicle charging) = 2, matching the observation;
+    //             1338 payloads on 2026-08-31 span 0..6, outside the declared [0..3].
+    //   Motorola  reads 0 on BOTH captures - including the charging one, where 0 would mean
+    //             "not charging", contradicting what the vehicle was actually doing.
+    // Motorola fails the only sample with known ground truth, so Intel stays until a capture
+    // taken while charging can distinguish them. The out-of-range Intel values more likely mean
+    // the DBC's [0..3] annotation is incomplete than that the position is wrong.
     [CanSignal(10, 3,
         Description = "Charge mode indicator (0-3)",
         MinValue = 0, MaxValue = 3)]
@@ -203,17 +211,24 @@ public partial class VcmFrame_180_AZE0
 [CanFrame(0x260, Description = "VCM motor power data (CAR-CAN, 4 bytes)")]
 public partial class VcmFrame_260_AZE0
 {
-    [CanSignal(6, 7, Unit = "kW",
+    // All three are @0 in CAR-can_AZE0.dbc and were declared Intel, which put every one outside
+    // its own declared range on captured frames (14 distinct payloads, 2026-08-31):
+    //   AvailableMotorPower        Intel 3..107     vs [0..90]      Motorola 72
+    //   MotorRegenerationPowerMax  Intel 116        vs [0..50]      Motorola 0..26
+    //   PowerConsumptMotor         Intel -100..-90  vs [-50..90]    Motorola 0..0.3
+    // PowerConsumptMotor is the clearest: the vehicle was parked, so ~0 kW is right and a
+    // constant -100 kW draw is not.
+    [CanSignal(6, 7, ByteOrder = CanByteOrder.Motorola, Unit = "kW",
         Description = "Available motor power",
         MinValue = 0, MaxValue = 90)]
     public partial int AvailableMotorPower { get; init; }
 
-    [CanSignal(14, 7, Unit = "kW",
+    [CanSignal(14, 7, ByteOrder = CanByteOrder.Motorola, Unit = "kW",
         Description = "Maximum motor regeneration power",
         MinValue = 0, MaxValue = 50)]
     public partial int MotorRegenerationPowerMax { get; init; }
 
-    [CanSignal(23, 12, Factor = 0.05, Offset = -100.0, Unit = "kW",
+    [CanSignal(23, 12, ByteOrder = CanByteOrder.Motorola, Factor = 0.05, Offset = -100.0, Unit = "kW",
         Description = "Motor power consumption (negative for regen)",
         MinValue = -100, MaxValue = 90)]
     public partial double PowerConsumptMotor { get; init; }

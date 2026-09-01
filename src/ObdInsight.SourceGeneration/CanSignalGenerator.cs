@@ -563,7 +563,15 @@ namespace ObdInsight.SourceGeneration
             var highestBit = 0;
             foreach (var signal in model.Signals)
             {
-                var lastBit = signal.BitStart + signal.BitLength - 1;
+                // Endianness-aware, for the same reason the range diagnostic is. A Motorola
+                // signal grows downward through the big-endian view, so the Intel expression
+                // overstates how many bytes it needs: 0x260's PowerConsumptMotor (23|12@0) ends
+                // at bit 27 - four bytes, exactly the DLC the vehicle sends - but the Intel
+                // formula gives 34 and would demand five, making Parse throw on every real frame.
+                var lastBit = signal.IsBigEndian
+                    ? CanBits.MotorolaMsbIndex(signal.BitStart) + signal.BitLength - 1
+                    : signal.BitStart + signal.BitLength - 1;
+
                 if (lastBit > highestBit)
                 {
                     highestBit = lastBit;
