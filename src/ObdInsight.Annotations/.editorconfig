@@ -1,0 +1,12 @@
+# Scoped override for ObdInsight.Annotations. Inherits everything from the repo-root
+# .editorconfig; only IDE0130 is relaxed here.
+#
+# These files sit in src/ObdInsight.Annotations but declare ObdInsight.SourceGeneration.*
+# namespaces on purpose. ObdInsight.SourceGeneration compiles them as linked source so its
+# attribute-matching enum casts resolve without a runtime assembly reference, and the
+# generator matches the attributes by full name. Renaming the namespaces to match the
+# folder would silently break frame/UDS generation, so the analyzer is turned off rather
+# than the code changed. See the comment in ObdInsight.Annotations.csproj.
+
+[*.cs]
+dotnet_diagnostic.IDE0130.severity = none
