@@ -216,6 +216,31 @@ public class GeneratedFrameDecodingTests
     }
 
     /// <summary>
+    /// Pins the byte order of 0x284's three 16-bit speed fields.
+    ///
+    /// The captured parked payloads read 0 for all of them, and zero is zero under either order,
+    /// so they cannot show that these are big-endian. These payloads are therefore synthetic:
+    /// each places a single 0x01 byte where only a Motorola read can see it.
+    ///
+    /// Wheel_Speed_FR is 7|16@0, so byte 0 is its high byte: 0x0100 = 256, x0.005 = 1.28 km/h.
+    /// Read as Intel from bit 7 the same payload yields 0. The factors themselves stay unverified
+    /// until the vehicle is driven - a stationary capture cannot confirm a scale.
+    /// </summary>
+    [Test]
+    [Arguments("0100000000000000", 1.28, 0.0, 0.0)]   // byte 0 -> FR high byte
+    [Arguments("0000010000000000", 0.0, 1.28, 0.0)]   // byte 2 -> FL high byte
+    [Arguments("0000000001000000", 0.0, 0.0, 2.56)]   // byte 4 -> vehicle speed high byte, x0.01
+    public async Task AbsFrame284_SpeedFields_ReadBigEndian(
+        string payload, double fr, double fl, double vehicle)
+    {
+        var frame = AbsFrame_284_AZE0.Parse(Captured(payload));
+
+        await Assert.That(frame.WheelSpeedFr).IsEqualTo(fr).Within(1e-9);
+        await Assert.That(frame.WheelSpeedFl).IsEqualTo(fl).Within(1e-9);
+        await Assert.That(frame.VehicleSpeedFromAbs).IsEqualTo(vehicle).Within(1e-9);
+    }
+
+    /// <summary>
     /// 0x260 is a 4-byte frame whose three signals are all Motorola in CAR-can_AZE0.dbc. They
     /// were declared Intel, which put every one outside its own declared range on real payloads.
     ///
