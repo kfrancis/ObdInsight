@@ -23,12 +23,13 @@ namespace ObdInsight.Core.Communication.Elm327
         ValueTask<bool> ActivateSessionAsync(EcuContext context, CancellationToken ct);
 
         /// <summary>
-        /// Sends the context's keep-alive command (typically TesterPresent, e.g. "3E80") with
-        /// tolerance for suppress-positive-response silence. Returns true when the command was
-        /// sent and no adapter error came back; false when keep-alive could not be sent
-        /// (e.g. session is in monitoring mode). No-op true when the context has no keep-alive.
+        ///     Sends the context's keep-alive command (typically TesterPresent, e.g. "3E80") with
+        ///     tolerance for suppress-positive-response silence. Returns true when the command was
+        ///     sent and no adapter error came back; false when keep-alive could not be sent
+        ///     (e.g. session is in monitoring mode). No-op true when the context has no keep-alive.
         /// </summary>
         ValueTask<bool> SendKeepAliveAsync(EcuContext context, CancellationToken ct);
+
         ValueTask EnterMonitoringModeAsync(EcuContext context, CancellationToken ct);
         ValueTask ExitMonitoringModeAsync(CancellationToken ct);
         ValueTask InitializeAndLockAsync(CancellationToken ct);
@@ -594,7 +595,8 @@ namespace ObdInsight.Core.Communication.Elm327
 
                 try
                 {
-                    var response = await SendAndNormalizeAsync(context.KeepAliveCommand, TimeSpan.FromMilliseconds(500), ct);
+                    var response =
+                        await SendAndNormalizeAsync(context.KeepAliveCommand, TimeSpan.FromMilliseconds(500), ct);
                     var ok = !response.Any(ElmParsing.LooksLikeAdapterError);
                     Log($"Keep-alive '{context.KeepAliveCommand}' sent (ok={ok})");
                     return ok;

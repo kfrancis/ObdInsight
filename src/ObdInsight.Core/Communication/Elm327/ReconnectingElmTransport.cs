@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ObdInsight.Core.Communication.Elm327;
 
-/// <summary>Reconnection behavior for <see cref="ReconnectingElmTransport"/>.</summary>
+/// <summary>Reconnection behavior for <see cref="ReconnectingElmTransport" />.</summary>
 public sealed record ReconnectOptions
 {
     /// <summary>Reconnect attempts before giving up (default 6).</summary>
@@ -17,32 +17,31 @@ public sealed record ReconnectOptions
 }
 
 /// <summary>
-/// Resilient <see cref="IElmTransport"/> decorator (roadmap B10,
-/// docs/RESILIENCE_DESIGN.md): owns a transport <em>factory</em> and transparently
-/// replaces a dead inner transport. During an outage, reads and writes block until
-/// reconnection succeeds — the session/monitor/capability objects above are never torn
-/// down, so a BLE drop in a moving car costs a data gap, not a rebuild.
-///
-/// Reconnect triggers: the inner transport's
-/// <see cref="IConnectionAwareTransport.ConnectionLost"/> (proactive) or an
-/// <see cref="IOException"/>/<see cref="ObjectDisposedException"/> from inner I/O
-/// (reactive). Other exceptions propagate untouched — they are protocol-level, not
-/// link-level. After <see cref="ReconnectOptions.MaxAttempts"/> failures the state
-/// becomes <see cref="ConnectionState.Lost"/> and I/O throws until an explicit
-/// <see cref="OpenAsync"/>.
+///     Resilient <see cref="IElmTransport" /> decorator (roadmap B10,
+///     docs/RESILIENCE_DESIGN.md): owns a transport <em>factory</em> and transparently
+///     replaces a dead inner transport. During an outage, reads and writes block until
+///     reconnection succeeds — the session/monitor/capability objects above are never torn
+///     down, so a BLE drop in a moving car costs a data gap, not a rebuild.
+///     Reconnect triggers: the inner transport's
+///     <see cref="IConnectionAwareTransport.ConnectionLost" /> (proactive) or an
+///     <see cref="IOException" />/<see cref="ObjectDisposedException" /> from inner I/O
+///     (reactive). Other exceptions propagate untouched — they are protocol-level, not
+///     link-level. After <see cref="ReconnectOptions.MaxAttempts" /> failures the state
+///     becomes <see cref="ConnectionState.Lost" /> and I/O throws until an explicit
+///     <see cref="OpenAsync" />.
 /// </summary>
 public sealed class ReconnectingElmTransport : IConnectionAwareTransport, IConnectionStateSource
 {
-    private readonly Func<IElmTransport> _transportFactory;
-    private readonly ReconnectOptions _options;
     private readonly ILogger<ReconnectingElmTransport> _logger;
+    private readonly ReconnectOptions _options;
     private readonly object _stateLock = new();
+    private readonly Func<IElmTransport> _transportFactory;
+    private TaskCompletionSource _connectedSignal = NewSignal();
+    private bool _disposed;
 
     private IElmTransport? _inner;
-    private ConnectionState _state = ConnectionState.Connecting;
-    private TaskCompletionSource _connectedSignal = NewSignal();
     private bool _reconnectInFlight;
-    private bool _disposed;
+    private ConnectionState _state = ConnectionState.Connecting;
 
     public ReconnectingElmTransport(
         Func<IElmTransport> transportFactory,
@@ -54,20 +53,7 @@ public sealed class ReconnectingElmTransport : IConnectionAwareTransport, IConne
         _logger = logger ?? NullLogger<ReconnectingElmTransport>.Instance;
     }
 
-    public event EventHandler<ConnectionStateChangedEventArgs>? StateChanged;
-
     public event EventHandler? ConnectionLost;
-
-    public ConnectionState State
-    {
-        get
-        {
-            lock (_stateLock)
-            {
-                return _state;
-            }
-        }
-    }
 
     public bool IsOpen => State == ConnectionState.Connected;
 
@@ -146,6 +132,19 @@ public sealed class ReconnectingElmTransport : IConnectionAwareTransport, IConne
         if (inner is not null)
         {
             await inner.DisposeAsync();
+        }
+    }
+
+    public event EventHandler<ConnectionStateChangedEventArgs>? StateChanged;
+
+    public ConnectionState State
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return _state;
+            }
         }
     }
 

@@ -2,13 +2,14 @@ using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Simulation;
+using ObdInsight.Telemetry;
 
 namespace OdbTestApp.Tests.Telemetry;
 
 /// <summary>
-/// Regression tests for <see cref="SimulatedLeafAze0Transport"/> at the session level:
-/// full init/protocol sequence, cold UDS queries, and UDS-under-running-monitor
-/// (suspend/resume) — the building blocks the B2 drive harness composes.
+///     Regression tests for <see cref="SimulatedLeafAze0Transport" /> at the session level:
+///     full init/protocol sequence, cold UDS queries, and UDS-under-running-monitor
+///     (suspend/resume) — the building blocks the B2 drive harness composes.
 /// </summary>
 [Timeout(15_000)]
 public class SimulatedLeafTransportTests
@@ -66,12 +67,9 @@ public class SimulatedLeafTransportTests
         await session.InitializeAndLockAsync(token);
         var commands = new LeafAze0CommandSet(session);
         commands.Monitor.RestartDelay = TimeSpan.Zero;
-        await using var telemetry = ObdInsight.Telemetry.TelemetrySession.Create(
+        await using var telemetry = TelemetrySession.Create(
             commands,
-            options: new ObdInsight.Telemetry.TelemetrySessionOptions
-            {
-                CacheReadTimeout = TimeSpan.FromMilliseconds(500),
-            });
+            options: new TelemetrySessionOptions { CacheReadTimeout = TimeSpan.FromMilliseconds(500) });
 
         var snapshot = await telemetry.GetSnapshotAsync(token);
         await Assert.That(snapshot.SocPercent).IsNotNull();
@@ -87,25 +85,24 @@ public class SimulatedLeafTransportTests
         await session.InitializeAndLockAsync(token);
         var commands = new LeafAze0CommandSet(session);
         commands.Monitor.RestartDelay = TimeSpan.Zero;
-        await using var telemetry = ObdInsight.Telemetry.TelemetrySession.Create(
+        await using var telemetry = TelemetrySession.Create(
             commands,
-            new ObdInsight.Telemetry.TelemetrySubscription(
-                new Dictionary<ObdInsight.Telemetry.TelemetrySignal, ObdInsight.Telemetry.CadenceTier>
+            new TelemetrySubscription(
+                new Dictionary<TelemetrySignal, CadenceTier>
                 {
-                    [ObdInsight.Telemetry.TelemetrySignal.StateOfCharge] = ObdInsight.Telemetry.CadenceTier.High,
-                    [ObdInsight.Telemetry.TelemetrySignal.VehicleSpeed] = ObdInsight.Telemetry.CadenceTier.High,
+                    [TelemetrySignal.StateOfCharge] = CadenceTier.High,
+                    [TelemetrySignal.VehicleSpeed] = CadenceTier.High
                 }),
-            new ObdInsight.Telemetry.TelemetrySessionOptions
+            new TelemetrySessionOptions
             {
-                HighPeriod = TimeSpan.FromMilliseconds(200),
-                CacheReadTimeout = TimeSpan.FromMilliseconds(500),
+                HighPeriod = TimeSpan.FromMilliseconds(200), CacheReadTimeout = TimeSpan.FromMilliseconds(500)
             });
 
         await telemetry.StartAsync(token);
         var count = 0;
         await foreach (var batch in telemetry.Batches(token))
         {
-            if (batch.Samples.Any(s => s.Signal == ObdInsight.Telemetry.TelemetrySignal.StateOfCharge && !s.Value.IsEmpty))
+            if (batch.Samples.Any(s => s.Signal == TelemetrySignal.StateOfCharge && !s.Value.IsEmpty))
             {
                 count++;
             }

@@ -1,6 +1,6 @@
 namespace ObdInsight.Telemetry;
 
-/// <summary>Cadence configuration for a <see cref="TelemetrySession"/>.</summary>
+/// <summary>Cadence configuration for a <see cref="TelemetrySession" />.</summary>
 public sealed record TelemetrySessionOptions
 {
     /// <summary>High-tier period (default 1.5 s).</summary>
@@ -13,9 +13,9 @@ public sealed record TelemetrySessionOptions
     public TimeSpan LowPeriod { get; init; } = TimeSpan.FromSeconds(45);
 
     /// <summary>
-    /// Upper bound for a cache-only provider read. Capabilities wait up to ~4 s for a
-    /// cold cache; inside the scheduler that wait is cut to this bound and mapped to
-    /// empty values so an absent broadcast frame cannot stall a tier (default 250 ms).
+    ///     Upper bound for a cache-only provider read. Capabilities wait up to ~4 s for a
+    ///     cold cache; inside the scheduler that wait is cut to this bound and mapped to
+    ///     empty values so an absent broadcast frame cannot stall a tier (default 250 ms).
     /// </summary>
     public TimeSpan CacheReadTimeout { get; init; } = TimeSpan.FromMilliseconds(250);
 
@@ -30,12 +30,12 @@ public sealed record TelemetrySessionOptions
         CadenceTier.High => HighPeriod,
         CadenceTier.Medium => MediumPeriod,
         CadenceTier.Low => LowPeriod,
-        _ => HighPeriod,
+        _ => HighPeriod
     };
 }
 
 /// <summary>
-/// The signal set a consumer wants, each mapped to a cadence tier.
+///     The signal set a consumer wants, each mapped to a cadence tier.
 /// </summary>
 public sealed class TelemetrySubscription
 {
@@ -48,12 +48,9 @@ public sealed class TelemetrySubscription
 
     public IReadOnlyDictionary<TelemetrySignal, CadenceTier> Map => _map;
 
-    public IEnumerable<TelemetrySignal> SignalsFor(CadenceTier tier) =>
-        _map.Where(kv => kv.Value == tier).Select(kv => kv.Key);
-
     /// <summary>
-    /// The EvTestDrive default: battery/speed at high cadence, comfort at medium,
-    /// counters at low.
+    ///     The EvTestDrive default: battery/speed at high cadence, comfort at medium,
+    ///     counters at low.
     /// </summary>
     public static TelemetrySubscription Default { get; } = new(
         new Dictionary<TelemetrySignal, CadenceTier>
@@ -73,6 +70,9 @@ public sealed class TelemetrySubscription
             [TelemetrySignal.HvacActive] = CadenceTier.Medium,
             [TelemetrySignal.StateOfHealth] = CadenceTier.Low,
             [TelemetrySignal.Odometer] = CadenceTier.Low,
-            [TelemetrySignal.ChargeCycleCount] = CadenceTier.Low,
+            [TelemetrySignal.ChargeCycleCount] = CadenceTier.Low
         });
+
+    public IEnumerable<TelemetrySignal> SignalsFor(CadenceTier tier) =>
+        _map.Where(kv => kv.Value == tier).Select(kv => kv.Key);
 }

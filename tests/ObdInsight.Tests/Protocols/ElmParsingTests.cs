@@ -4,9 +4,9 @@ using ObdInsight.Core.Protocols;
 namespace OdbTestApp.Tests.Protocols;
 
 /// <summary>
-/// Unit and property tests for <see cref="ElmParsing"/>. The Mode 01 tests pin the PID match:
-/// the check used to be written with &amp;&amp; instead of ||, which accepted another PID's data
-/// and also accepted an unparseable PID field whenever the caller asked for PID 0.
+///     Unit and property tests for <see cref="ElmParsing" />. The Mode 01 tests pin the PID match:
+///     the check used to be written with &amp;&amp; instead of ||, which accepted another PID's data
+///     and also accepted an unparseable PID field whenever the caller asked for PID 0.
 /// </summary>
 [Timeout(30_000)]
 public class ElmParsingTests
@@ -52,9 +52,7 @@ public class ElmParsingTests
     [Test]
     public async Task TryParseMode01Response_SucceedsOnlyForTheRequestedPid(CancellationToken _)
     {
-        Check.Sample(
-            Gen.Select(Gen.Byte, Gen.Byte, Gen.Byte.Array[0, 6]),
-            t =>
+        Gen.Byte.Select(Gen.Byte, Gen.Byte.Array[0, 6]).Sample(t =>
             {
                 var (responsePid, requestedPid, payload) = t;
                 var line = string.Join(
@@ -82,8 +80,7 @@ public class ElmParsingTests
     [Test]
     public async Task NormalizeLines_NeverYieldsBlankOrUntrimmedLines(CancellationToken _)
     {
-        Check.Sample(
-            Gen.Char[' ', 'z'].Array[0, 60].Select(c => new string(c) + "\r\n\0 \t"),
+        Gen.Char[' ', 'z'].Array[0, 60].Select(c => new string(c) + "\r\n\0 \t").Sample(
             s => ElmParsing.NormalizeLines(s).All(l => l.Length > 0 && l == l.Trim() && !l.Contains('\0')),
             iter: Iterations);
 

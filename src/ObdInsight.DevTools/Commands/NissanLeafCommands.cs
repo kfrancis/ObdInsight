@@ -3,8 +3,8 @@ using Spectre.Console;
 namespace ObdInsight.DevTools.Commands;
 
 /// <summary>
-/// Nissan Leaf diagnostic commands - STUB implementation.
-/// TODO: Refactor for new architecture using LeafAze0 vehicle profile.
+///     Nissan Leaf diagnostic commands - STUB implementation.
+///     TODO: Refactor for new architecture using LeafAze0 vehicle profile.
 /// </summary>
 public static class NissanLeafCommands
 {

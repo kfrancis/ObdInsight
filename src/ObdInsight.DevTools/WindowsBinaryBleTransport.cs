@@ -1,6 +1,6 @@
-
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
@@ -8,33 +8,33 @@ using Windows.Devices.Bluetooth.GenericAttributeProfile;
 namespace ObdInsight.DevTools;
 
 /// <summary>
-/// Windows BLE transport for binary protocol (service 6287).
-/// Handles raw binary framing without ASCII conversion.
+///     Windows BLE transport for binary protocol (service 6287).
+///     Handles raw binary framing without ASCII conversion.
 /// </summary>
 public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDisposable
 {
+    private readonly ArrayPool<byte> _arrayPool = ArrayPool<byte>.Shared;
     private readonly BleDeviceProfile _profile;
-    private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly ConcurrentQueue<byte[]> _receiveQueue = new();
     private readonly SemaphoreSlim _receiveSignal = new(0);
-    private readonly ArrayPool<byte> _arrayPool = ArrayPool<byte>.Shared;
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private int _bytesReceived;
 
     private BluetoothLEDevice? _device;
-    private GattSession? _session;
-    private GattDeviceService? _service;
-    private GattCharacteristic? _writeCharacteristic;
-    private GattCharacteristic? _notifyCharacteristic;
-    private volatile bool _isConnected;
     private volatile bool _disposing;
-    
+    private volatile bool _isConnected;
+
     // Diagnostic counters
     private int _notificationsReceived;
-    private int _bytesReceived;
+    private GattCharacteristic? _notifyCharacteristic;
+    private GattDeviceService? _service;
+    private GattSession? _session;
     private int _writeAttempts;
+    private GattCharacteristic? _writeCharacteristic;
     private int _writeSuccesses;
 
     /// <summary>
-    /// Creates a new binary BLE transport with the specified profile.
+    ///     Creates a new binary BLE transport with the specified profile.
     /// </summary>
     /// <param name="profile">BLE device profile (should be VeepeakBinary or similar)</param>
     public WindowsBinaryBleTransport(BleDeviceProfile profile)
@@ -42,28 +42,22 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
         _profile = profile ?? throw new ArgumentNullException(nameof(profile));
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public bool IsConnected => _isConnected && _device != null && _writeCharacteristic != null;
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public string DeviceAddress { get; private set; } = string.Empty;
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public BleConnectionState ConnectionState { get; private set; } = BleConnectionState.Disconnected;
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public event EventHandler<ReadOnlyMemory<byte>>? DataReceived;
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public event EventHandler<BleConnectionState>? ConnectionStateChanged;
 
-    /// <summary>
-    /// Gets diagnostic statistics about the connection.
-    /// </summary>
-    public string GetDiagnostics() =>
-        $"Notifications: {_notificationsReceived}, Bytes: {_bytesReceived}, Writes: {_writeSuccesses}/{_writeAttempts}";
-
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task<bool> ConnectAsync(string deviceAddress, CancellationToken cancellationToken = default)
     {
         try
@@ -73,10 +67,10 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
             _bytesReceived = 0;
             _writeAttempts = 0;
             _writeSuccesses = 0;
-            
+
             SetConnectionState(BleConnectionState.Connecting);
             DeviceAddress = deviceAddress;
-            
+
             Log($"Connecting to {deviceAddress} using binary profile {_profile.Name}...");
 
             var mac = ParseMacAddress(deviceAddress);
@@ -102,7 +96,7 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
             // Get service (try Cached first, then Uncached)
             var svcResult = await _device.GetGattServicesForUuidAsync(
                 _profile.ServiceUuid, BluetoothCacheMode.Cached).AsTask(cancellationToken);
-                
+
             if (svcResult.Status != GattCommunicationStatus.Success || svcResult.Services.Count == 0)
             {
                 Log("Service not found in cache, trying uncached...");
@@ -113,15 +107,16 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
             if (svcResult.Status != GattCommunicationStatus.Success || svcResult.Services.Count == 0)
             {
                 Log($"Service {_profile.ServiceUuid} not found. Status: {svcResult.Status}");
-                
+
                 // Log available services for debugging
-                var allServices = await _device.GetGattServicesAsync(BluetoothCacheMode.Cached).AsTask(cancellationToken);
+                var allServices =
+                    await _device.GetGattServicesAsync(BluetoothCacheMode.Cached).AsTask(cancellationToken);
                 if (allServices.Status == GattCommunicationStatus.Success)
                 {
                     var uuids = string.Join(", ", allServices.Services.Select(s => s.Uuid.ToString()));
                     Log($"Available services: {uuids}");
                 }
-                
+
                 await DisconnectAsync();
                 return false;
             }
@@ -158,18 +153,20 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
             {
                 _notifyCharacteristic.ValueChanged += OnValueChanged;
 
-                var cccdResult = await _notifyCharacteristic.WriteClientCharacteristicConfigurationDescriptorWithResultAsync(
-                    GattClientCharacteristicConfigurationDescriptorValue.Notify).AsTask(cancellationToken);
+                var cccdResult = await _notifyCharacteristic
+                    .WriteClientCharacteristicConfigurationDescriptorWithResultAsync(
+                        GattClientCharacteristicConfigurationDescriptorValue.Notify).AsTask(cancellationToken);
 
                 if (cccdResult.Status != GattCommunicationStatus.Success)
                 {
                     Log($"CCCD write failed: {cccdResult.Status}, ProtocolError={cccdResult.ProtocolError}");
-                    
+
                     // Try again after a short delay
                     await Task.Delay(500, cancellationToken);
-                    cccdResult = await _notifyCharacteristic.WriteClientCharacteristicConfigurationDescriptorWithResultAsync(
-                        GattClientCharacteristicConfigurationDescriptorValue.Notify).AsTask(cancellationToken);
-                    
+                    cccdResult = await _notifyCharacteristic
+                        .WriteClientCharacteristicConfigurationDescriptorWithResultAsync(
+                            GattClientCharacteristicConfigurationDescriptorValue.Notify).AsTask(cancellationToken);
+
                     if (cccdResult.Status != GattCommunicationStatus.Success)
                     {
                         Log("CCCD retry also failed - notifications may not work");
@@ -187,8 +184,9 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
             {
                 _notifyCharacteristic.ValueChanged += OnValueChanged;
 
-                var cccdResult = await _notifyCharacteristic.WriteClientCharacteristicConfigurationDescriptorWithResultAsync(
-                    GattClientCharacteristicConfigurationDescriptorValue.Indicate).AsTask(cancellationToken);
+                var cccdResult = await _notifyCharacteristic
+                    .WriteClientCharacteristicConfigurationDescriptorWithResultAsync(
+                        GattClientCharacteristicConfigurationDescriptorValue.Indicate).AsTask(cancellationToken);
 
                 if (cccdResult.Status != GattCommunicationStatus.Success)
                 {
@@ -217,8 +215,9 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
         }
     }
 
-    /// <inheritdoc/>
-    public async Task<byte[]> SendCommandAsync(ReadOnlyMemory<byte> command, TimeSpan timeout, CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public async Task<byte[]> SendCommandAsync(ReadOnlyMemory<byte> command, TimeSpan timeout,
+        CancellationToken cancellationToken = default)
     {
         // Clear any pending data
         ClearReceiveBuffer();
@@ -230,7 +229,7 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
         return await ReadAvailableAsync(timeout, cancellationToken);
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task WriteRawAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
     {
         if (_writeCharacteristic is null)
@@ -246,9 +245,10 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
 
             // Determine write type based on characteristic properties and profile
             var writeType = GattWriteOption.WriteWithoutResponse;
-            
+
             if (_profile.WriteWithResponse ||
-                !_writeCharacteristic.CharacteristicProperties.HasFlag(GattCharacteristicProperties.WriteWithoutResponse))
+                !_writeCharacteristic.CharacteristicProperties.HasFlag(
+                    GattCharacteristicProperties.WriteWithoutResponse))
             {
                 writeType = GattWriteOption.WriteWithResponse;
             }
@@ -270,7 +270,7 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
         }
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task<byte[]> ReadAvailableAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -296,7 +296,8 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
 
             return [.. allData];
         }
-        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested &&
+                                                 !cancellationToken.IsCancellationRequested)
         {
             // Timeout - return whatever we have
             var allData = new List<byte>();
@@ -304,25 +305,15 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
             {
                 allData.AddRange(chunk);
             }
-            
+
             if (allData.Count > 0)
                 return [.. allData];
-                
+
             throw new TimeoutException($"No response within {timeout.TotalMilliseconds}ms");
         }
     }
 
-    /// <inheritdoc/>
-    public void ClearReceiveBuffer()
-    {
-        while (_receiveQueue.TryDequeue(out _)) { }
-        while (_receiveSignal.CurrentCount > 0)
-        {
-            try { _receiveSignal.Wait(0); } catch { break; }
-        }
-    }
-
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task DisconnectAsync()
     {
         _disposing = true;
@@ -337,7 +328,10 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
                 await _notifyCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(
                     GattClientCharacteristicConfigurationDescriptorValue.None);
             }
-            catch { /* ignore */ }
+            catch
+            {
+                /* ignore */
+            }
         }
 
         _service?.Dispose();
@@ -366,7 +360,7 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
     }
 
     /// <summary>
-    /// Adapter method for interface compatibility.
+    ///     Adapter method for interface compatibility.
     /// </summary>
     public Task WriteAsync(ReadOnlyMemory<byte> data, CancellationToken ct = default)
     {
@@ -374,26 +368,44 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
     }
 
     /// <summary>
-    /// Adapter method for interface compatibility.
+    ///     Adapter method for interface compatibility.
     /// </summary>
     public Task<byte[]?> ReadAsync(TimeSpan timeout, CancellationToken ct = default)
     {
         return ReadAvailableAsync(timeout, ct)!;
     }
 
-    /// <inheritdoc/>
-    public void Dispose()
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
     {
-        _disposing = true;
-        DisconnectAsync().GetAwaiter().GetResult();
+        await DisconnectAsync();
         _writeLock.Dispose();
         _receiveSignal.Dispose();
     }
 
-    /// <inheritdoc/>
-    public async ValueTask DisposeAsync()
+    /// <summary>
+    ///     Gets diagnostic statistics about the connection.
+    /// </summary>
+    public string GetDiagnostics() =>
+        $"Notifications: {_notificationsReceived}, Bytes: {_bytesReceived}, Writes: {_writeSuccesses}/{_writeAttempts}";
+
+    /// <inheritdoc />
+    public void ClearReceiveBuffer()
     {
-        await DisconnectAsync();
+        while (_receiveQueue.TryDequeue(out _)) { }
+
+        while (_receiveSignal.CurrentCount > 0)
+        {
+            try { _receiveSignal.Wait(0); }
+            catch { break; }
+        }
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _disposing = true;
+        DisconnectAsync().GetAwaiter().GetResult();
         _writeLock.Dispose();
         _receiveSignal.Dispose();
     }
@@ -474,6 +486,6 @@ public sealed class WindowsBinaryBleTransport : IBinaryBleTransport, IAsyncDispo
     private static void Log(string msg)
     {
         Console.WriteLine($"[BinaryBLE] {msg}");
-        System.Diagnostics.Debug.WriteLine($"[BinaryBLE] {msg}");
+        Debug.WriteLine($"[BinaryBLE] {msg}");
     }
 }

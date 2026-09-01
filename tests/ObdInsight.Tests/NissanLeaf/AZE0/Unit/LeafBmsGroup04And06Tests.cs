@@ -6,10 +6,10 @@ using ObdInsight.Simulation;
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
-/// BMS Group 04 (pack temperatures) and Group 06 (cell shunt/balancing) parsing over the
-/// production path (LeafAze0CommandSet → LeafAze0Bms → generated LeafBmsDiagnostics).
-/// Golden bytes captured 2025-12-06 on the same 30kWh AZE0 (third-party app log);
-/// layouts verified against OVMS PollReply_BMS_Temp / PollReply_BMS_Shunt.
+///     BMS Group 04 (pack temperatures) and Group 06 (cell shunt/balancing) parsing over the
+///     production path (LeafAze0CommandSet → LeafAze0Bms → generated LeafBmsDiagnostics).
+///     Golden bytes captured 2025-12-06 on the same 30kWh AZE0 (third-party app log);
+///     layouts verified against OVMS PollReply_BMS_Temp / PollReply_BMS_Shunt.
 /// </summary>
 [Timeout(30_000)]
 public class LeafBmsGroup04And06Tests
@@ -69,19 +69,19 @@ public class LeafBmsGroup04And06Tests
         await Assert.That(cells!.CellCount).IsEqualTo(96);
         await Assert.That(cells.CellVoltagesMv[0]).IsEqualTo(0x0F3D); // 3901 mV
         await Assert.That(cells.CellVoltagesMv[1]).IsEqualTo(0x0F42); // 3906 mV
-        await Assert.That(cells.MinVoltageMv).IsEqualTo(0x0F3B);      // 3899 mV
-        await Assert.That(cells.MaxVoltageMv).IsEqualTo(0x0F47);      // 3911 mV
+        await Assert.That(cells.MinVoltageMv).IsEqualTo(0x0F3B); // 3899 mV
+        await Assert.That(cells.MaxVoltageMv).IsEqualTo(0x0F47); // 3911 mV
 
         // Shunt bytes: 0F 0E 0E 0E 0F 0A 07 ... 06 0E 06 06 0E 0F.
         // OVMS convention: balancing = wire bit CLEAR.
         await Assert.That(cells.BalancingCells).IsNotNull();
         await Assert.That(cells.BalancingCells!.Length).IsEqualTo(96);
-        await Assert.That(cells.BalancingCells[0]).IsFalse();  // byte0 0x0F: all bits set
+        await Assert.That(cells.BalancingCells[0]).IsFalse(); // byte0 0x0F: all bits set
         await Assert.That(cells.BalancingCells[3]).IsFalse();
-        await Assert.That(cells.BalancingCells[7]).IsTrue();   // byte1 0x0E: 0x01 clear => cell 7
-        await Assert.That(cells.BalancingCells[72]).IsTrue();  // byte18 0x06: 0x08 clear => cell 72
+        await Assert.That(cells.BalancingCells[7]).IsTrue(); // byte1 0x0E: 0x01 clear => cell 7
+        await Assert.That(cells.BalancingCells[72]).IsTrue(); // byte18 0x06: 0x08 clear => cell 72
         await Assert.That(cells.BalancingCells[73]).IsFalse();
-        await Assert.That(cells.BalancingCells[75]).IsTrue();  // byte18 0x06: 0x01 clear => cell 75
+        await Assert.That(cells.BalancingCells[75]).IsTrue(); // byte18 0x06: 0x01 clear => cell 75
         await Assert.That(cells.BalancingCellCount).IsEqualTo(18);
     }
 

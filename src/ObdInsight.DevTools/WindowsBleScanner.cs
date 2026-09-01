@@ -1,12 +1,14 @@
-using ObdInsight.Core.Communication.Bluetooth;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
+using Windows.Storage.Streams;
+using ObdInsight.Core.Communication.Bluetooth;
 
 namespace ObdInsight.DevTools;
 
 /// <summary>
-/// Windows BLE scanner using WinRT advertisement watcher.
+///     Windows BLE scanner using WinRT advertisement watcher.
 /// </summary>
 public sealed class WindowsBleScanner : IBleScanner
 {
@@ -16,10 +18,7 @@ public sealed class WindowsBleScanner : IBleScanner
 
     public WindowsBleScanner()
     {
-        _watcher = new BluetoothLEAdvertisementWatcher
-        {
-            ScanningMode = BluetoothLEScanningMode.Active
-        };
+        _watcher = new BluetoothLEAdvertisementWatcher { ScanningMode = BluetoothLEScanningMode.Active };
         _watcher.Received += OnAdvertisementReceived;
         _watcher.Stopped += OnWatcherStopped;
     }
@@ -73,6 +72,7 @@ public sealed class WindowsBleScanner : IBleScanner
         {
             _watcher.Stop();
         }
+
         return Task.CompletedTask;
     }
 
@@ -82,7 +82,8 @@ public sealed class WindowsBleScanner : IBleScanner
         return $"{bytes[5]:X2}:{bytes[4]:X2}:{bytes[3]:X2}:{bytes[2]:X2}:{bytes[1]:X2}:{bytes[0]:X2}";
     }
 
-    private async void OnAdvertisementReceived(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementReceivedEventArgs args)
+    private async void OnAdvertisementReceived(BluetoothLEAdvertisementWatcher sender,
+        BluetoothLEAdvertisementReceivedEventArgs args)
     {
         try
         {
@@ -133,22 +134,22 @@ public sealed class WindowsBleScanner : IBleScanner
             {
                 var key = $"0x{data.CompanyId:X4}";
                 var bytes = new byte[data.Data.Length];
-                using var reader = Windows.Storage.Streams.DataReader.FromBuffer(data.Data);
+                using var reader = DataReader.FromBuffer(data.Data);
                 reader.ReadBytes(bytes);
                 manufacturerData[key] = bytes;
             }
 
             var deviceInfo = new BleDeviceInfo(
-                Name: name,
-                Address: address,
-                Rssi: args.RawSignalStrengthInDBm,
-                AdvertisedServices: serviceUuids,
-                ManufacturerData: manufacturerData
+                name,
+                address,
+                args.RawSignalStrengthInDBm,
+                serviceUuids,
+                manufacturerData
             );
 
             // Only raise event if this is a new device or info changed
             if (_discoveredDevices.TryAdd(address, deviceInfo) ||
-                _discoveredDevices.TryGetValue(address, out var existing) && existing.Rssi != deviceInfo.Rssi)
+                (_discoveredDevices.TryGetValue(address, out var existing) && existing.Rssi != deviceInfo.Rssi))
             {
                 _discoveredDevices[address] = deviceInfo;
                 DeviceDiscovered?.Invoke(this, new BleDeviceDiscoveredEventArgs(deviceInfo));
@@ -156,11 +157,12 @@ public sealed class WindowsBleScanner : IBleScanner
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error processing advertisement: {ex.Message}");
+            Debug.WriteLine($"Error processing advertisement: {ex.Message}");
         }
     }
 
-    private void OnWatcherStopped(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementWatcherStoppedEventArgs args)
+    private void OnWatcherStopped(BluetoothLEAdvertisementWatcher sender,
+        BluetoothLEAdvertisementWatcherStoppedEventArgs args)
     {
         ScanStateChanged?.Invoke(this, new BleScanStateChangedEventArgs(false));
     }

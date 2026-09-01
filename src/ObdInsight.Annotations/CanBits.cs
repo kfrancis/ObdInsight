@@ -158,7 +158,7 @@ public static class CanBits
     /// </summary>
     public static int MotorolaMsbIndex(int bitPos)
     {
-        return (bitPos / 8 * 8) + (7 - (bitPos % 8));
+        return bitPos / 8 * 8 + (7 - bitPos % 8);
     }
 
     /// <summary>

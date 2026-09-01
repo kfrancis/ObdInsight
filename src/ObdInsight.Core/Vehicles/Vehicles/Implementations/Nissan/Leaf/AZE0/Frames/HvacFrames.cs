@@ -3,16 +3,16 @@ using ObdInsight.SourceGeneration.Attributes;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
 
 /// <summary>
-/// HVAC setpoint and ambient temperature frame for Nissan Leaf AZE0 platform (0x54A)
+///     HVAC setpoint and ambient temperature frame for Nissan Leaf AZE0 platform (0x54A)
 /// </summary>
 /// <remarks>
-/// Unknown/undecoded signals in this frame:
-/// - Byte 0 (bits 0-7): Climate control status plus unknown (12,3c=CC Off; a0,da=CC On)
-/// - Byte 1 (bits 8-15): Unknown data field (00 for older models, 80 in 2013+)
-/// - Byte 2 (bits 16-23): Unknown data field (typically 70)
-/// - Byte 3 (bits 24-31): Unknown data field (values: 06,0a,0b,0f observed)
-/// - Byte 5 (bits 40-47): Unknown data field (typically 00)
-/// - Byte 6 (bits 48-55): Unknown data field (typically 00)
+///     Unknown/undecoded signals in this frame:
+///     - Byte 0 (bits 0-7): Climate control status plus unknown (12,3c=CC Off; a0,da=CC On)
+///     - Byte 1 (bits 8-15): Unknown data field (00 for older models, 80 in 2013+)
+///     - Byte 2 (bits 16-23): Unknown data field (typically 70)
+///     - Byte 3 (bits 24-31): Unknown data field (values: 06,0a,0b,0f observed)
+///     - Byte 5 (bits 40-47): Unknown data field (typically 00)
+///     - Byte 6 (bits 48-55): Unknown data field (typically 00)
 /// </remarks>
 [CanFrame(0x54A, Description = "HVAC climate control setpoint and ambient temperature")]
 public partial class HvacFrame_54A_AZE0
@@ -23,13 +23,13 @@ public partial class HvacFrame_54A_AZE0
     public partial int AmbientTempAc { get; init; }
 
     [CanSignal(32, 8, Unit = "°C",
-            Description = "Climate control temperature setpoint (only valid while CC is active, 0x00 when off)",
+        Description = "Climate control temperature setpoint (only valid while CC is active, 0x00 when off)",
         MinValue = 0, MaxValue = 255)]
     public partial int ClimateControlSetpoint { get; init; }
 }
 
 /// <summary>
-/// HVAC fan control frame for Nissan Leaf AZE0 platform (0x54B)
+///     HVAC fan control frame for Nissan Leaf AZE0 platform (0x54B)
 /// </summary>
 [CanFrame(0x54B, Description = "HVAC fan speed and ventilation mode")]
 public partial class HvacFrame_54B_AZE0
@@ -40,7 +40,7 @@ public partial class HvacFrame_54B_AZE0
     public partial int CcButtonPress { get; init; }
 
     [CanSignal(0, 8,
-            Description = "Climate control status (00 CC on, 01 CC off, 2013: 0x10 or 0x11)",
+        Description = "Climate control status (00 CC on, 01 CC off, 2013: 0x10 or 0x11)",
         MinValue = 0, MaxValue = 255)]
     public partial int ClimateControlStatus { get; init; }
 
@@ -50,7 +50,7 @@ public partial class HvacFrame_54B_AZE0
     public partial int ClimateVentModeIntake { get; init; }
 
     [CanSignal(16, 8,
-            Description = "Climate vent mode target (face/feet/defrost)",
+        Description = "Climate vent mode target (face/feet/defrost)",
         MinValue = 0, MaxValue = 255)]
     public partial int ClimateVentModeTarget { get; init; }
 
@@ -63,7 +63,7 @@ public partial class HvacFrame_54B_AZE0
 }
 
 /// <summary>
-/// HVAC status frame for Nissan Leaf AZE0 platform (0x54C)
+///     HVAC status frame for Nissan Leaf AZE0 platform (0x54C)
 /// </summary>
 [CanFrame(0x54C, Description = "HVAC environmental conditions and A/C status")]
 public partial class HvacFrame_54C_AZE0
@@ -77,7 +77,7 @@ public partial class HvacFrame_54C_AZE0
     public partial bool ClimateControlOn { get; init; }
 
     [CanSignal(0, 8, Factor = 0.25, Unit = "°C",
-                Description = "A/C evaporator temperature")]
+        Description = "A/C evaporator temperature")]
     public partial double EvaporatorTemp { get; init; }
 
     [CanSignal(40, 8, Factor = 0.05, Unit = "V",
@@ -91,12 +91,12 @@ public partial class HvacFrame_54C_AZE0
     public partial double OutsideAmbientTemp { get; init; }
 
     [CanSignal(9, 1,
-                Description = "Rear window defrost active")]
+        Description = "Rear window defrost active")]
     public partial bool RearDefrostOn { get; init; }
 }
 
 /// <summary>
-/// HVAC power consumption frame for Nissan Leaf AZE0 platform (0x54F)
+///     HVAC power consumption frame for Nissan Leaf AZE0 platform (0x54F)
 /// </summary>
 [CanFrame(0x54F, Description = "HVAC power consumption and interior temperature")]
 public partial class HvacFrame_54F_AZE0
@@ -116,7 +116,7 @@ public partial class HvacFrame_54F_AZE0
     public partial int HeaterPowerWatts { get; init; }
 
     [CanSignal(0, 8, Factor = 0.5, Offset = -14.0, Unit = "°C",
-                    Description = "Interior air intake temperature",
+        Description = "Interior air intake temperature",
         MinValue = -14, MaxValue = 113)]
     public partial double InteriorIntakeTemp { get; init; }
 }

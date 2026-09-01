@@ -13,7 +13,7 @@ public enum ConnectionState
     Reconnecting,
 
     /// <summary>Reconnection exhausted; I/O throws until an explicit re-open.</summary>
-    Lost,
+    Lost
 }
 
 public sealed class ConnectionStateChangedEventArgs : EventArgs
@@ -29,8 +29,8 @@ public sealed class ConnectionStateChangedEventArgs : EventArgs
 }
 
 /// <summary>
-/// Bindable connection-state signal for UI (re-exposed by the telemetry session).
-/// Transitions fire in order from a single supervisor — no concurrent duplicates.
+///     Bindable connection-state signal for UI (re-exposed by the telemetry session).
+///     Transitions fire in order from a single supervisor — no concurrent duplicates.
 /// </summary>
 public interface IConnectionStateSource
 {

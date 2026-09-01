@@ -3,7 +3,7 @@ using ObdInsight.SourceGeneration.Attributes;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
 
 /// <summary>
-/// VCM shift controller frame for Nissan Leaf AZE0 platform (0x11A)
+///     VCM shift controller frame for Nissan Leaf AZE0 platform (0x11A)
 /// </summary>
 [CanFrame(0x11A, Description = "Vehicle Control Module shift controller and status (10ms)")]
 public partial class VcmFrame_11A_AZE0
@@ -29,7 +29,7 @@ public partial class VcmFrame_11A_AZE0
     public partial int HeartbeatVcm { get; init; }
 
     [CanSignal(4, 4,
-                        Description = "Joystick gear position (0=Parked, 2=Reverse, 3=Neutral, 4=Drive/B)",
+        Description = "Joystick gear position (0=Parked, 2=Reverse, 3=Neutral, 4=Drive/B)",
         MinValue = 0, MaxValue = 15)]
     public partial int JoystickGearPosition { get; init; }
 
@@ -45,7 +45,7 @@ public partial class VcmFrame_11A_AZE0
 }
 
 /// <summary>
-/// VCM motor control frame for Nissan Leaf AZE0 platform (0x1D4)
+///     VCM motor control frame for Nissan Leaf AZE0 platform (0x1D4)
 /// </summary>
 [CanFrame(0x1D4, Description = "Vehicle Control Module motor torque control and status (10ms)")]
 public partial class VcmFrame_1D4_AZE0
@@ -86,7 +86,7 @@ public partial class VcmFrame_1D4_AZE0
     public partial double MotorTqLimitLower { get; init; }
 
     [CanSignal(7, 8, Factor = 2.5, Unit = "Nm",
-                                    Description = "Motor torque limit upper bound",
+        Description = "Motor torque limit upper bound",
         MinValue = 0, MaxValue = 637.5)]
     public partial double MotorTqLimitUpper { get; init; }
 
@@ -106,13 +106,13 @@ public partial class VcmFrame_1D4_AZE0
     public partial bool StatusOfHighVoltagePowerSupply { get; init; }
 
     [CanSignal(23, 12, IsSigned = true, Factor = 0.25, Unit = "Nm",
-                    Description = "Target motor torque sent to inverter",
+        Description = "Target motor torque sent to inverter",
         MinValue = -512, MaxValue = 511.75)]
     public partial double TargetMotorTorque { get; init; }
 }
 
 /// <summary>
-/// VCM charging control frame for Nissan Leaf AZE0 platform (0x1F2)
+///     VCM charging control frame for Nissan Leaf AZE0 platform (0x1F2)
 /// </summary>
 [CanFrame(0x1F2, Description = "Vehicle Control Module charging control and DC-DC converter (10ms)")]
 public partial class VcmFrame_1F2_AZE0
@@ -133,7 +133,7 @@ public partial class VcmFrame_1F2_AZE0
     public partial double DcDcConverterReqVoltage { get; init; }
 
     [CanSignal(1, 10, Factor = 0.1, Offset = -10.0, Unit = "kW",
-                    Description = "HV battery chargeable power",
+        Description = "HV battery chargeable power",
         MinValue = -10, MaxValue = 90)]
     public partial double HvBatChargeablePower { get; init; }
 
@@ -153,7 +153,7 @@ public partial class VcmFrame_1F2_AZE0
     public partial bool PcsConnectorDetection { get; init; }
 
     [CanSignal(7, 1,
-                    Description = "Target charge SOC (0=100%, 1=80% deterioration restraint)",
+        Description = "Target charge SOC (0=100%, 1=80% deterioration restraint)",
         MinValue = 0, MaxValue = 1)]
     public partial bool TargetChargeSoc { get; init; }
 
@@ -163,7 +163,7 @@ public partial class VcmFrame_1F2_AZE0
     public partial bool UnknownBit { get; init; }
 
     [CanSignal(47, 8,
-            Description = "VCM mode",
+        Description = "VCM mode",
         MinValue = 0, MaxValue = 255)]
     public partial int VcmMode { get; init; }
 }
@@ -173,18 +173,18 @@ public partial class VcmFrame_1F2_AZE0
 // the canonical decoder for 0x284.
 
 /// <summary>
-/// VCM A/C and climate sensor relay frame for Nissan Leaf AZE0 platform (0x50A)
+///     VCM A/C and climate sensor relay frame for Nissan Leaf AZE0 platform (0x50A)
 /// </summary>
 /// <remarks>
-/// This frame is identical on EV-CAN and CAR-CAN. It relays data from A/C Auto Amp and AC Pressure Sensor.
-/// Unknown/undecoded signals:
-/// - Byte 0: Unknown data (values: 04, 84, 85)
-/// - Byte 1: Unknown data (values: 02, 13, 33, 40, 42, 53, 72, 73)
-/// - Byte 2: Unknown data (values: 00, a0)
-/// - Byte 4: Status bits (00, 80 - BIT1 = Rear defrost on/off)
-/// - Byte 5: Unknown data (a0)
-/// - Byte 6: Unknown data (04 - only present in 2013+)
-/// - Byte 7: Unknown data (00 - only present in 2013+)
+///     This frame is identical on EV-CAN and CAR-CAN. It relays data from A/C Auto Amp and AC Pressure Sensor.
+///     Unknown/undecoded signals:
+///     - Byte 0: Unknown data (values: 04, 84, 85)
+///     - Byte 1: Unknown data (values: 02, 13, 33, 40, 42, 53, 72, 73)
+///     - Byte 2: Unknown data (values: 00, a0)
+///     - Byte 4: Status bits (00, 80 - BIT1 = Rear defrost on/off)
+///     - Byte 5: Unknown data (a0)
+///     - Byte 6: Unknown data (04 - only present in 2013+)
+///     - Byte 7: Unknown data (00 - only present in 2013+)
 /// </remarks>
 [CanFrame(0x50A, Description = "VCM relay from A/C Auto Amp and AC Pressure Sensor (100ms)")]
 public partial class VcmFrame_50A_AZE0
@@ -196,7 +196,7 @@ public partial class VcmFrame_50A_AZE0
 }
 
 /// <summary>
-/// VCM diagnostic and sleep control frame for Nissan Leaf AZE0 platform (0x50B)
+///     VCM diagnostic and sleep control frame for Nissan Leaf AZE0 platform (0x50B)
 /// </summary>
 [CanFrame(0x50B, Description = "Vehicle Control Module diagnostic and sleep control (100ms)")]
 public partial class VcmFrame_50B_AZE0
@@ -217,13 +217,13 @@ public partial class VcmFrame_50B_AZE0
     public partial int HcmWakeUpSleepCmd { get; init; }
 
     [CanSignal(17, 2,
-                    Description = "VCM activation status (0=NON, 2=READY)",
+        Description = "VCM activation status (0=NON, 2=READY)",
         MinValue = 0, MaxValue = 3)]
     public partial int VcmActivation { get; init; }
 }
 
 /// <summary>
-/// VCM authentication frame for Nissan Leaf AZE0 platform (0x50C)
+///     VCM authentication frame for Nissan Leaf AZE0 platform (0x50C)
 /// </summary>
 [CanFrame(0x50C, Description = "Vehicle Control Module authentication question for LBC (100ms)")]
 public partial class VcmFrame_50C_AZE0
@@ -239,13 +239,13 @@ public partial class VcmFrame_50C_AZE0
     public partial int Crc { get; init; }
 
     [CanSignal(24, 2,
-                Description = "HCM clock counter (PRUN detection)",
+        Description = "HCM clock counter (PRUN detection)",
         MinValue = 0, MaxValue = 3)]
     public partial int HcmClock { get; init; }
 }
 
 /// <summary>
-/// VCM range and warning status frame for Nissan Leaf AZE0 platform (0x5A9)
+///     VCM range and warning status frame for Nissan Leaf AZE0 platform (0x5A9)
 /// </summary>
 [CanFrame(0x5A9, Description = "Vehicle Control Module range estimate and battery warnings (100ms)")]
 public partial class VcmFrame_5A9_AZE0
@@ -261,7 +261,7 @@ public partial class VcmFrame_5A9_AZE0
     public partial bool CriticalBattery { get; init; }
 
     [CanSignal(0, 2,
-                Description = "ECO mode active status (1=ECO Off, 2=ECO On, 255=Charging)",
+        Description = "ECO mode active status (1=ECO Off, 2=ECO On, 255=Charging)",
         MinValue = 0, MaxValue = 3)]
     public partial int EcoModeActive { get; init; }
 
@@ -271,26 +271,26 @@ public partial class VcmFrame_5A9_AZE0
     public partial bool LowBattery { get; init; }
 
     [CanSignal(15, 12, Factor = 0.2, Unit = "km",
-            Description = "Range displayed on instrument cluster (0xFFF when charging)",
+        Description = "Range displayed on instrument cluster (0xFFF when charging)",
         MinValue = 0, MaxValue = 819)]
     public partial double RangeInstrumentCluster { get; init; }
 }
 
 /// <summary>
-/// VCM bootup message frame for Nissan Leaf AZE0 platform (0x603)
+///     VCM bootup message frame for Nissan Leaf AZE0 platform (0x603)
 /// </summary>
 [CanFrame(0x603, Description = "VCM bootup message (appears once during power on after a few seconds)")]
-public partial class VcmFrame_603_AZE0
+public class VcmFrame_603_AZE0
 {
     // This frame appears to have no decoded signals yet
     // It's a bootup message with unknown structure
 }
 
 /// <summary>
-/// VCM charge time estimate frame for Nissan Leaf AZE0 platform (0x5B9)
+///     VCM charge time estimate frame for Nissan Leaf AZE0 platform (0x5B9)
 /// </summary>
 /// <remarks>
-/// Only present on env200 and USDM LEAF models
+///     Only present on env200 and USDM LEAF models
 /// </remarks>
 [CanFrame(0x5B9, Description = "Vehicle Control Module charge time estimates (500ms)")]
 public partial class VcmFrame_5B9_AZE0

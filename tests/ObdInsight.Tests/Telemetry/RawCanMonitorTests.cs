@@ -5,8 +5,8 @@ using ObdInsight.Telemetry;
 namespace OdbTestApp.Tests.Telemetry;
 
 /// <summary>
-/// Lifecycle + parsing coverage for <see cref="IRawCanMonitor" />: start/stream/stop over the
-/// replay transport, timestamps attached per frame, independent of the ITelemetrySession path.
+///     Lifecycle + parsing coverage for <see cref="IRawCanMonitor" />: start/stream/stop over the
+///     replay transport, timestamps attached per frame, independent of the ITelemetrySession path.
 /// </summary>
 [Timeout(30_000)]
 public class RawCanMonitorTests
@@ -54,7 +54,8 @@ public class RawCanMonitorTests
 
         await Assert.That(received.Count).IsEqualTo(2);
         await Assert.That(received[0].CanId).IsEqualTo(0x1DB);
-        await Assert.That(received[0].Data).IsEquivalentTo(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 });
+        await Assert.That(received[0].Data)
+            .IsEquivalentTo(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 });
         await Assert.That(received[1].CanId).IsEqualTo(0x18DAF110);
         await Assert.That(received[1].Data).IsEquivalentTo(new byte[] { 0x0A, 0x0B });
         foreach (var frame in received)

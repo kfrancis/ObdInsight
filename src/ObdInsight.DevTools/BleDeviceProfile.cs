@@ -1,21 +1,13 @@
 namespace ObdInsight.DevTools;
 
 /// <summary>
-/// Configuration for connecting to a specific BLE OBD adapter.
-/// Contains GATT service/characteristic UUIDs and connection parameters.
+///     Configuration for connecting to a specific BLE OBD adapter.
+///     Contains GATT service/characteristic UUIDs and connection parameters.
 /// </summary>
 public sealed class BleDeviceProfile
 {
-    public required Guid ServiceUuid { get; init; }
-    public required Guid WriteCharacteristicUuid { get; init; }
-    public required Guid NotifyCharacteristicUuid { get; init; }
-    public bool WriteWithResponse { get; init; } = true;
-    public int MaxWriteSize { get; init; } = 20;
-    public string Name { get; init; } = "Unknown";
-    public bool NotificationsRequired { get; init; } = true;
-
     /// <summary>
-    /// Veepeak BLE OBD adapter (ASCII mode) - Nordic UART Service
+    ///     Veepeak BLE OBD adapter (ASCII mode) - Nordic UART Service
     /// </summary>
     public static readonly BleDeviceProfile VeepeakBle = new()
     {
@@ -28,7 +20,7 @@ public sealed class BleDeviceProfile
     };
 
     /// <summary>
-    /// Veepeak BLE OBD adapter (Binary protocol mode)
+    ///     Veepeak BLE OBD adapter (Binary protocol mode)
     /// </summary>
     public static readonly BleDeviceProfile VeepeakBinary = new()
     {
@@ -41,7 +33,7 @@ public sealed class BleDeviceProfile
     };
 
     /// <summary>
-    /// Generic Nordic UART Service profile (used by many BLE OBD adapters)
+    ///     Generic Nordic UART Service profile (used by many BLE OBD adapters)
     /// </summary>
     public static readonly BleDeviceProfile NordicUart = new()
     {
@@ -54,7 +46,7 @@ public sealed class BleDeviceProfile
     };
 
     /// <summary>
-    /// Veepeak BLE Alt (alternate service UUID)
+    ///     Veepeak BLE Alt (alternate service UUID)
     /// </summary>
     public static readonly BleDeviceProfile VeepeakBleAlt = new()
     {
@@ -67,7 +59,7 @@ public sealed class BleDeviceProfile
     };
 
     /// <summary>
-    /// OBDLink MX+ profile
+    ///     OBDLink MX+ profile
     /// </summary>
     public static readonly BleDeviceProfile OBDLink = new()
     {
@@ -82,20 +74,24 @@ public sealed class BleDeviceProfile
         MaxWriteSize = 20
     };
 
+    public required Guid ServiceUuid { get; init; }
+    public required Guid WriteCharacteristicUuid { get; init; }
+    public required Guid NotifyCharacteristicUuid { get; init; }
+    public bool WriteWithResponse { get; init; } = true;
+    public int MaxWriteSize { get; init; } = 20;
+    public string Name { get; init; } = "Unknown";
+    public bool NotificationsRequired { get; init; } = true;
+
     /// <summary>
-    /// OBDLink MX alias
+    ///     OBDLink MX alias
     /// </summary>
     public static BleDeviceProfile ObdLinkMx => OBDLink;
 
     /// <summary>
-    /// All known device profiles
+    ///     All known device profiles
     /// </summary>
     public static IReadOnlyList<BleDeviceProfile> AllProfiles { get; } = new[]
     {
-        VeepeakBle,
-        VeepeakBinary,
-        VeepeakBleAlt,
-        NordicUart,
-        OBDLink
+        VeepeakBle, VeepeakBinary, VeepeakBleAlt, NordicUart, OBDLink
     };
 }

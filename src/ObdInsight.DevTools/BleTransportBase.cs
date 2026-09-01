@@ -1,11 +1,10 @@
-using ObdInsight.Core.Communication.Elm327;
 using System.Collections.Concurrent;
-using System.Text;
+using ObdInsight.Core.Communication.Elm327;
 
 namespace ObdInsight.DevTools;
 
 /// <summary>
-/// Connection states for BLE transport
+///     Connection states for BLE transport
 /// </summary>
 public enum BleConnectionState
 {
@@ -16,13 +15,13 @@ public enum BleConnectionState
 }
 
 /// <summary>
-/// Base class for BLE transports providing buffering and IElmTransport implementation.
-/// DevTools-specific implementation - the main app may have a different architecture.
+///     Base class for BLE transports providing buffering and IElmTransport implementation.
+///     DevTools-specific implementation - the main app may have a different architecture.
 /// </summary>
 public abstract class BleTransportBase : IElmTransport
 {
-    private readonly BlockingCollection<byte> _receiveBuffer = new();
     private readonly SemaphoreSlim _readGate = new(1, 1);
+    private readonly BlockingCollection<byte> _receiveBuffer = new();
     private volatile BleConnectionState _connectionState;
 
     protected BleTransportBase(BleDeviceProfile profile)
@@ -33,37 +32,42 @@ public abstract class BleTransportBase : IElmTransport
     public BleDeviceProfile Profile { get; }
 
     /// <summary>
-    /// Gets the device address (MAC address).
+    ///     Gets the device address (MAC address).
     /// </summary>
     public string? DeviceAddress { get; protected set; }
 
     /// <summary>
-    /// Gets whether the transport is connected.
+    ///     Gets whether the transport is connected.
     /// </summary>
     public abstract bool IsConnected { get; }
 
     /// <summary>
-    /// IElmTransport.IsOpen maps to IsConnected.
+    ///     Get the current connection state.
+    /// </summary>
+    public BleConnectionState ConnectionState => _connectionState;
+
+    /// <summary>
+    ///     IElmTransport.IsOpen maps to IsConnected.
     /// </summary>
     bool IElmTransport.IsOpen => IsConnected;
 
     /// <summary>
-    /// Connect to the BLE device.
+    ///     Connect to the BLE device.
     /// </summary>
     public abstract Task<bool> ConnectAsync(string deviceAddress, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Disconnect from the BLE device.
+    ///     Disconnect from the BLE device.
     /// </summary>
     public abstract Task DisconnectAsync();
 
     /// <summary>
-    /// Write data to the BLE characteristic (chunking handled by derived class).
+    ///     Write data to the BLE characteristic (chunking handled by derived class).
     /// </summary>
     protected abstract Task WriteCharacteristicAsync(byte[] data, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Called by derived class when data is received via BLE notification.
+    ///     Called by derived class when data is received via BLE notification.
     /// </summary>
     protected void OnDataReceived(byte[] data)
     {
@@ -74,7 +78,7 @@ public abstract class BleTransportBase : IElmTransport
     }
 
     /// <summary>
-    /// Clear the receive buffer.
+    ///     Clear the receive buffer.
     /// </summary>
     public void ClearBuffer()
     {
@@ -82,17 +86,12 @@ public abstract class BleTransportBase : IElmTransport
     }
 
     /// <summary>
-    /// Set the connection state (for derived classes to report state changes).
+    ///     Set the connection state (for derived classes to report state changes).
     /// </summary>
     protected void SetConnectionState(BleConnectionState state)
     {
         _connectionState = state;
     }
-
-    /// <summary>
-    /// Get the current connection state.
-    /// </summary>
-    public BleConnectionState ConnectionState => _connectionState;
 
     #region IElmTransport Implementation
 
@@ -110,7 +109,7 @@ public abstract class BleTransportBase : IElmTransport
         await _readGate.WaitAsync(ct);
         try
         {
-            int bytesRead = 0;
+            var bytesRead = 0;
 
             // Read what's available up to buffer size
             while (bytesRead < buffer.Length && _receiveBuffer.TryTake(out var b, 0))
@@ -142,7 +141,9 @@ public abstract class BleTransportBase : IElmTransport
     async ValueTask IElmTransport.WriteAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
     {
         if (!IsConnected)
+        {
             throw new InvalidOperationException("Transport is not connected");
+        }
 
         var array = data.ToArray();
         await WriteCharacteristicAsync(array, ct);

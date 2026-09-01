@@ -6,9 +6,9 @@ using ObdInsight.Simulation;
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
-/// Range estimate (roadmap B8): VcmStatus.RangeKm fed from CAR-CAN 0x5A9 through the
-/// shared monitor cache, with the 0xFFF "charging" sentinel mapped to null. Production
-/// path over replay: LeafAze0CommandSet → LeafAze0Vcm → CanMonitor cache.
+///     Range estimate (roadmap B8): VcmStatus.RangeKm fed from CAR-CAN 0x5A9 through the
+///     shared monitor cache, with the 0xFFF "charging" sentinel mapped to null. Production
+///     path over replay: LeafAze0CommandSet → LeafAze0Vcm → CanMonitor cache.
 /// </summary>
 [Timeout(30_000)]
 public class LeafAze0VcmRangeTests

@@ -1,49 +1,38 @@
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
+using ObdInsight.Core.Protocols;
 using ObdInsight.SourceGeneration;
 using ObdInsight.SourceGeneration.Attributes;
 
 namespace ObdInsight.DevTools.Commands;
 
 /// <summary>
-/// Compares the <c>[CanSignal]</c> definitions compiled into Core against the DBC files they were
-/// transcribed from, and reports every disagreement.
-///
-/// Read-only by design: it changes nothing and asserts nothing, because most differences need a
-/// human decision. A signal absent from the DBC may be a community discovery rather than an
-/// error, and a differing factor may be a deliberate unit choice.
-///
-/// The one category that is almost always a genuine defect is **byte order**. A signal declared
-/// Intel where the DBC says <c>@0</c> reads a different set of bits entirely, and it fails
-/// silently - the value is plausible, just wrong. Checking a single frame this way (0x55B) found
-/// two such signals, which is what prompted sweeping all of them.
+///     Compares the <c>[CanSignal]</c> definitions compiled into Core against the DBC files they were
+///     transcribed from, and reports every disagreement.
+///     Read-only by design: it changes nothing and asserts nothing, because most differences need a
+///     human decision. A signal absent from the DBC may be a community discovery rather than an
+///     error, and a differing factor may be a deliberate unit choice.
+///     The one category that is almost always a genuine defect is **byte order**. A signal declared
+///     Intel where the DBC says <c>@0</c> reads a different set of bits entirely, and it fails
+///     silently - the value is plausible, just wrong. Checking a single frame this way (0x55B) found
+///     two such signals, which is what prompted sweeping all of them.
 /// </summary>
 public static class DbcAudit
 {
-    private sealed record DbcSignal(
-        string Message,
-        int CanId,
-        string Name,
-        int StartBit,
-        int Length,
-        bool IsBigEndian,
-        bool IsSigned,
-        double Factor,
-        double Offset,
-        double Min,
-        double Max);
-
     /// <summary>
-    /// <c>SG_ Name : start|len@order sign (factor,offset) [min|max] "unit" receivers</c>
-    /// Order is 0 for Motorola/big-endian and 1 for Intel; sign is + for unsigned, - for signed.
+    ///     <c>SG_ Name : start|len@order sign (factor,offset) [min|max] "unit" receivers</c>
+    ///     Order is 0 for Motorola/big-endian and 1 for Intel; sign is + for unsigned, - for signed.
     /// </summary>
     private static readonly Regex SignalLine = new(
         @"^\s*SG_\s+(?<name>[A-Za-z0-9_]+)\s*:\s*(?<start>\d+)\|(?<len>\d+)@(?<order>[01])(?<sign>[+-])\s*" +
         @"\((?<factor>[^,]+),(?<offset>[^)]+)\)\s*\[(?<min>[^|]*)\|(?<max>[^\]]*)\]",
         RegexOptions.Compiled);
 
-    /// <summary><c>BO_ &lt;decimal id&gt; &lt;name&gt;: &lt;dlc&gt; &lt;transmitter&gt;</c></summary>
+    /// <summary>
+    ///     <c>BO_ &lt;decimal id&gt; &lt;name&gt;: &lt;dlc&gt; &lt;transmitter&gt;</c>
+    /// </summary>
     private static readonly Regex MessageLine = new(
         @"^BO_\s+(?<id>\d+)\s+(?<name>[A-Za-z0-9_]+)\s*:",
         RegexOptions.Compiled);
@@ -92,7 +81,8 @@ public static class DbcAudit
         }
 
         var frames = DiscoverFrames();
-        Console.Error.WriteLine($"reflected {frames.Count} frames with {frames.Sum(f => f.Signals.Count)} signals from Core");
+        Console.Error.WriteLine(
+            $"reflected {frames.Count} frames with {frames.Sum(f => f.Signals.Count)} signals from Core");
         Console.Error.WriteLine();
 
         return Report(frames, dbc);
@@ -150,20 +140,14 @@ public static class DbcAudit
     }
 
     private static double ParseDouble(string raw) =>
-        double.TryParse(raw.Trim(), System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture, out var v)
+        double.TryParse(raw.Trim(), NumberStyles.Float,
+            CultureInfo.InvariantCulture, out var v)
             ? v
             : double.NaN;
 
-    // ------------------------------------------------------------- reflection
-
-    private sealed record CodeSignal(string Property, CanSignalAttribute Attribute);
-
-    private sealed record CodeFrame(string TypeName, int CanId, List<CodeSignal> Signals);
-
     private static List<CodeFrame> DiscoverFrames()
     {
-        return typeof(ObdInsight.Core.Protocols.IsoTpParser).Assembly
+        return typeof(IsoTpParser).Assembly
             .GetTypes()
             .Select(t => (Type: t, Frame: t.GetCustomAttribute<CanFrameAttribute>()))
             .Where(x => x.Frame is not null)
@@ -306,17 +290,15 @@ public static class DbcAudit
     // ------------------------------------------------------- capture evidence
 
     /// <summary>
-    /// Decides byte-order disputes using captured frames instead of argument.
-    ///
-    /// For each disputed signal both interpretations are decoded across every payload observed
-    /// for that CAN ID, scaled, and checked against the range the DBC declares. A reading that
-    /// leaves the declared range is reporting something the ECU does not emit, which is how
-    /// 0x55B SleepEnabled was settled: Intel returned 0, documented as Reserved, while Motorola
-    /// returned RefuseToSleep on a vehicle that was plainly awake.
-    ///
-    /// Where both interpretations stay in range the evidence is genuinely inconclusive and the
-    /// report says so rather than guessing - several of these signals read 0 throughout a
-    /// stationary capture, and 0 is 0 under either order.
+    ///     Decides byte-order disputes using captured frames instead of argument.
+    ///     For each disputed signal both interpretations are decoded across every payload observed
+    ///     for that CAN ID, scaled, and checked against the range the DBC declares. A reading that
+    ///     leaves the declared range is reporting something the ECU does not emit, which is how
+    ///     0x55B SleepEnabled was settled: Intel returned 0, documented as Reserved, while Motorola
+    ///     returned RefuseToSleep on a vehicle that was plainly awake.
+    ///     Where both interpretations stay in range the evidence is genuinely inconclusive and the
+    ///     report says so rather than guessing - several of these signals read 0 throughout a
+    ///     stationary capture, and 0 is 0 under either order.
     /// </summary>
     public static int CrossReference(string[] args)
     {
@@ -344,7 +326,7 @@ public static class DbcAudit
                     continue;
                 }
 
-                if (!int.TryParse(parts[2], System.Globalization.NumberStyles.HexNumber, null, out var id))
+                if (!int.TryParse(parts[2], NumberStyles.HexNumber, null, out var id))
                 {
                     continue;
                 }
@@ -392,8 +374,8 @@ public static class DbcAudit
                     continue;
                 }
 
-                var (intelOk, intelLo, intelHi) = Evaluate(payloads, match, bigEndian: false);
-                var (motoOk, motoLo, motoHi) = Evaluate(payloads, match, bigEndian: true);
+                var (intelOk, intelLo, intelHi) = Evaluate(payloads, match, false);
+                var (motoOk, motoLo, motoHi) = Evaluate(payloads, match, true);
 
                 string verdict;
                 if (intelOk && !motoOk)
@@ -447,15 +429,19 @@ public static class DbcAudit
     ///     needed to say so. Two weaker signals are reported alongside it, since both have already
     ///     produced real findings in this project:
     ///     <list type="bullet">
-    ///         <item><description>
-    ///             Counter-like fields, which advance by a constant step every frame. 0x284's
-    ///             "vehicle speed" was one, decoding 61-496 km/h on a stationary car.
-    ///         </description></item>
-    ///         <item><description>
-    ///             Signals constant across every frame ever captured, which may be reading
-    ///             reserved padding rather than the field they are named for - though on a parked
-    ///             car many legitimately do not vary, so this is a hint and not a verdict.
-    ///         </description></item>
+    ///         <item>
+    ///             <description>
+    ///                 Counter-like fields, which advance by a constant step every frame. 0x284's
+    ///                 "vehicle speed" was one, decoding 61-496 km/h on a stationary car.
+    ///             </description>
+    ///         </item>
+    ///         <item>
+    ///             <description>
+    ///                 Signals constant across every frame ever captured, which may be reading
+    ///                 reserved padding rather than the field they are named for - though on a parked
+    ///                 car many legitimately do not vary, so this is a hint and not a verdict.
+    ///             </description>
+    ///         </item>
     ///     </list>
     /// </remarks>
     public static int SignalSanity(string[] args)
@@ -476,7 +462,7 @@ public static class DbcAudit
             {
                 var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length < 4 || parts[1] != "F" ||
-                    !int.TryParse(parts[2], System.Globalization.NumberStyles.HexNumber, null, out var id))
+                    !int.TryParse(parts[2], NumberStyles.HexNumber, null, out var id))
                 {
                     continue;
                 }
@@ -608,7 +594,7 @@ public static class DbcAudit
             var delta = values[i] - values[i - 1];
             if (delta <= 0)
             {
-                continue;   // ignore wraparound and idle repeats
+                continue; // ignore wraparound and idle repeats
             }
 
             steps[delta] = steps.GetValueOrDefault(delta) + 1;
@@ -684,4 +670,23 @@ public static class DbcAudit
 
         return bytes;
     }
+
+    private sealed record DbcSignal(
+        string Message,
+        int CanId,
+        string Name,
+        int StartBit,
+        int Length,
+        bool IsBigEndian,
+        bool IsSigned,
+        double Factor,
+        double Offset,
+        double Min,
+        double Max);
+
+    // ------------------------------------------------------------- reflection
+
+    private sealed record CodeSignal(string Property, CanSignalAttribute Attribute);
+
+    private sealed record CodeFrame(string TypeName, int CanId, List<CodeSignal> Signals);
 }

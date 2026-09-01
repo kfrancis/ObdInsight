@@ -3,14 +3,15 @@ using ObdInsight.Core.Communication.Elm327;
 namespace OdbTestApp.Tests.Elm327;
 
 /// <summary>
-/// Serves a fixed byte stream to <see cref="ElmFramer"/> in caller-specified chunk sizes,
-/// modelling a transport (BLE notifications, serial reads) whose read boundaries fall at
-/// arbitrary points in the stream — including mid-frame and mid-prompt.
+///     Serves a fixed byte stream to <see cref="ElmFramer" /> in caller-specified chunk sizes,
+///     modelling a transport (BLE notifications, serial reads) whose read boundaries fall at
+///     arbitrary points in the stream — including mid-frame and mid-prompt.
 /// </summary>
 /// <remarks>
-/// A read never returns more than the caller's buffer allows; a chunk larger than the buffer
-/// is served across successive reads. Chunk sizes cycle once the list is exhausted. Once the stream is exhausted the transport blocks until
-/// cancelled, matching a real adapter that has simply gone quiet.
+///     A read never returns more than the caller's buffer allows; a chunk larger than the buffer
+///     is served across successive reads. Chunk sizes cycle once the list is exhausted. Once the stream is exhausted the
+///     transport blocks until
+///     cancelled, matching a real adapter that has simply gone quiet.
 /// </remarks>
 internal sealed class ChunkingTransport : IElmTransport
 {

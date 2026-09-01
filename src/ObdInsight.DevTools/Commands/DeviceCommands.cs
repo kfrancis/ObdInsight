@@ -1,17 +1,17 @@
-using ObdInsight.Core.Communication.Bluetooth;
-using Spectre.Console;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
+using ObdInsight.Core.Communication.Bluetooth;
+using Spectre.Console;
 
 namespace ObdInsight.DevTools.Commands;
 
 /// <summary>
-/// Commands for device discovery and connection management.
+///     Commands for device discovery and connection management.
 /// </summary>
 public static class DeviceCommands
 {
     /// <summary>
-    /// Scan for BLE devices and optionally select one.
+    ///     Scan for BLE devices and optionally select one.
     /// </summary>
     public static async Task<BleDeviceInfo?> ScanAndSelectDeviceAsync(DevToolsSession session)
     {
@@ -62,10 +62,10 @@ public static class DeviceCommands
             };
 
             // Check if this device is in our history
-            var savedDevice = savedDevices.FirstOrDefault(s => 
+            var savedDevice = savedDevices.FirstOrDefault(s =>
                 s.Address.Replace(":", "").Equals(device.Address.Replace(":", ""), StringComparison.OrdinalIgnoreCase));
-            var savedIndicator = savedDevice != null 
-                ? (savedDevice.IsFavorite ? "[yellow]?[/]" : "[green]?[/]") 
+            var savedIndicator = savedDevice != null
+                ? savedDevice.IsFavorite ? "[yellow]?[/]" : "[green]?[/]"
                 : "[grey]-[/]";
 
             table.AddRow(
@@ -95,20 +95,21 @@ public static class DeviceCommands
                     : ValidationResult.Error($"Enter a number between 1 and {orderedDevices.Count}")));
 
         var selectedDevice = orderedDevices[selection - 1];
-        
+
         // Set the device in the session
         session.SetDevice(selectedDevice.Address, selectedDevice.Name);
-        
+
         // Save to history immediately (will be updated again on successful connect)
-        session.DeviceHistory.AddOrUpdate(selectedDevice.Address, selectedDevice.Name, BleDeviceProfile.VeepeakBle.Name);
-        
+        session.DeviceHistory.AddOrUpdate(selectedDevice.Address, selectedDevice.Name,
+            BleDeviceProfile.VeepeakBle.Name);
+
         AnsiConsole.MarkupLine($"[green]?[/] Selected: [cyan]{selectedDevice.Name}[/] ({selectedDevice.Address})");
 
         return selectedDevice;
     }
 
     /// <summary>
-    /// Manually set a device address.
+    ///     Manually set a device address.
     /// </summary>
     public static void SetDeviceAddress(DevToolsSession session)
     {
@@ -151,7 +152,7 @@ public static class DeviceCommands
     }
 
     /// <summary>
-    /// Discover and display all GATT services on a device.
+    ///     Discover and display all GATT services on a device.
     /// </summary>
     public static async Task DiscoverServicesAsync(DevToolsSession session)
     {
@@ -212,7 +213,7 @@ public static class DeviceCommands
     }
 
     /// <summary>
-    /// Show all known BLE profiles.
+    ///     Show all known BLE profiles.
     /// </summary>
     public static void ShowKnownProfiles()
     {

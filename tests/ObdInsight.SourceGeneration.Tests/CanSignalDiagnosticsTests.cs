@@ -72,17 +72,17 @@ namespace ObdInsight.SourceGeneration.Tests
         }
 
         private static string Frame(string signalAttribute, string declaration) => $$"""
-            using ObdInsight.SourceGeneration.Attributes;
+              using ObdInsight.SourceGeneration.Attributes;
 
-            namespace TestNamespace
-            {
-                [CanFrame(0x54C)]
-                public partial class TestFrame
-                {
-                    {{signalAttribute}}
-                    public partial {{declaration}} { get; init; }
-                }
-            }
-            """;
+              namespace TestNamespace
+              {
+                  [CanFrame(0x54C)]
+                  public partial class TestFrame
+                  {
+                      {{signalAttribute}}
+                      public partial {{declaration}} { get; init; }
+                  }
+              }
+              """;
     }
 }

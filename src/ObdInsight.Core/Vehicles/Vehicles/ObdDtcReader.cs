@@ -1,22 +1,22 @@
+using System.Globalization;
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
 
 namespace ObdInsight.Core.Vehicles;
 
 /// <summary>
-/// Vehicle-agnostic OBD-II DTC reader (roadmap B5): Mode 03 (stored) + Mode 07
-/// (pending) over the functional broadcast address, tolerating multi-ECU responses.
-/// Each responding ECU's ISO-TP payload is reassembled independently by CAN header;
-/// codes are decoded to standard "P0xxx"-style strings and deduplicated.
-///
-/// Degradation contract: adapter errors, NO DATA, silent ECUs, and malformed frames
-/// all yield empty code lists — never an exception (cancellation excepted).
-/// UDS 0x19 per-ECU reads are a separate roadmap item.
+///     Vehicle-agnostic OBD-II DTC reader (roadmap B5): Mode 03 (stored) + Mode 07
+///     (pending) over the functional broadcast address, tolerating multi-ECU responses.
+///     Each responding ECU's ISO-TP payload is reassembled independently by CAN header;
+///     codes are decoded to standard "P0xxx"-style strings and deduplicated.
+///     Degradation contract: adapter errors, NO DATA, silent ECUs, and malformed frames
+///     all yield empty code lists — never an exception (cancellation excepted).
+///     UDS 0x19 per-ECU reads are a separate roadmap item.
 /// </summary>
 public sealed class ObdDtcReader : IDiagnosticTroubleCodes
 {
-    private readonly IElmSession _session;
     private readonly EcuContext _context;
+    private readonly IElmSession _session;
 
     public ObdDtcReader(IElmSession session, EcuContext context)
     {
@@ -25,10 +25,10 @@ public sealed class ObdDtcReader : IDiagnosticTroubleCodes
     }
 
     /// <summary>
-    /// Functional OBD-II context: request on 0x7DF, accept the full 0x7E8-0x7EF
-    /// response range via the ELM327 "X" don't-care filter nibble. Adapters whose
-    /// firmware rejects "AT CRA 7EX" keep their previous filter — the reader then
-    /// degrades to whatever that filter admits (worst case: empty results).
+    ///     Functional OBD-II context: request on 0x7DF, accept the full 0x7E8-0x7EF
+    ///     response range via the ELM327 "X" don't-care filter nibble. Adapters whose
+    ///     firmware rejects "AT CRA 7EX" keep their previous filter — the reader then
+    ///     degrades to whatever that filter admits (worst case: empty results).
     /// </summary>
     public static EcuContext FunctionalContext { get; } = new()
     {
@@ -37,7 +37,7 @@ public sealed class ObdDtcReader : IDiagnosticTroubleCodes
         RxFilter = "7EX",
         FlowControlHeader = "7E0",
         EnableHeaders = true,
-        EnableAutoFormatting = true,
+        EnableAutoFormatting = true
     };
 
     public async ValueTask<DtcReadResult> GetDtcsAsync(CancellationToken ct = default)
@@ -75,10 +75,10 @@ public sealed class ObdDtcReader : IDiagnosticTroubleCodes
     }
 
     /// <summary>
-    /// Groups response lines by their 3-digit CAN header and reassembles each ECU's
-    /// ISO-TP payload (SF, or FF + CFs in arrival order). One frame per line
-    /// (the ELM327 line format this stack produces everywhere else); non-frame lines
-    /// are skipped.
+    ///     Groups response lines by their 3-digit CAN header and reassembles each ECU's
+    ///     ISO-TP payload (SF, or FF + CFs in arrival order). One frame per line
+    ///     (the ELM327 line format this stack produces everywhere else); non-frame lines
+    ///     are skipped.
     /// </summary>
     private static List<byte[]> ReassemblePerEcu(string[] lines)
     {
@@ -103,7 +103,7 @@ public sealed class ObdDtcReader : IDiagnosticTroubleCodes
             var valid = true;
             for (var i = 0; i < bytes.Length; i++)
             {
-                if (!byte.TryParse(hex.AsSpan(i * 2, 2), System.Globalization.NumberStyles.HexNumber, null, out bytes[i]))
+                if (!byte.TryParse(hex.AsSpan(i * 2, 2), NumberStyles.HexNumber, null, out bytes[i]))
                 {
                     valid = false;
                     break;
@@ -119,34 +119,34 @@ public sealed class ObdDtcReader : IDiagnosticTroubleCodes
             switch (pciType)
             {
                 case 0: // Single frame
-                {
-                    var length = bytes[0] & 0xF;
-                    if (length > 0 && bytes.Length >= 1 + length)
                     {
-                        perEcu[header] = (bytes.Skip(1).Take(length).ToList(), length);
-                    }
+                        var length = bytes[0] & 0xF;
+                        if (length > 0 && bytes.Length >= 1 + length)
+                        {
+                            perEcu[header] = (bytes.Skip(1).Take(length).ToList(), length);
+                        }
 
-                    break;
-                }
+                        break;
+                    }
                 case 1: // First frame
-                {
-                    if (bytes.Length >= 2)
                     {
-                        var length = ((bytes[0] & 0xF) << 8) | bytes[1];
-                        perEcu[header] = (bytes.Skip(2).ToList(), length);
-                    }
+                        if (bytes.Length >= 2)
+                        {
+                            var length = ((bytes[0] & 0xF) << 8) | bytes[1];
+                            perEcu[header] = (bytes.Skip(2).ToList(), length);
+                        }
 
-                    break;
-                }
+                        break;
+                    }
                 case 2: // Consecutive frame — append in arrival order
-                {
-                    if (perEcu.TryGetValue(header, out var entry))
                     {
-                        entry.Data.AddRange(bytes.Skip(1));
-                    }
+                        if (perEcu.TryGetValue(header, out var entry))
+                        {
+                            entry.Data.AddRange(bytes.Skip(1));
+                        }
 
-                    break;
-                }
+                        break;
+                    }
             }
         }
 
@@ -160,9 +160,9 @@ public sealed class ObdDtcReader : IDiagnosticTroubleCodes
     }
 
     /// <summary>
-    /// Decodes one ECU's Mode 03/07 payload: [SID+0x40] [count] [2-byte DTC]* on CAN.
-    /// Zero pairs (padding) are skipped; an implausible count byte falls back to
-    /// consuming all pairs present.
+    ///     Decodes one ECU's Mode 03/07 payload: [SID+0x40] [count] [2-byte DTC]* on CAN.
+    ///     Zero pairs (padding) are skipped; an implausible count byte falls back to
+    ///     consuming all pairs present.
     /// </summary>
     private static void DecodeDtcPayload(byte[] payload, byte responseSid, List<string> codes)
     {
@@ -196,7 +196,7 @@ public sealed class ObdDtcReader : IDiagnosticTroubleCodes
             0 => 'P',
             1 => 'C',
             2 => 'B',
-            _ => 'U',
+            _ => 'U'
         };
 
         return $"{letter}{(hi >> 4) & 0x3:X1}{hi & 0xF:X1}{lo >> 4:X1}{lo & 0xF:X1}";

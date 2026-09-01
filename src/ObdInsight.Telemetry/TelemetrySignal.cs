@@ -1,8 +1,8 @@
 namespace ObdInsight.Telemetry;
 
 /// <summary>
-/// Normalized telemetry signals a consumer can subscribe to. Units are fixed per signal
-/// (see <see cref="TelemetrySnapshot"/> field docs): %, V, A, kW, °C, km, km/h.
+///     Normalized telemetry signals a consumer can subscribe to. Units are fixed per signal
+///     (see <see cref="TelemetrySnapshot" /> field docs): %, V, A, kW, °C, km, km/h.
 /// </summary>
 public enum TelemetrySignal
 {
@@ -52,10 +52,10 @@ public enum TelemetrySignal
     Odometer,
 
     /// <summary>Charge cycle count. Reserved — no provider yet (roadmap B14).</summary>
-    ChargeCycleCount,
+    ChargeCycleCount
 }
 
-/// <summary>Polling cadence tiers. Periods are configured via <see cref="TelemetrySessionOptions"/>.</summary>
+/// <summary>Polling cadence tiers. Periods are configured via <see cref="TelemetrySessionOptions" />.</summary>
 public enum CadenceTier
 {
     /// <summary>Default every 1–2 s.</summary>
@@ -65,20 +65,24 @@ public enum CadenceTier
     Medium,
 
     /// <summary>Default every 30–60 s.</summary>
-    Low,
+    Low
 }
 
 /// <summary>Per-signal availability as observed on the connected vehicle.</summary>
 public enum SignalAvailability
 {
-    /// <summary>No data seen yet; may still appear (e.g. broadcast frames that only
-    /// stream while driving). The session keeps polling these.</summary>
+    /// <summary>
+    ///     No data seen yet; may still appear (e.g. broadcast frames that only
+    ///     stream while driving). The session keeps polling these.
+    /// </summary>
     Unknown,
 
     /// <summary>Data has been observed for this signal.</summary>
     Available,
 
-    /// <summary>No provider exists for this signal on this vehicle, or the probe
-    /// failed definitively.</summary>
-    Unavailable,
+    /// <summary>
+    ///     No provider exists for this signal on this vehicle, or the probe
+    ///     failed definitively.
+    /// </summary>
+    Unavailable
 }

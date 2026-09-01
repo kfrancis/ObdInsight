@@ -1,12 +1,13 @@
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
+using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf;
 using ObdInsight.Simulation;
 
 namespace OdbTestApp.Tests.Elm327;
 
 /// <summary>
-/// Deterministic ElmSession tests running against <see cref="ReplayElmTransport"/> —
-/// the production session/framer stack with no BLE hardware.
+///     Deterministic ElmSession tests running against <see cref="ReplayElmTransport" /> —
+///     the production session/framer stack with no BLE hardware.
 /// </summary>
 [Timeout(30_000)]
 public class ElmSessionReplayTests
@@ -71,18 +72,18 @@ public class ElmSessionReplayTests
         var transport = new ReplayElmTransport();
         var session = new ElmSession(
             new ElmFramer(transport),
-            new ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.LeafBmsWakeupStrategy());
+            new LeafBmsWakeupStrategy());
 
         // Wakeup broadcast probe fails...
         transport.Expect("0100", "NO DATA\r\r>");
         // ...then the strategy's BMS probe (AT setup is auto-OK'd) gets a 7BB response.
-        transport.Expect("2101", ObdInsight.Simulation.LeafGoldenData.GoldenGroup01Lines.AsElmResponse());
+        transport.Expect("2101", LeafGoldenData.GoldenGroup01Lines.AsElmResponse());
 
         await session.InitializeAndLockAsync(token);
 
         var sent = transport.SentCommands;
-        await Assert.That(sent).Contains("AT SH 79B");   // strategy configured BMS headers
-        await Assert.That(sent).Contains("2101");        // strategy probe ran
+        await Assert.That(sent).Contains("AT SH 79B"); // strategy configured BMS headers
+        await Assert.That(sent).Contains("2101"); // strategy probe ran
         // Protocol confirmed by the strategy — the detection loop must not run its probes.
         await Assert.That(sent.Count(c => c == "0100")).IsEqualTo(1);
     }

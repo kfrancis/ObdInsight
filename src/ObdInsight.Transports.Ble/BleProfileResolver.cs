@@ -7,8 +7,8 @@ public sealed record GattCharacteristicInfo(Guid Uuid, bool CanWrite, bool CanNo
 public sealed record GattServiceInfo(Guid Uuid, IReadOnlyList<GattCharacteristicInfo> Characteristics);
 
 /// <summary>
-/// A concrete, connectable resolution: the actual UUIDs to use on this device
-/// (may differ from the source profile when a fallback rule fired).
+///     A concrete, connectable resolution: the actual UUIDs to use on this device
+///     (may differ from the source profile when a fallback rule fired).
 /// </summary>
 public sealed record ResolvedBleProfile(
     string Name,
@@ -19,9 +19,9 @@ public sealed record ResolvedBleProfile(
     int MaxWriteSize);
 
 /// <summary>
-/// Pure profile auto-probe (docs/BLE_TRANSPORT_DESIGN.md §3): discovered GATT topology
-/// in, best usable profile out. No BLE dependencies — unit-tested exhaustively;
-/// the thin Plugin.BLE wrapper feeds it real discovery data.
+///     Pure profile auto-probe (docs/BLE_TRANSPORT_DESIGN.md §3): discovered GATT topology
+///     in, best usable profile out. No BLE dependencies — unit-tested exhaustively;
+///     the thin Plugin.BLE wrapper feeds it real discovery data.
 /// </summary>
 public static class BleProfileResolver
 {
@@ -90,7 +90,7 @@ public static class BleProfileResolver
                     : "Generic (write/notify pair fallback)";
                 return new ResolvedBleProfile(
                     label, service.Uuid, write.Uuid, notify.Uuid,
-                    WriteWithResponse: false, MaxWriteSize: 20);
+                    false, 20);
             }
         }
 
@@ -108,9 +108,9 @@ public static class BleProfileResolver
     }
 
     /// <summary>
-    /// Advertised device name is a more stable signal than GATT UUIDs, which vary by
-    /// firmware batch on the same physical clone — used only to label an otherwise
-    /// unrecognized service for diagnosability, not to pick UUIDs.
+    ///     Advertised device name is a more stable signal than GATT UUIDs, which vary by
+    ///     firmware batch on the same physical clone — used only to label an otherwise
+    ///     unrecognized service for diagnosability, not to pick UUIDs.
     /// </summary>
     private static string? NameHint(string? deviceName)
     {

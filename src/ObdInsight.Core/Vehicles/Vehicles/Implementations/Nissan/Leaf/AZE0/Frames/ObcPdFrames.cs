@@ -3,7 +3,7 @@ using ObdInsight.SourceGeneration.Attributes;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 
 /// <summary>
-/// On-Board Charger power distribution status frame for Nissan Leaf AZE0 platform (0x390)
+///     On-Board Charger power distribution status frame for Nissan Leaf AZE0 platform (0x390)
 /// </summary>
 [CanFrame(0x390, Description = "On-Board Charger status and power output (100ms)")]
 public partial class ObcPdFrame_390_AZE0
@@ -49,7 +49,7 @@ public partial class ObcPdFrame_390_AZE0
     public partial int Prun { get; init; }
 
     [CanSignal(3, 2,
-                                    Description = "OBC sleep enabled status",
+        Description = "OBC sleep enabled status",
         MinValue = 0, MaxValue = 3)]
     public partial int SleepEnabled { get; init; }
 
@@ -60,12 +60,12 @@ public partial class ObcPdFrame_390_AZE0
 }
 
 /// <summary>
-/// On-Board Charger power distribution secondary frame for Nissan Leaf AZE0 platform (0x393)
+///     On-Board Charger power distribution secondary frame for Nissan Leaf AZE0 platform (0x393)
 /// </summary>
 /// <remarks>
-/// Unknown/undecoded signals in this frame:
-/// - Byte 1 (bits 8-15): Unknown data (0x20 while idle, 0x53 while slow charging)
-/// - Byte 4 (bits 32-39): Unknown data (always 0x20 in logs)
+///     Unknown/undecoded signals in this frame:
+///     - Byte 1 (bits 8-15): Unknown data (0x20 while idle, 0x53 while slow charging)
+///     - Byte 4 (bits 32-39): Unknown data (always 0x20 in logs)
 /// </remarks>
 [CanFrame(0x393, Description = "On-Board Charger secondary status (100ms)")]
 public partial class ObcPdFrame_393_AZE0

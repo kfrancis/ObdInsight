@@ -221,7 +221,7 @@ public static class IsoTpParser
         return [line];
     }
 
-    /// <summary>Cuts <paramref name="line"/> from <paramref name="start"/> into frame-width pieces.</summary>
+    /// <summary>Cuts <paramref name="line" /> from <paramref name="start" /> into frame-width pieces.</summary>
     private static List<string> SplitOnFrameWidth(string line, int start)
     {
         var frames = new List<string>((line.Length - start) / UnspacedFrameLength);
@@ -233,7 +233,7 @@ public static class IsoTpParser
         return frames;
     }
 
-    /// <summary>True when every frame-width position in <paramref name="s"/> starts with <paramref name="canId"/>.</summary>
+    /// <summary>True when every frame-width position in <paramref name="s" /> starts with <paramref name="canId" />.</summary>
     private static bool StartsEveryFrame(string s, string canId)
     {
         for (var i = 0; i < s.Length; i += UnspacedFrameLength)

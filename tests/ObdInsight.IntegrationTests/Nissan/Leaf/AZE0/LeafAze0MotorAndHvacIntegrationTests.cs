@@ -1,24 +1,26 @@
+using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities;
+using ObdInsight.IntegrationTests;
 using OdbTestApp.Tests.Fixtures;
 
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
 
 /// <summary>
-/// Integration tests for Nissan Leaf AZE0 Motor Controller and HVAC using source-generated frames.
-/// These tests require a physical Nissan Leaf AZE0 with OBD adapter connected via BLE.
-/// Validates: Motor/Inverter status and HVAC status from broadcast CAN frames.
+///     Integration tests for Nissan Leaf AZE0 Motor Controller and HVAC using source-generated frames.
+///     These tests require a physical Nissan Leaf AZE0 with OBD adapter connected via BLE.
+///     Validates: Motor/Inverter status and HVAC status from broadcast CAN frames.
 /// </summary>
-[ObdInsight.IntegrationTests.RequiresLeafHardware]
+[RequiresLeafHardware]
 [ClassDataSource<BleSessionFixture>(Shared = SharedType.Keyed)]
 public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
 {
     // Migrated capabilities view a shared CanMonitor (streaming design P2) instead of
     // taking (session, context). One monitor per test class instance.
-    private ObdInsight.Core.Communication.Elm327.CanMonitor? _monitor;
+    private CanMonitor? _monitor;
 
-    private ObdInsight.Core.Communication.Elm327.CanMonitor Monitor =>
-        _monitor ??= new ObdInsight.Core.Communication.Elm327.CanMonitor(
+    private CanMonitor Monitor =>
+        _monitor ??= new CanMonitor(
             bleFixture.Session, LeafAze0Contexts.SharedBroadcastMonitor);
 
     [After(Test)]
@@ -117,7 +119,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         }
 
         Console.WriteLine($"[HVAC Temps] Outside: {status.OutsideAmbientTempC:F1}°C, " +
-                         $"Evaporator: {status.EvaporatorTempC:F1}°C, Interior: {status.InteriorIntakeTempC:F1}°C");
+                          $"Evaporator: {status.EvaporatorTempC:F1}°C, Interior: {status.InteriorIntakeTempC:F1}°C");
     }
 
     [Test]
@@ -139,7 +141,8 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         await Assert.That(status.AcOn).IsTypeOf<bool>();
         await Assert.That(status.RearDefrostOn).IsTypeOf<bool>();
 
-        Console.WriteLine($"[HVAC] Climate: {status.ClimateControlOn}, AC: {status.AcOn}, Rear Defrost: {status.RearDefrostOn}");
+        Console.WriteLine(
+            $"[HVAC] Climate: {status.ClimateControlOn}, AC: {status.AcOn}, Rear Defrost: {status.RearDefrostOn}");
     }
 
     [Test]
@@ -169,11 +172,12 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
                 await Assert.That((double)status.HeaterPowerWatts.Value).IsLessThan(100.0); // Very minimal if off
             }
 
-            Console.WriteLine($"[HVAC Off] AC Power: {status.AcPowerWatts:F1}W, Heater Power: {status.HeaterPowerWatts:F1}W");
+            Console.WriteLine(
+                $"[HVAC Off] AC Power: {status.AcPowerWatts:F1}W, Heater Power: {status.HeaterPowerWatts:F1}W");
         }
         else
         {
-            Console.WriteLine($"[HVAC] Climate control is ON - skipping low power test");
+            Console.WriteLine("[HVAC] Climate control is ON - skipping low power test");
         }
     }
 
@@ -203,14 +207,15 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
             if (status.HeaterPowerWatts.HasValue)
             {
                 await Assert.That((double)status.HeaterPowerWatts.Value).IsGreaterThanOrEqualTo(0.0);
-                await Assert.That((double)status.HeaterPowerWatts.Value).IsLessThanOrEqualTo(10000.0); // Max ~10kW for heater
+                await Assert.That((double)status.HeaterPowerWatts.Value)
+                    .IsLessThanOrEqualTo(10000.0); // Max ~10kW for heater
             }
 
             Console.WriteLine($"[HVAC Power] AC: {status.AcPowerWatts:F1}W, Heater: {status.HeaterPowerWatts:F1}W");
         }
         else
         {
-            Console.WriteLine($"[HVAC] Climate control is OFF");
+            Console.WriteLine("[HVAC] Climate control is OFF");
         }
     }
 
@@ -236,9 +241,11 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
             // Allow for cases where vehicle just started and temps are still stabilizing
             var tempDiff = motorStatus.MotorTempC.Value - hvacStatus.OutsideAmbientTempC.Value;
             await Assert.That(tempDiff).IsGreaterThanOrEqualTo(-20.0); // Motor could be cooler if just started
-            await Assert.That(tempDiff).IsLessThanOrEqualTo(80.0); // Motor shouldn't be way hotter than ambient when idle
+            await Assert.That(tempDiff)
+                .IsLessThanOrEqualTo(80.0); // Motor shouldn't be way hotter than ambient when idle
 
-            Console.WriteLine($"[Temp Consistency] Motor: {motorStatus.MotorTempC:F1}°C, Ambient: {hvacStatus.OutsideAmbientTempC:F1}°C, Diff: {tempDiff:F1}°C");
+            Console.WriteLine(
+                $"[Temp Consistency] Motor: {motorStatus.MotorTempC:F1}°C, Ambient: {hvacStatus.OutsideAmbientTempC:F1}°C, Diff: {tempDiff:F1}°C");
         }
     }
 
@@ -261,7 +268,8 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         var hvacStatus = await hvac.GetStatusAsync(CancellationToken.None);
         await Assert.That(hvacStatus).IsNotNull();
 
-        Console.WriteLine($"[Multi-Query] Motor Voltage: {motorStatus.InputVoltageV:F1}V, HVAC Climate: {hvacStatus.ClimateControlOn}");
+        Console.WriteLine(
+            $"[Multi-Query] Motor Voltage: {motorStatus.InputVoltageV:F1}V, HVAC Climate: {hvacStatus.ClimateControlOn}");
     }
 
     [Test]
@@ -282,10 +290,13 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         if (status.EffectiveTorqueNm.HasValue && status.OutputRevolutionRpm.HasValue && status.PowerWatts.HasValue)
         {
             // Power = Torque * RPM * (2π / 60)
-            var expectedPower = status.EffectiveTorqueNm.Value * status.OutputRevolutionRpm.Value * (2.0 * Math.PI / 60.0);
-            await Assert.That(Math.Abs(status.PowerWatts.Value - expectedPower)).IsLessThan(1.0); // Allow small rounding error
+            var expectedPower = status.EffectiveTorqueNm.Value * status.OutputRevolutionRpm.Value *
+                                (2.0 * Math.PI / 60.0);
+            await Assert.That(Math.Abs(status.PowerWatts.Value - expectedPower))
+                .IsLessThan(1.0); // Allow small rounding error
 
-            Console.WriteLine($"[Motor Power] Calculated: {status.PowerWatts:F1}W from Torque: {status.EffectiveTorqueNm:F1}Nm, RPM: {status.OutputRevolutionRpm}");
+            Console.WriteLine(
+                $"[Motor Power] Calculated: {status.PowerWatts:F1}W from Torque: {status.EffectiveTorqueNm:F1}Nm, RPM: {status.OutputRevolutionRpm}");
         }
     }
 
@@ -341,7 +352,7 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         await Assert.That(status.IgbtDriverBoardTempC!.Value).IsLessThanOrEqualTo(120.0);
 
         Console.WriteLine($"[Motor Temps] Motor: {status.MotorTempC:F1}°C, IGBT: {status.IgbtTempC:F1}°C, " +
-                         $"ComBoard: {status.InverterComBoardTempC:F1}°C, DriverBoard: {status.IgbtDriverBoardTempC:F1}°C");
+                          $"ComBoard: {status.InverterComBoardTempC:F1}°C, DriverBoard: {status.IgbtDriverBoardTempC:F1}°C");
     }
 
     [Test]
@@ -453,6 +464,6 @@ public class LeafAze0MotorAndHvacIntegrationTests(BleSessionFixture bleFixture)
         await Assert.That(async () => await motorController.GetStatusAsync(cts.Token))
             .Throws<OperationCanceledException>();
 
-        Console.WriteLine($"[Motor Cancellation] Successfully handled cancellation");
+        Console.WriteLine("[Motor Cancellation] Successfully handled cancellation");
     }
 }

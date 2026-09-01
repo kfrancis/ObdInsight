@@ -3,8 +3,8 @@ using ObdInsight.Transports.Ble;
 namespace OdbTestApp.Tests.Transports;
 
 /// <summary>
-/// Roadmap B9: pure GATT profile auto-probe tests (docs/BLE_TRANSPORT_DESIGN.md §4).
-/// No BLE dependencies — topology in, resolution out.
+///     Roadmap B9: pure GATT profile auto-probe tests (docs/BLE_TRANSPORT_DESIGN.md §4).
+///     No BLE dependencies — topology in, resolution out.
 /// </summary>
 [Timeout(30_000)]
 public class BleProfileResolverTests
@@ -18,10 +18,7 @@ public class BleProfileResolverTests
     [Test]
     public async Task VgateICarPro_SingleCharacteristic_Resolves(CancellationToken _)
     {
-        var topology = new[]
-        {
-            new GattServiceInfo(Ffe0, [new GattCharacteristicInfo(Ffe1, CanWrite: true, CanNotify: true)]),
-        };
+        var topology = new[] { new GattServiceInfo(Ffe0, [new GattCharacteristicInfo(Ffe1, true, true)]) };
 
         var resolved = BleProfileResolver.Resolve(topology);
 
@@ -38,9 +35,9 @@ public class BleProfileResolverTests
         {
             new GattServiceInfo(Fff0,
             [
-                new GattCharacteristicInfo(Fff1, CanWrite: true, CanNotify: false),
-                new GattCharacteristicInfo(Fff2, CanWrite: false, CanNotify: true),
-            ]),
+                new GattCharacteristicInfo(Fff1, true, false),
+                new GattCharacteristicInfo(Fff2, false, true)
+            ])
         };
 
         var resolved = BleProfileResolver.Resolve(topology);
@@ -61,9 +58,9 @@ public class BleProfileResolverTests
         {
             new GattServiceInfo(service,
             [
-                new GattCharacteristicInfo(rx, CanWrite: true, CanNotify: false),
-                new GattCharacteristicInfo(tx, CanWrite: false, CanNotify: true),
-            ]),
+                new GattCharacteristicInfo(rx, true, false),
+                new GattCharacteristicInfo(tx, false, true)
+            ])
         };
 
         var resolved = BleProfileResolver.Resolve(topology);
@@ -79,10 +76,10 @@ public class BleProfileResolverTests
         {
             new GattServiceInfo(Fff0,
             [
-                new GattCharacteristicInfo(Fff1, CanWrite: true, CanNotify: false),
-                new GattCharacteristicInfo(Fff2, CanWrite: false, CanNotify: true),
+                new GattCharacteristicInfo(Fff1, true, false),
+                new GattCharacteristicInfo(Fff2, false, true)
             ]),
-            new GattServiceInfo(Ffe0, [new GattCharacteristicInfo(Ffe1, CanWrite: true, CanNotify: true)]),
+            new GattServiceInfo(Ffe0, [new GattCharacteristicInfo(Ffe1, true, true)])
         };
 
         var resolved = BleProfileResolver.Resolve(topology);
@@ -95,10 +92,7 @@ public class BleProfileResolverTests
     {
         // FFF0 service but no FFF1/FFF2 — a lone dual-role characteristic instead.
         var oddChar = BleUuid.FromShortId(0xFFF4);
-        var topology = new[]
-        {
-            new GattServiceInfo(Fff0, [new GattCharacteristicInfo(oddChar, CanWrite: true, CanNotify: true)]),
-        };
+        var topology = new[] { new GattServiceInfo(Fff0, [new GattCharacteristicInfo(oddChar, true, true)]) };
 
         var resolved = BleProfileResolver.Resolve(topology);
 
@@ -118,9 +112,9 @@ public class BleProfileResolverTests
         {
             new GattServiceInfo(service,
             [
-                new GattCharacteristicInfo(w, CanWrite: true, CanNotify: false),
-                new GattCharacteristicInfo(n, CanWrite: false, CanNotify: true),
-            ]),
+                new GattCharacteristicInfo(w, true, false),
+                new GattCharacteristicInfo(n, false, true)
+            ])
         };
 
         var resolved = BleProfileResolver.Resolve(topology);
@@ -139,12 +133,12 @@ public class BleProfileResolverTests
         {
             new GattServiceInfo(service,
             [
-                new GattCharacteristicInfo(w, CanWrite: true, CanNotify: false),
-                new GattCharacteristicInfo(n, CanWrite: false, CanNotify: true),
-            ]),
+                new GattCharacteristicInfo(w, true, false),
+                new GattCharacteristicInfo(n, false, true)
+            ])
         };
 
-        var resolved = BleProfileResolver.Resolve(topology, deviceName: "Veepeak OBDII");
+        var resolved = BleProfileResolver.Resolve(topology, "Veepeak OBDII");
 
         await Assert.That(resolved).IsNotNull();
         await Assert.That(resolved!.Name).Contains("Veepeak-like");
@@ -162,9 +156,9 @@ public class BleProfileResolverTests
         {
             new GattServiceInfo(Fff0,
             [
-                new GattCharacteristicInfo(altWrite, CanWrite: true, CanNotify: false),
-                new GattCharacteristicInfo(altNotify, CanWrite: false, CanNotify: true),
-            ]),
+                new GattCharacteristicInfo(altWrite, true, false),
+                new GattCharacteristicInfo(altNotify, false, true)
+            ])
         };
 
         var resolved = BleProfileResolver.Resolve(topology);
@@ -182,7 +176,7 @@ public class BleProfileResolverTests
         var topology = new[]
         {
             new GattServiceInfo(Guid.NewGuid(),
-                [new GattCharacteristicInfo(Guid.NewGuid(), CanWrite: false, CanNotify: false)]),
+                [new GattCharacteristicInfo(Guid.NewGuid(), false, false)])
         };
 
         await Assert.That(BleProfileResolver.Resolve(topology)).IsNull();
@@ -196,7 +190,8 @@ public class BleProfileResolverTests
         await Assert.That(BleUuid.TryGetShortId(Ffe0, out var shortId)).IsTrue();
         await Assert.That((int)shortId).IsEqualTo(0xFFE0);
         // A random 128-bit UUID is not short-form.
-        await Assert.That(BleUuid.TryGetShortId(Guid.Parse("6e400001-b5a3-f393-e0a9-e50e24dcca9e"), out var none)).IsFalse();
+        await Assert.That(BleUuid.TryGetShortId(Guid.Parse("6e400001-b5a3-f393-e0a9-e50e24dcca9e"), out var none))
+            .IsFalse();
         await Assert.That((int)none).IsEqualTo(0);
     }
 

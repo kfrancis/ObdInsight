@@ -3,39 +3,24 @@ using System.Text;
 namespace ObdInsight.DevTools.Commands;
 
 /// <summary>
-/// Offline correlator for guided-probe captures: given a recorded session, finds the bits that
-/// track each stimulus.
-///
-/// Deliberately a pure function over a capture directory. Car time is the scarce resource, so
-/// the recording happens once and the scoring can be argued with at a desk for as long as it
-/// takes - and re-run against the same bytes when the scoring changes.
-///
-/// Implements the protocol in .local/CAN_TOOLING_PLAN.md section 7.3:
-///
-///   1. NOISE MASK from the idle baseline. Every bit that moves with no stimulus is a counter,
-///      CRC or drifting sensor. Masked out everywhere else. Skipping this is why a naive
-///      before/after diff drowns in false positives - 0x284's free-running counter alone would
-///      "respond" to every probe ever run.
-///   2. WITHIN-WINDOW CONSTANCY. A responding bit holds one value for the whole hold window.
-///   3. BETWEEN-STATE SEPARATION. Its value in the on-windows differs from the off-windows.
-///   4. ALTERNATION CONSISTENCY. It must do that for EVERY repetition. A bit that flips once by
-///      chance has a 1-in-2^(N-1) shot at tracking the full pattern; this is the check that
-///      separates signal from coincidence, and it is why the scripts repeat three times.
+///     Offline correlator for guided-probe captures: given a recorded session, finds the bits that
+///     track each stimulus.
+///     Deliberately a pure function over a capture directory. Car time is the scarce resource, so
+///     the recording happens once and the scoring can be argued with at a desk for as long as it
+///     takes - and re-run against the same bytes when the scoring changes.
+///     Implements the protocol in .local/CAN_TOOLING_PLAN.md section 7.3:
+///     1. NOISE MASK from the idle baseline. Every bit that moves with no stimulus is a counter,
+///     CRC or drifting sensor. Masked out everywhere else. Skipping this is why a naive
+///     before/after diff drowns in false positives - 0x284's free-running counter alone would
+///     "respond" to every probe ever run.
+///     2. WITHIN-WINDOW CONSTANCY. A responding bit holds one value for the whole hold window.
+///     3. BETWEEN-STATE SEPARATION. Its value in the on-windows differs from the off-windows.
+///     4. ALTERNATION CONSISTENCY. It must do that for EVERY repetition. A bit that flips once by
+///     chance has a 1-in-2^(N-1) shot at tracking the full pattern; this is the check that
+///     separates signal from coincidence, and it is why the scripts repeat three times.
 /// </summary>
 public static class ProbeAnalyzer
 {
-    /// <summary>Discarded after a stimulus is confirmed, matching the runner's settle delay.</summary>
-    private static readonly double SettleMs = 1500;
-
-    /// <summary>Length of the measured window after settle, matching the runner's hold.</summary>
-    private static readonly double HoldMs = 3000;
-
-    public sealed record Frame(double AtMs, string Id, byte[] Payload);
-
-    public sealed record Marker(double AtMs, string Label);
-
-    public sealed record Session(string Name, IReadOnlyList<Frame> Frames, IReadOnlyList<Marker> Markers);
-
     /// <summary>How a bit responded to the stimulus.</summary>
     public enum ResponseKind
     {
@@ -43,41 +28,19 @@ public static class ProbeAnalyzer
         Static,
 
         /// <summary>
-        /// Oscillated while the stimulus was applied and was still while it was not. Indicators
-        /// and hazards behave this way, and a modal-value comparison cannot see them: the bit is
-        /// not constant within the window, so the constancy test rejects it. That is exactly why
-        /// the `hazards` probe returned nothing on 2026-08-31.
+        ///     Oscillated while the stimulus was applied and was still while it was not. Indicators
+        ///     and hazards behave this way, and a modal-value comparison cannot see them: the bit is
+        ///     not constant within the window, so the constancy test rejects it. That is exactly why
+        ///     the `hazards` probe returned nothing on 2026-08-31.
         /// </summary>
-        Blink,
+        Blink
     }
 
-    /// <summary>A bit that tracked a stimulus.</summary>
-    public sealed record Finding(
-        string Probe,
-        string Id,
-        int BitIndex,
-        int OnValue,
-        int Windows,
-        bool Confounded,
-        string ConfoundedBy)
-    {
-        public ResponseKind Kind { get; init; } = ResponseKind.Static;
+    /// <summary>Discarded after a stimulus is confirmed, matching the runner's settle delay.</summary>
+    private static readonly double SettleMs = 1500;
 
-        /// <summary>Mean transitions per active window, for blink responses.</summary>
-        public double BlinkRate { get; init; }
-
-        /// <summary>
-        /// Mean frames observed per window. Below roughly 8 the sampling is too sparse to
-        /// resolve a ~1.5 Hz blink (Nyquist), so BlinkRate is a lower bound and the finding
-        /// should be treated as provisional rather than measured.
-        /// </summary>
-        public double SamplesPerWindow { get; init; }
-
-        public bool Undersampled => Kind == ResponseKind.Blink && SamplesPerWindow < 8;
-    }
-
-    /// <summary>Per-bit behaviour within one hold window.</summary>
-    private readonly record struct BitStats(int Modal, int Transitions, bool Constant);
+    /// <summary>Length of the measured window after settle, matching the runner's hold.</summary>
+    private static readonly double HoldMs = 3000;
 
     // ------------------------------------------------------------------ parse
 
@@ -130,9 +93,11 @@ public static class ProbeAnalyzer
 
         // --- 1. noise mask from the idle baseline -----------------------------
         var baselineStart = session.Markers.FirstOrDefault(m => m.Label.EndsWith("-start", StringComparison.Ordinal)
-                                                                && m.Label.StartsWith("idle-baseline", StringComparison.Ordinal));
+                                                                && m.Label.StartsWith("idle-baseline",
+                                                                    StringComparison.Ordinal));
         var baselineEnd = session.Markers.FirstOrDefault(m => m.Label.EndsWith("-end", StringComparison.Ordinal)
-                                                              && m.Label.StartsWith("idle-baseline", StringComparison.Ordinal));
+                                                              && m.Label.StartsWith("idle-baseline",
+                                                                  StringComparison.Ordinal));
 
         var noise = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         if (baselineStart is not null && baselineEnd is not null)
@@ -158,7 +123,8 @@ public static class ProbeAnalyzer
         // --- 2. group markers into probes -------------------------------------
         // Labels are "<probe>-on" / "<probe>-off"; idle markers are excluded.
         var probes = session.Markers
-            .Where(m => m.Label.EndsWith("-on", StringComparison.Ordinal) || m.Label.EndsWith("-off", StringComparison.Ordinal))
+            .Where(m => m.Label.EndsWith("-on", StringComparison.Ordinal) ||
+                        m.Label.EndsWith("-off", StringComparison.Ordinal))
             .Where(m => !m.Label.StartsWith("idle-", StringComparison.Ordinal))
             .GroupBy(m => m.Label[..m.Label.LastIndexOf('-')])
             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
@@ -193,8 +159,10 @@ public static class ProbeAnalyzer
                 // Per-bit behaviour per window; null when the ID produced no frames in a window.
                 var onStats = onWindows.Select(w => WindowBits(session, id, w.AtMs)).ToList();
                 var offStats = offWindows.Select(w => WindowBits(session, id, w.AtMs)).ToList();
-                var onSamples = onWindows.Select(w => (double)FramesIn(session, id, w.AtMs + SettleMs, w.AtMs + SettleMs + HoldMs).Count()).ToList();
-                var offSamples = offWindows.Select(w => (double)FramesIn(session, id, w.AtMs + SettleMs, w.AtMs + SettleMs + HoldMs).Count()).ToList();
+                var onSamples = onWindows.Select(w =>
+                    (double)FramesIn(session, id, w.AtMs + SettleMs, w.AtMs + SettleMs + HoldMs).Count()).ToList();
+                var offSamples = offWindows.Select(w =>
+                    (double)FramesIn(session, id, w.AtMs + SettleMs, w.AtMs + SettleMs + HoldMs).Count()).ToList();
 
                 // Drop only the windows that have no frames, not the whole ID.
                 //
@@ -237,9 +205,9 @@ public static class ProbeAnalyzer
 
                     // --- static response: constant in every window, differing between states ---
                     if (on.All(s => s.Constant) && off.All(s => s.Constant)
-                        && on.Select(s => s.Modal).Distinct().Count() == 1
-                        && off.Select(s => s.Modal).Distinct().Count() == 1
-                        && on[0].Modal != off[0].Modal)
+                                                && on.Select(s => s.Modal).Distinct().Count() == 1
+                                                && off.Select(s => s.Modal).Distinct().Count() == 1
+                                                && on[0].Modal != off[0].Modal)
                     {
                         findings.Add(new Finding(probe, id, bit, on[0].Modal, windows, false, ""));
                         continue;
@@ -271,7 +239,7 @@ public static class ProbeAnalyzer
                         {
                             Kind = ResponseKind.Blink,
                             BlinkRate = active.Average(s => s.Transitions),
-                            SamplesPerWindow = onSamples.Concat(offSamples).Average(),
+                            SamplesPerWindow = onSamples.Concat(offSamples).Average()
                         });
                     }
                 }
@@ -321,21 +289,17 @@ public static class ProbeAnalyzer
     }
 
     /// <summary>
-    /// Flags probe pairs that look like the same physical action rather than two different ones.
-    ///
-    /// Two signatures matter, and both are operator errors rather than vehicle behaviour:
-    ///
-    ///   INVERTED - the probes share bits and every shared bit has the opposite on-value. That
+    ///     Flags probe pairs that look like the same physical action rather than two different ones.
+    ///     Two signatures matter, and both are operator errors rather than vehicle behaviour:
+    ///     INVERTED - the probes share bits and every shared bit has the opposite on-value. That
     ///     means one probe was performed on the wrong phase: pressed where the script said
     ///     release. Observed for real on 2026-08-31, where `parking-brake` was actually the
     ///     brake pedal worked in reverse, and the shared bits were wrongly written off as a
     ///     confound when they were in fact the same finding confirmed twice.
-    ///
-    ///   DUPLICATE - the probes share bits and every shared bit has the SAME on-value, i.e. the
+    ///     DUPLICATE - the probes share bits and every shared bit has the SAME on-value, i.e. the
     ///     same action was performed for both.
-    ///
-    /// Either way the pair cannot be treated as independent evidence, and the run should be
-    /// repeated with the control identified explicitly.
+    ///     Either way the pair cannot be treated as independent evidence, and the run should be
+    ///     repeated with the control identified explicitly.
     /// </summary>
     private static void AppendProbeCollisionWarnings(StringBuilder sb, IReadOnlyList<Finding> findings)
     {
@@ -383,7 +347,7 @@ public static class ProbeAnalyzer
                 var shareOfB = shared.Count / (double)Math.Max(totalB, 1);
 
                 var mostlyOpposite = opposite >= shared.Count * 0.8;
-                var mostlySame = (shared.Count - opposite) >= shared.Count * 0.8;
+                var mostlySame = shared.Count - opposite >= shared.Count * 0.8;
 
                 if (mostlyOpposite || mostlySame)
                 {
@@ -420,7 +384,8 @@ public static class ProbeAnalyzer
         // that found nothing is a result - it means the stimulus is not visible on this bus, or
         // the protocol did not suit it - and silently omitting it reads as "not run".
         var allProbes = session.Markers
-            .Where(m => m.Label.EndsWith("-on", StringComparison.Ordinal) || m.Label.EndsWith("-off", StringComparison.Ordinal))
+            .Where(m => m.Label.EndsWith("-on", StringComparison.Ordinal) ||
+                        m.Label.EndsWith("-off", StringComparison.Ordinal))
             .Where(m => !m.Label.StartsWith("idle-", StringComparison.Ordinal))
             .Select(m => m.Label[..m.Label.LastIndexOf('-')])
             .Distinct()
@@ -428,7 +393,8 @@ public static class ProbeAnalyzer
 
         foreach (var probe in allProbes)
         {
-            var hits = findings.Where(f => f.Probe == probe).OrderBy(f => f.Id, StringComparer.Ordinal).ThenBy(f => f.BitIndex).ToList();
+            var hits = findings.Where(f => f.Probe == probe).OrderBy(f => f.Id, StringComparer.Ordinal)
+                .ThenBy(f => f.BitIndex).ToList();
             var clean = hits.Where(h => !h.Confounded).ToList();
 
             sb.AppendLine($"--- {probe} ({hits.Count} bit(s), {clean.Count} specific) ---");
@@ -439,9 +405,12 @@ public static class ProbeAnalyzer
                 var bitInByte = h.BitIndex % 8;
                 var tag = h.Confounded ? $"  [also responds to {h.ConfoundedBy}]" : "  [specific]";
                 var kind = h.Kind == ResponseKind.Blink
-                    ? $"BLINKS ({h.BlinkRate:F1} transitions/window" + (h.Undersampled ? $", UNDERSAMPLED at {h.SamplesPerWindow:F1} frames/window - rate is a lower bound" : "") + ")"
+                    ? $"BLINKS ({h.BlinkRate:F1} transitions/window" + (h.Undersampled
+                        ? $", UNDERSAMPLED at {h.SamplesPerWindow:F1} frames/window - rate is a lower bound"
+                        : "") + ")"
                     : $"on={h.OnValue}";
-                sb.AppendLine($"    0x{h.Id}  bit {h.BitIndex,2} (byte {byteIndex}, bit {bitInByte})  {kind}  {h.Windows} windows{tag}");
+                sb.AppendLine(
+                    $"    0x{h.Id}  bit {h.BitIndex,2} (byte {byteIndex}, bit {bitInByte})  {kind}  {h.Windows} windows{tag}");
             }
 
             if (hits.Count == 0)
@@ -461,15 +430,13 @@ public static class ProbeAnalyzer
         s.Frames.Where(f => f.Id == id && f.AtMs >= from && f.AtMs <= to);
 
     /// <summary>
-    /// Per-bit behaviour across the hold window following a marker: the modal value (majority,
-    /// so one glitch frame cannot decide the result), how many times the bit changed, and
-    /// whether it held still throughout.
-    ///
-    /// Transition counting is what makes blinking signals visible. A modal value alone reports
-    /// an indicator as "mostly 1" or "mostly 0" depending on where the window happened to fall,
-    /// which is noise; the transition count reports it as oscillating, which is the signal.
-    ///
-    /// Returns null when the ID produced no frames in the window.
+    ///     Per-bit behaviour across the hold window following a marker: the modal value (majority,
+    ///     so one glitch frame cannot decide the result), how many times the bit changed, and
+    ///     whether it held still throughout.
+    ///     Transition counting is what makes blinking signals visible. A modal value alone reports
+    ///     an indicator as "mostly 1" or "mostly 0" depending on where the window happened to fall,
+    ///     which is noise; the transition count reports it as oscillating, which is the signal.
+    ///     Returns null when the ID produced no frames in the window.
     /// </summary>
     private static BitStats[]? WindowBits(Session s, string id, double markerAt)
     {
@@ -554,4 +521,38 @@ public static class ProbeAnalyzer
 
         return bytes;
     }
+
+    public sealed record Frame(double AtMs, string Id, byte[] Payload);
+
+    public sealed record Marker(double AtMs, string Label);
+
+    public sealed record Session(string Name, IReadOnlyList<Frame> Frames, IReadOnlyList<Marker> Markers);
+
+    /// <summary>A bit that tracked a stimulus.</summary>
+    public sealed record Finding(
+        string Probe,
+        string Id,
+        int BitIndex,
+        int OnValue,
+        int Windows,
+        bool Confounded,
+        string ConfoundedBy)
+    {
+        public ResponseKind Kind { get; init; } = ResponseKind.Static;
+
+        /// <summary>Mean transitions per active window, for blink responses.</summary>
+        public double BlinkRate { get; init; }
+
+        /// <summary>
+        ///     Mean frames observed per window. Below roughly 8 the sampling is too sparse to
+        ///     resolve a ~1.5 Hz blink (Nyquist), so BlinkRate is a lower bound and the finding
+        ///     should be treated as provisional rather than measured.
+        /// </summary>
+        public double SamplesPerWindow { get; init; }
+
+        public bool Undersampled => Kind == ResponseKind.Blink && SamplesPerWindow < 8;
+    }
+
+    /// <summary>Per-bit behaviour within one hold window.</summary>
+    private readonly record struct BitStats(int Modal, int Transitions, bool Constant);
 }

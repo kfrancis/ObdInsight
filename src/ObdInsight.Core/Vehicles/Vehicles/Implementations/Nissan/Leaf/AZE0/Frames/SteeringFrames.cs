@@ -3,7 +3,7 @@ using ObdInsight.SourceGeneration.Attributes;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 
 /// <summary>
-/// Steering angle sensor frame for Nissan Leaf AZE0 platform (0x002)
+///     Steering angle sensor frame for Nissan Leaf AZE0 platform (0x002)
 /// </summary>
 [CanFrame(0x002, Description = "Steering angle sensor signal with angle and rate of change (10ms)")]
 public partial class SteeringFrame_002_AZE0
@@ -24,13 +24,13 @@ public partial class SteeringFrame_002_AZE0
     public partial int SteeringSensorHeartbeat { get; init; }
 
     [CanSignal(31, 8,
-            Description = "Unknown byte 3 (typically 0x07)",
+        Description = "Unknown byte 3 (typically 0x07)",
         MinValue = 0, MaxValue = 255)]
     public partial int Unknown3 { get; init; }
 }
 
 /// <summary>
-/// Steering wheel force frame for Nissan Leaf AZE0 platform (0x300)
+///     Steering wheel force frame for Nissan Leaf AZE0 platform (0x300)
 /// </summary>
 [CanFrame(0x300, Description = "Steering wheel force applied (20ms)")]
 public partial class SteeringFrame_300_AZE0

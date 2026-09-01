@@ -4,14 +4,17 @@ using ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 {
     /// <summary>
-    /// HVAC capability as a view over the shared <see cref="CanMonitor"/> (streaming design P2).
-    /// Reads Leaf AZE0 HVAC broadcast frames (0x54A/0x54B/0x54C/0x54F, ~100ms cadence) from the
-    /// monitor's latest-frame cache instead of entering/exiting monitoring mode per call.
+    ///     HVAC capability as a view over the shared <see cref="CanMonitor" /> (streaming design P2).
+    ///     Reads Leaf AZE0 HVAC broadcast frames (0x54A/0x54B/0x54C/0x54F, ~100ms cadence) from the
+    ///     monitor's latest-frame cache instead of entering/exiting monitoring mode per call.
     /// </summary>
     internal sealed class LeafAze0Hvac : IHvac
     {
         /// <summary>How long a cold cache is given for the first frames to arrive.</summary>
         private static readonly TimeSpan WarmupTimeout = TimeSpan.FromSeconds(4);
+
+        /// <summary>The frames that feed <see cref="HvacStatus" />.</summary>
+        private static readonly int[] StatusFrameIds = [0x54A, 0x54B, 0x54C, 0x54F];
 
         private readonly CanMonitor _monitor;
 
@@ -19,9 +22,6 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         {
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
         }
-
-        /// <summary>The frames that feed <see cref="HvacStatus" />.</summary>
-        private static readonly int[] StatusFrameIds = [0x54A, 0x54B, 0x54C, 0x54F];
 
         public async ValueTask<HvacStatus> GetStatusAsync(CancellationToken ct = default)
         {

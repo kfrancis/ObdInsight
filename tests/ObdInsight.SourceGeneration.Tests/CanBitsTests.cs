@@ -3,16 +3,16 @@ using ProdCanBits = ObdInsight.SourceGeneration.CanBits;
 namespace ObdInsight.SourceGeneration.Tests
 {
     /// <summary>
-    /// Bit-level tests for the production <see cref="ObdInsight.SourceGeneration.CanBits"/> helper.
-    /// The generated per-namespace CanBits copy must behave identically; that path is covered by
-    /// the frame-decoding regression tests in ObdInsight.Tests and the generator snapshot tests.
+    ///     Bit-level tests for the production <see cref="ObdInsight.SourceGeneration.CanBits" /> helper.
+    ///     The generated per-namespace CanBits copy must behave identically; that path is covered by
+    ///     the frame-decoding regression tests in ObdInsight.Tests and the generator snapshot tests.
     /// </summary>
     public class CanBitsTests
     {
         /// <summary>Builds an 8-byte little-endian CAN frame from a raw 64-bit value.</summary>
         private static byte[] Frame(ulong raw) => BitConverter.GetBytes(raw);
 
-        /// <summary>Encodes a signed value as two's complement in <paramref name="bitLen"/> bits at <paramref name="bitPos"/>.</summary>
+        /// <summary>Encodes a signed value as two's complement in <paramref name="bitLen" /> bits at <paramref name="bitPos" />.</summary>
         private static byte[] FrameWithSigned(long value, int bitPos, int bitLen)
         {
             var mask = bitLen == 64 ? ulong.MaxValue : (1ul << bitLen) - 1;
@@ -115,17 +115,16 @@ namespace ObdInsight.SourceGeneration.Tests
         }
 
         /// <summary>
-        /// The case that motivated Motorola support, checked against bytes captured from a real
-        /// vehicle rather than constructed to fit.
-        ///
-        /// 0x55B SOC is DBC big-endian, start bit 7, length 10. Two independent captures of a
-        /// 2017 AZE0, months apart at different charge levels, decode to values matching what the
-        /// vehicle displayed. Reading the identical bits as Intel returns 1 - which is exactly the
-        /// symptom recorded in docs/FRAME_LAYOUT_AUDIT.md before this existed.
+        ///     The case that motivated Motorola support, checked against bytes captured from a real
+        ///     vehicle rather than constructed to fit.
+        ///     0x55B SOC is DBC big-endian, start bit 7, length 10. Two independent captures of a
+        ///     2017 AZE0, months apart at different charge levels, decode to values matching what the
+        ///     vehicle displayed. Reading the identical bits as Intel returns 1 - which is exactly the
+        ///     symptom recorded in docs/FRAME_LAYOUT_AUDIT.md before this existed.
         /// </summary>
         [Test]
-        [Arguments("E800AA00E380135D", 928u)]   // 2026-07-18 capture: 92.8 %
-        [Arguments("F3005500E2C011B2", 972u)]   // 2026-08-31 capture: 97.2 %, pack fuller
+        [Arguments("E800AA00E380135D", 928u)] // 2026-07-18 capture: 92.8 %
+        [Arguments("F3005500E2C011B2", 972u)] // 2026-08-31 capture: 97.2 %, pack fuller
         public async Task ReadUnsignedBe_DecodesCapturedLeafSoc(string payload, uint expected)
         {
             await Assert.That(ProdCanBits.ReadUnsignedBe(Hex(payload), 7, 10)).IsEqualTo(expected);
@@ -142,14 +141,14 @@ namespace ObdInsight.SourceGeneration.Tests
         }
 
         /// <summary>
-        /// Start bit is the signal's MSB and the run descends through the big-endian view, so a
-        /// signal at bit 7 of byte 0 begins at the very left of the frame.
+        ///     Start bit is the signal's MSB and the run descends through the big-endian view, so a
+        ///     signal at bit 7 of byte 0 begins at the very left of the frame.
         /// </summary>
         [Test]
-        [Arguments(7, 0)]     // byte 0, MSB -> leftmost
-        [Arguments(0, 7)]     // byte 0, LSB -> 8th from the left
-        [Arguments(15, 8)]    // byte 1, MSB
-        [Arguments(63, 56)]   // byte 7, MSB
+        [Arguments(7, 0)] // byte 0, MSB -> leftmost
+        [Arguments(0, 7)] // byte 0, LSB -> 8th from the left
+        [Arguments(15, 8)] // byte 1, MSB
+        [Arguments(63, 56)] // byte 7, MSB
         public async Task MotorolaMsbIndex_MapsDbcPositionToBigEndianOffset(int bitPos, int expected)
         {
             await Assert.That(ProdCanBits.MotorolaMsbIndex(bitPos)).IsEqualTo(expected);
@@ -188,14 +187,14 @@ namespace ObdInsight.SourceGeneration.Tests
         {
             var frame = Hex("8000000000000001");
 
-            await Assert.That(ProdCanBits.ReadBoolBe(frame, 7)).IsTrue();    // byte 0 MSB
+            await Assert.That(ProdCanBits.ReadBoolBe(frame, 7)).IsTrue(); // byte 0 MSB
             await Assert.That(ProdCanBits.ReadBoolBe(frame, 6)).IsFalse();
-            await Assert.That(ProdCanBits.ReadBoolBe(frame, 56)).IsTrue();   // byte 7 LSB
+            await Assert.That(ProdCanBits.ReadBoolBe(frame, 56)).IsTrue(); // byte 7 LSB
         }
 
         /// <summary>
-        /// A Motorola signal running off the end must throw rather than silently wrap. The shift
-        /// count would otherwise be masked to 6 bits and read an unrelated part of the frame.
+        ///     A Motorola signal running off the end must throw rather than silently wrap. The shift
+        ///     count would otherwise be masked to 6 bits and read an unrelated part of the frame.
         /// </summary>
         [Test]
         public async Task ReadUnsignedBe_RunningPastTheEnd_Throws()

@@ -22,8 +22,8 @@ public enum BleProbeFailureKind
 }
 
 /// <summary>
-/// Sanitized result of one BLE transport-open probe. It deliberately excludes the
-/// device address/identifier, advertisement manufacturer payloads, and stack traces.
+///     Sanitized result of one BLE transport-open probe. It deliberately excludes the
+///     device address/identifier, advertisement manufacturer payloads, and stack traces.
 /// </summary>
 public sealed record BleProbeReport(
     BleProbeStage Stage,

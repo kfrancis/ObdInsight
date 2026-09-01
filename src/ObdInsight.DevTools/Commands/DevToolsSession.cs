@@ -4,93 +4,104 @@ using Spectre.Console;
 namespace ObdInsight.DevTools.Commands;
 
 /// <summary>
-/// Manages the current device session state across all DevTools commands.
-/// This allows connecting once and using the connection across multiple operations.
+///     Manages the current device session state across all DevTools commands.
+///     This allows connecting once and using the connection across multiple operations.
 /// </summary>
 public sealed class DevToolsSession : IAsyncDisposable
 {
-    private WindowsBleTransport? _transport;
-    private Elm327Adapter? _adapter;
-    private WindowsBinaryBleTransport? _binaryTransport;
-    
     // Track whether we're inside a Status operation to suppress logging
     private volatile bool _suppressLogging;
 
     /// <summary>
-    /// Device history for favorites/recent devices.
+    ///     Device history for favorites/recent devices.
     /// </summary>
     public DeviceHistory DeviceHistory { get; } = DeviceHistory.Load();
 
     /// <summary>
-    /// The currently selected device address (MAC address).
+    ///     The currently selected device address (MAC address).
     /// </summary>
     public string? DeviceAddress { get; private set; }
 
     /// <summary>
-    /// The friendly name of the connected device.
+    ///     The friendly name of the connected device.
     /// </summary>
     public string? DeviceName { get; private set; }
 
     /// <summary>
-    /// The BLE profile being used for the connection.
+    ///     The BLE profile being used for the connection.
     /// </summary>
     public BleDeviceProfile? Profile { get; private set; }
 
     /// <summary>
-    /// Whether we have an active ASCII/ELM327 transport connection.
+    ///     Whether we have an active ASCII/ELM327 transport connection.
     /// </summary>
-    public bool IsConnected => _transport?.IsConnected == true;
+    public bool IsConnected => Transport?.IsConnected == true;
 
     /// <summary>
-    /// Whether we have an active binary transport connection.
+    ///     Whether we have an active binary transport connection.
     /// </summary>
-    public bool IsBinaryConnected => _binaryTransport?.IsConnected == true;
+    public bool IsBinaryConnected => BinaryTransport?.IsConnected == true;
 
     /// <summary>
-    /// The active ASCII transport (for ELM327 communication).
+    ///     The active ASCII transport (for ELM327 communication).
     /// </summary>
-    public WindowsBleTransport? Transport => _transport;
+    public WindowsBleTransport? Transport { get; private set; }
 
     /// <summary>
-    /// The active ELM327 adapter.
+    ///     The active ELM327 adapter.
     /// </summary>
-    public Elm327Adapter? Adapter => _adapter;
+    public Elm327Adapter? Adapter { get; private set; }
 
     /// <summary>
-    /// The active binary transport (for direct CAN communication).
+    ///     The active binary transport (for direct CAN communication).
     /// </summary>
-    public WindowsBinaryBleTransport? BinaryTransport => _binaryTransport;
+    public WindowsBinaryBleTransport? BinaryTransport { get; private set; }
 
     /// <summary>
-    /// Event logging for BLE traffic. When true, logs are shown in real-time.
-    /// When false, logs are suppressed (useful during Status operations).
+    ///     Event logging for BLE traffic. When true, logs are shown in real-time.
+    ///     When false, logs are suppressed (useful during Status operations).
     /// </summary>
     public bool EnableTrafficLogging { get; set; } = true;
 
     /// <summary>
-    /// Applied to the transport when it is created, so BLE connect/GATT diagnostics are captured.
-    /// Must be set before connecting: the transport is constructed inside ConnectAsync, and the
-    /// interesting failures (device lookup, service discovery, characteristic lookup) all happen
-    /// during that call.
+    ///     Applied to the transport when it is created, so BLE connect/GATT diagnostics are captured.
+    ///     Must be set before connecting: the transport is constructed inside ConnectAsync, and the
+    ///     interesting failures (device lookup, service discovery, characteristic lookup) all happen
+    ///     during that call.
     /// </summary>
     public bool EnableTransportDebugLogging { get; set; }
 
     /// <summary>
-    /// True once the ELM327 bring-up path has run on the current connection.
-    ///
-    /// That path probes the bus (<c>AT SP 0</c> auto-detect and <c>0100</c> requests), so a
-    /// connection with this flag set has already transmitted. Commands that must not transmit -
-    /// anything wired to a powertrain bus - have to refuse such a connection and reconnect
-    /// transport-only instead.
+    ///     True once the ELM327 bring-up path has run on the current connection.
+    ///     That path probes the bus (<c>AT SP 0</c> auto-detect and <c>0100</c> requests), so a
+    ///     connection with this flag set has already transmitted. Commands that must not transmit -
+    ///     anything wired to a powertrain bus - have to refuse such a connection and reconnect
+    ///     transport-only instead.
     /// </summary>
     public bool AdapterInitialized { get; private set; }
 
     /// <summary>
-    /// When armed, the ELM327 bring-up path is refused and callers are expected to route writes
-    /// through <see cref="ListenOnlyElmTransport"/>, which whitelists them. Arm this BEFORE
-    /// connecting - arming afterwards cannot un-transmit probes that already went out.
+    ///     When armed, the ELM327 bring-up path is refused and callers are expected to route writes
+    ///     through <see cref="ListenOnlyElmTransport" />, which whitelists them. Arm this BEFORE
+    ///     connecting - arming afterwards cannot un-transmit probes that already went out.
     /// </summary>
     public bool ListenOnlyArmed { get; private set; }
+
+    /// <summary>
+    ///     Temporarily suppresses BLE/ELM traffic logging without tearing down the connection.
+    ///     High-volume commands (raw CAN capture) set this so per-chunk RX logging does not
+    ///     flood the console or corrupt a live-rendered display.
+    /// </summary>
+    public bool SuppressTrafficLogging
+    {
+        get => _suppressLogging;
+        set => _suppressLogging = value;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DisconnectAsync();
+    }
 
     /// <summary>Arms listen-only mode. Refuses if the adapter bring-up already probed the bus.</summary>
     public bool ArmListenOnly()
@@ -111,18 +122,7 @@ public sealed class DevToolsSession : IAsyncDisposable
     public void DisarmListenOnly() => ListenOnlyArmed = false;
 
     /// <summary>
-    /// Temporarily suppresses BLE/ELM traffic logging without tearing down the connection.
-    /// High-volume commands (raw CAN capture) set this so per-chunk RX logging does not
-    /// flood the console or corrupt a live-rendered display.
-    /// </summary>
-    public bool SuppressTrafficLogging
-    {
-        get => _suppressLogging;
-        set => _suppressLogging = value;
-    }
-
-    /// <summary>
-    /// Set the target device without connecting.
+    ///     Set the target device without connecting.
     /// </summary>
     public void SetDevice(string address, string? name = null, BleDeviceProfile? profile = null)
     {
@@ -132,7 +132,7 @@ public sealed class DevToolsSession : IAsyncDisposable
     }
 
     /// <summary>
-    /// Connect to the current device using ASCII/ELM327 protocol.
+    ///     Connect to the current device using ASCII/ELM327 protocol.
     /// </summary>
     public async Task<bool> ConnectAsync(CancellationToken ct = default)
     {
@@ -149,12 +149,12 @@ public sealed class DevToolsSession : IAsyncDisposable
         AdapterInitialized = false;
 
         Profile ??= BleDeviceProfile.VeepeakBle;
-        _transport = new WindowsBleTransport(Profile) { EnableDebugLogging = EnableTransportDebugLogging };
+        Transport = new WindowsBleTransport(Profile) { EnableDebugLogging = EnableTransportDebugLogging };
 
         if (EnableTrafficLogging)
         {
-            _transport.DataSent += OnDataSent;
-            _transport.DataReceived += OnDataReceived;
+            Transport.DataSent += OnDataSent;
+            Transport.DataReceived += OnDataReceived;
         }
 
         // Suppress logging during status operation to prevent display corruption
@@ -166,7 +166,7 @@ public sealed class DevToolsSession : IAsyncDisposable
                 .Spinner(Spinner.Known.Dots)
                 .StartAsync($"Connecting to {DeviceName} ({DeviceAddress})...", async ctx =>
                 {
-                    return await _transport.ConnectAsync(DeviceAddress, ct);
+                    return await Transport.ConnectAsync(DeviceAddress, ct);
                 });
         }
         finally
@@ -177,8 +177,8 @@ public sealed class DevToolsSession : IAsyncDisposable
         if (!connected)
         {
             AnsiConsole.MarkupLine("[red]Failed to connect![/]");
-            _transport.Dispose();
-            _transport = null;
+            Transport.Dispose();
+            Transport = null;
             return false;
         }
 
@@ -190,7 +190,7 @@ public sealed class DevToolsSession : IAsyncDisposable
     }
 
     /// <summary>
-    /// Connect and initialize the ELM327 adapter.
+    ///     Connect and initialize the ELM327 adapter.
     /// </summary>
     public async Task<bool> ConnectAndInitializeAdapterAsync(bool minimalInit = false, CancellationToken ct = default)
     {
@@ -209,25 +209,25 @@ public sealed class DevToolsSession : IAsyncDisposable
 
         AdapterInitialized = true;
 
-        _adapter = new Elm327Adapter();
-        
+        Adapter = new Elm327Adapter();
+
         if (EnableTrafficLogging)
         {
-            _adapter.Log += OnAdapterLog;
+            Adapter.Log += OnAdapterLog;
         }
 
         if (minimalInit)
         {
             // Minimal init - skip protocol search (useful for EVs)
             AnsiConsole.MarkupLine("[grey]Using minimal initialization (skipping protocol search)...[/]");
-            
+
             if (!await MinimalAdapterInitAsync(ct))
             {
                 AnsiConsole.MarkupLine("[yellow]Minimal initialization had issues[/]");
                 return false;
             }
-            
-            _adapter.SetTransport(_transport!, markAsInitialized: true);
+
+            Adapter.SetTransport(Transport!, true);
             AnsiConsole.MarkupLine("[green]?[/] Adapter initialized (minimal mode)");
         }
         else
@@ -241,7 +241,7 @@ public sealed class DevToolsSession : IAsyncDisposable
                     .Spinner(Spinner.Known.Dots)
                     .StartAsync("Initializing ELM327 adapter...", async ctx =>
                     {
-                        return await _adapter.InitializeAsync(_transport!, ct);
+                        return await Adapter.InitializeAsync(Transport!, ct);
                     });
             }
             finally
@@ -263,7 +263,7 @@ public sealed class DevToolsSession : IAsyncDisposable
     }
 
     /// <summary>
-    /// Connect using binary protocol (service 6287).
+    ///     Connect using binary protocol (service 6287).
     /// </summary>
     public async Task<bool> ConnectBinaryAsync(CancellationToken ct = default)
     {
@@ -274,15 +274,15 @@ public sealed class DevToolsSession : IAsyncDisposable
         }
 
         // Disconnect any existing binary connection
-        if (_binaryTransport != null)
+        if (BinaryTransport != null)
         {
-            await _binaryTransport.DisconnectAsync();
-            await _binaryTransport.DisposeAsync();
-            _binaryTransport = null;
+            await BinaryTransport.DisconnectAsync();
+            await BinaryTransport.DisposeAsync();
+            BinaryTransport = null;
         }
 
         var binaryProfile = BleDeviceProfile.VeepeakBinary;
-        _binaryTransport = new WindowsBinaryBleTransport(binaryProfile);
+        BinaryTransport = new WindowsBinaryBleTransport(binaryProfile);
 
         // Suppress logging during status operation
         _suppressLogging = true;
@@ -293,7 +293,7 @@ public sealed class DevToolsSession : IAsyncDisposable
                 .Spinner(Spinner.Known.Dots)
                 .StartAsync($"Connecting to {DeviceName} (binary mode)...", async ctx =>
                 {
-                    return await _binaryTransport.ConnectAsync(DeviceAddress, ct);
+                    return await BinaryTransport.ConnectAsync(DeviceAddress, ct);
                 });
         }
         finally
@@ -304,8 +304,8 @@ public sealed class DevToolsSession : IAsyncDisposable
         if (!connected)
         {
             AnsiConsole.MarkupLine("[red]Failed to connect to binary service![/]");
-            await _binaryTransport.DisposeAsync();
-            _binaryTransport = null;
+            await BinaryTransport.DisposeAsync();
+            BinaryTransport = null;
             return false;
         }
 
@@ -314,34 +314,38 @@ public sealed class DevToolsSession : IAsyncDisposable
     }
 
     /// <summary>
-    /// Disconnect all active connections.
+    ///     Disconnect all active connections.
     /// </summary>
     public async Task DisconnectAsync()
     {
         AdapterInitialized = false;
 
-        if (_transport != null)
+        if (Transport != null)
         {
             // Unsubscribe from events
-            _transport.DataSent -= OnDataSent;
-            _transport.DataReceived -= OnDataReceived;
-            
-            try { await _transport.DisconnectAsync(); } catch { }
-            _transport.Dispose();
-            _transport = null;
+            Transport.DataSent -= OnDataSent;
+            Transport.DataReceived -= OnDataReceived;
+
+            try { await Transport.DisconnectAsync(); }
+            catch { }
+
+            Transport.Dispose();
+            Transport = null;
         }
 
-        if (_binaryTransport != null)
+        if (BinaryTransport != null)
         {
-            try { await _binaryTransport.DisconnectAsync(); } catch { }
-            await _binaryTransport.DisposeAsync();
-            _binaryTransport = null;
+            try { await BinaryTransport.DisconnectAsync(); }
+            catch { }
+
+            await BinaryTransport.DisposeAsync();
+            BinaryTransport = null;
         }
 
-        if (_adapter != null)
+        if (Adapter != null)
         {
-            _adapter.Log -= OnAdapterLog;
-            _adapter = null;
+            Adapter.Log -= OnAdapterLog;
+            Adapter = null;
         }
 
         // Suppressed in headless mode: stdout there carries only the summary JSON path, and a
@@ -353,11 +357,11 @@ public sealed class DevToolsSession : IAsyncDisposable
     }
 
     /// <summary>
-    /// Ensure we have a valid connection, reconnecting if necessary.
+    ///     Ensure we have a valid connection, reconnecting if necessary.
     /// </summary>
     public async Task<bool> EnsureConnectedAsync(CancellationToken ct = default)
     {
-        if (_transport?.IsConnected == true)
+        if (Transport?.IsConnected == true)
         {
             // Validate the connection is actually usable
             if (await ValidateConnectionAsync())
@@ -365,11 +369,11 @@ public sealed class DevToolsSession : IAsyncDisposable
         }
 
         AnsiConsole.MarkupLine("[yellow]Connection lost. Reconnecting...[/]");
-        return await ConnectAndInitializeAdapterAsync(minimalInit: true, ct);
+        return await ConnectAndInitializeAdapterAsync(true, ct);
     }
 
     /// <summary>
-    /// Get the current connection status display string.
+    ///     Get the current connection status display string.
     /// </summary>
     public string GetStatusDisplay()
     {
@@ -393,22 +397,17 @@ public sealed class DevToolsSession : IAsyncDisposable
         return $"[yellow]Selected:[/] {DeviceName} ({DeviceAddress}) [grey](not connected)[/]{mode}";
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        await DisconnectAsync();
-    }
-
     private async Task<bool> ValidateConnectionAsync()
     {
-        if (_transport == null || !_transport.IsConnected)
+        if (Transport == null || !Transport.IsConnected)
             return false;
 
         try
         {
-            _transport.DrainBuffer();
-            await _transport.WriteAsync("ATI\r");
-            var response = await _transport.ReadUntilAsync(">", TimeSpan.FromSeconds(4));
-            return !string.IsNullOrWhiteSpace(response) && 
+            Transport.DrainBuffer();
+            await Transport.WriteAsync("ATI\r");
+            var response = await Transport.ReadUntilAsync(">", TimeSpan.FromSeconds(4));
+            return !string.IsNullOrWhiteSpace(response) &&
                    response.Contains("ELM", StringComparison.OrdinalIgnoreCase);
         }
         catch
@@ -419,20 +418,20 @@ public sealed class DevToolsSession : IAsyncDisposable
 
     private async Task<bool> MinimalAdapterInitAsync(CancellationToken ct)
     {
-        if (_transport == null || !_transport.IsConnected)
+        if (Transport == null || !Transport.IsConnected)
             return false;
 
         async Task<(bool Success, string Response)> SendAsync(string cmd, TimeSpan timeout)
         {
             try
             {
-                _transport.DrainBuffer();
-                await _transport.WriteAsync(cmd + "\r", ct);
-                var response = await _transport.ReadUntilAsync(">", timeout, ct);
+                Transport.DrainBuffer();
+                await Transport.WriteAsync(cmd + "\r", ct);
+                var response = await Transport.ReadUntilAsync(">", timeout, ct);
                 response = response.Replace(cmd, "").Replace(">", "").Replace("\r", "").Trim();
-                var success = !string.IsNullOrWhiteSpace(response) && 
-                             !response.Contains("?") &&
-                             !response.Contains("ERROR", StringComparison.OrdinalIgnoreCase);
+                var success = !string.IsNullOrWhiteSpace(response) &&
+                              !response.Contains("?") &&
+                              !response.Contains("ERROR", StringComparison.OrdinalIgnoreCase);
                 return (success, response);
             }
             catch

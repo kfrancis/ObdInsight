@@ -6,10 +6,10 @@ using ObdInsight.Telemetry;
 namespace OdbTestApp.Tests.Telemetry;
 
 /// <summary>
-/// Roadmap B2 acceptance: a full pre-check → live drive → post-check flow through the
-/// B1 <see cref="ITelemetrySession"/> API against the simulated Leaf — zero hardware,
-/// zero scripted expectations; the simulator answers the real init/protocol sequence,
-/// UDS queries, and streams evolving CAR-CAN broadcast data.
+///     Roadmap B2 acceptance: a full pre-check → live drive → post-check flow through the
+///     B1 <see cref="ITelemetrySession" /> API against the simulated Leaf — zero hardware,
+///     zero scripted expectations; the simulator answers the real init/protocol sequence,
+///     UDS queries, and streams evolving CAR-CAN broadcast data.
 /// </summary>
 [Timeout(60_000)]
 public class SimulatedDriveTests
@@ -30,7 +30,7 @@ public class SimulatedDriveTests
             HighPeriod = TimeSpan.FromMilliseconds(150),
             MediumPeriod = TimeSpan.FromMilliseconds(400),
             LowPeriod = TimeSpan.FromSeconds(2),
-            CacheReadTimeout = TimeSpan.FromMilliseconds(500),
+            CacheReadTimeout = TimeSpan.FromMilliseconds(500)
         };
 
         // Each UDS read costs a monitor suspend/resume cycle — keep the heavy 96-cell
@@ -43,7 +43,7 @@ public class SimulatedDriveTests
             [TelemetrySignal.VehicleSpeed] = CadenceTier.High,
             [TelemetrySignal.RemainingRange] = CadenceTier.Medium,
             [TelemetrySignal.CabinTemperature] = CadenceTier.Medium,
-            [TelemetrySignal.CellVoltages] = CadenceTier.Low,
+            [TelemetrySignal.CellVoltages] = CadenceTier.Low
         });
         await using var telemetry = TelemetrySession.Create(commands, subscription, options);
 

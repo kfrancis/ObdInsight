@@ -3,7 +3,7 @@ using ObdInsight.Core.Vehicles;
 namespace ObdInsight.Telemetry.Providers;
 
 /// <summary>
-/// Battery status signals from one BMS UDS exchange (SOC, pack V/A/kW, temp, SoH).
+///     Battery status signals from one BMS UDS exchange (SOC, pack V/A/kW, temp, SoH).
 /// </summary>
 public sealed class BatteryStatusTelemetryProvider : ITelemetryProvider
 {
@@ -14,7 +14,7 @@ public sealed class BatteryStatusTelemetryProvider : ITelemetryProvider
         TelemetrySignal.PackCurrent,
         TelemetrySignal.PackPower,
         TelemetrySignal.PackTemperature,
-        TelemetrySignal.StateOfHealth,
+        TelemetrySignal.StateOfHealth
     ];
 
     private readonly IBatteryManagementSystem _bms;
@@ -60,7 +60,7 @@ public sealed class BatteryStatusTelemetryProvider : ITelemetryProvider
                 TelemetrySignal.PackPower => TelemetryValue.FromDouble(status?.PowerWatts / 1000.0),
                 TelemetrySignal.PackTemperature => TelemetryValue.FromDouble(status?.TemperatureC),
                 TelemetrySignal.StateOfHealth => TelemetryValue.FromDouble(status?.HealthPercent),
-                _ => TelemetryValue.Empty,
+                _ => TelemetryValue.Empty
             };
         }
 
@@ -76,7 +76,7 @@ public sealed class CellVoltagesTelemetryProvider : ITelemetryProvider
         TelemetrySignal.CellVoltages,
         TelemetrySignal.CellVoltageMin,
         TelemetrySignal.CellVoltageMax,
-        TelemetrySignal.CellVoltageAverage,
+        TelemetrySignal.CellVoltageAverage
     ];
 
     private readonly IBatteryManagementSystem _bms;
@@ -117,12 +117,12 @@ public sealed class CellVoltagesTelemetryProvider : ITelemetryProvider
                 TelemetrySignal.CellVoltages when cells is { CellVoltagesMv.Length: > 0 } =>
                     new TelemetryValue(Vector: cells.CellVoltagesMv.Select(mv => mv / 1000m).ToArray()),
                 TelemetrySignal.CellVoltageMin when cells is not null =>
-                    new TelemetryValue(Scalar: cells.MinVoltageMv / 1000m),
+                    new TelemetryValue(cells.MinVoltageMv / 1000m),
                 TelemetrySignal.CellVoltageMax when cells is not null =>
-                    new TelemetryValue(Scalar: cells.MaxVoltageMv / 1000m),
+                    new TelemetryValue(cells.MaxVoltageMv / 1000m),
                 TelemetrySignal.CellVoltageAverage when cells is not null =>
-                    new TelemetryValue(Scalar: cells.AvgVoltageMv / 1000m),
-                _ => TelemetryValue.Empty,
+                    new TelemetryValue(cells.AvgVoltageMv / 1000m),
+                _ => TelemetryValue.Empty
             };
         }
 
@@ -147,7 +147,7 @@ public sealed class SpeedTelemetryProvider : ITelemetryProvider
         var status = await _abs.GetStatusAsync(ct);
         return new Dictionary<TelemetrySignal, TelemetryValue>
         {
-            [TelemetrySignal.VehicleSpeed] = TelemetryValue.FromDouble(status.VehicleSpeedKmh),
+            [TelemetrySignal.VehicleSpeed] = TelemetryValue.FromDouble(status.VehicleSpeedKmh)
         };
     }
 }
@@ -158,7 +158,7 @@ public sealed class HvacTelemetryProvider : ITelemetryProvider
     private static readonly TelemetrySignal[] Provided =
     [
         TelemetrySignal.CabinTemperature,
-        TelemetrySignal.HvacActive,
+        TelemetrySignal.HvacActive
     ];
 
     private readonly IHvac _hvac;
@@ -207,7 +207,7 @@ public sealed class RangeTelemetryProvider : ITelemetryProvider
         var status = await _vcm.GetStatusAsync(ct);
         return new Dictionary<TelemetrySignal, TelemetryValue>
         {
-            [TelemetrySignal.RemainingRange] = TelemetryValue.FromDouble(status.RangeKm),
+            [TelemetrySignal.RemainingRange] = TelemetryValue.FromDouble(status.RangeKm)
         };
     }
 }

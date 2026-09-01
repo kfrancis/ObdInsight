@@ -1,25 +1,25 @@
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
+using ObdInsight.IntegrationTests;
 using OdbTestApp.Tests.Fixtures;
 
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
 
 /// <summary>
-/// Diagnostic tests for determining which Nissan Leaf AZE0 ECUs require session activation.
-/// These tests compare frame acquisition with and without session activation to determine
-/// the optimal configuration for each broadcast context.
-///
-/// IMPORTANT: These tests should be run with the vehicle in READY mode for best results.
+///     Diagnostic tests for determining which Nissan Leaf AZE0 ECUs require session activation.
+///     These tests compare frame acquisition with and without session activation to determine
+///     the optimal configuration for each broadcast context.
+///     IMPORTANT: These tests should be run with the vehicle in READY mode for best results.
 /// </summary>
-[ObdInsight.IntegrationTests.RequiresLeafHardware]
+[RequiresLeafHardware]
 [ClassDataSource<BleSessionFixture>(Shared = SharedType.Keyed)]
 public class LeafAze0SessionActivationDiagnosticsTests(BleSessionFixture bleFixture)
 {
     /// <summary>
-    /// Comprehensive diagnostic test that evaluates all broadcast contexts to determine
-    /// which ones require session activation. Run this test to generate recommendations
-    /// for RequiresSessionActivation flag.
+    ///     Comprehensive diagnostic test that evaluates all broadcast contexts to determine
+    ///     which ones require session activation. Run this test to generate recommendations
+    ///     for RequiresSessionActivation flag.
     /// </summary>
     [Test]
     [Category("Diagnostic")]
@@ -39,7 +39,8 @@ public class LeafAze0SessionActivationDiagnosticsTests(BleSessionFixture bleFixt
             ("Brake", LeafAze0Contexts.BrakeBroadcast, new[] { 0x1CA }),
             ("BodyControl", LeafAze0Contexts.BcmBroadcast, new[] { 0x60D, 0x625 }),
             ("VCM_EvCan", LeafAze0Contexts.VcmEvCanBroadcast, new[] { 0x11A, 0x1D4, 0x1F2, 0x284, 0x5A9 }),
-            ("VCM_CarCan", LeafAze0Contexts.VcmCarCanBroadcast, new[] { 0x174, 0x176, 0x180, 0x260, 0x421, 0x50A, 0x50D, 0x510 })
+            ("VCM_CarCan", LeafAze0Contexts.VcmCarCanBroadcast,
+                new[] { 0x174, 0x176, 0x180, 0x260, 0x421, 0x50A, 0x50D, 0x510 })
         };
 
         Console.WriteLine("\n╔═══════════════════════════════════════════════════════════════");
@@ -154,8 +155,8 @@ public class LeafAze0SessionActivationDiagnosticsTests(BleSessionFixture bleFixt
     }
 
     /// <summary>
-    /// Tests that filter state is properly reset between context switches.
-    /// This validates the ResetAdapterStateAsync fix for filter pollution.
+    ///     Tests that filter state is properly reset between context switches.
+    ///     This validates the ResetAdapterStateAsync fix for filter pollution.
     /// </summary>
     [Test]
     [Category("Diagnostic")]
@@ -251,8 +252,8 @@ public class LeafAze0SessionActivationDiagnosticsTests(BleSessionFixture bleFixt
     }
 
     /// <summary>
-    /// Focused diagnostic for steering ECU session activation.
-    /// Tests multiple session activation commands to find the best one.
+    ///     Focused diagnostic for steering ECU session activation.
+    ///     Tests multiple session activation commands to find the best one.
     /// </summary>
     [Test]
     [Category("Diagnostic")]
@@ -269,11 +270,10 @@ public class LeafAze0SessionActivationDiagnosticsTests(BleSessionFixture bleFixt
 
         var sessionCommands = new[]
         {
-            ("No Session", null as string),
-            ("1001", "1001"), // Default session
+            ("No Session", null), ("1001", "1001"), // Default session
             ("1081", "1081"), // Default session with suppress-positive-response
             ("1003", "1003"), // Extended diagnostic session
-            ("10C0", "10C0")  // Nissan OEM session
+            ("10C0", "10C0") // Nissan OEM session
         };
 
         var baseContext = LeafAze0Contexts.SteeringBroadcast;
@@ -311,13 +311,15 @@ public class LeafAze0SessionActivationDiagnosticsTests(BleSessionFixture bleFixt
                 var uniqueIds = frames.Select(f => f.CanId).Distinct().ToList();
                 var expectedFound = expectedIds.Count(id => uniqueIds.Contains(id));
 
-                Console.WriteLine($"│   Frames: {frames.Count}, IDs: {string.Join(", ", uniqueIds.Select(id => $"0x{id:X3}"))}");
+                Console.WriteLine(
+                    $"│   Frames: {frames.Count}, IDs: {string.Join(", ", uniqueIds.Select(id => $"0x{id:X3}"))}");
                 Console.WriteLine($"│   Expected found: {expectedFound}/{expectedIds.Length}");
 
                 if (expectedFound == expectedIds.Length)
                 {
                     Console.WriteLine($"│ ✓ {name} works!");
                 }
+
                 Console.WriteLine("│");
             }
             catch (Exception ex)
@@ -333,7 +335,7 @@ public class LeafAze0SessionActivationDiagnosticsTests(BleSessionFixture bleFixt
     }
 
     /// <summary>
-    /// Helper method to test passive monitoring and collect frames.
+    ///     Helper method to test passive monitoring and collect frames.
     /// </summary>
     private static async Task<List<RawCanFrame>> TestPassiveMonitoringAsync(
         IElmSession session,

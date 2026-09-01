@@ -1,24 +1,19 @@
-using System;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
+using ObdInsight.Core.Communication.Bluetooth;
+using ObdInsight.Core.Vehicles;
 using Serilog;
 using Spectre.Console;
-using ObdInsight.Core.Communication.Bluetooth;
-using ObdInsight.Application;
-using ObdInsight.Core.Vehicles;
 
 namespace ObdInsight.Application;
 
 /// <summary>
-/// Manages retry logic for ELM327 sessions
+///     Manages retry logic for ELM327 sessions
 /// </summary>
 public class SessionRetryService
 {
     private const int MaxFailures = 5;
 
     /// <summary>
-    /// Runs an ELM327 session with automatic retry on connection failure
+    ///     Runs an ELM327 session with automatic retry on connection failure
     /// </summary>
     public async Task RunWithRetryAsync(
         BleDeviceInfo selectedDevice,
@@ -43,13 +38,16 @@ public class SessionRetryService
             catch (IOException ex) when (!ct.IsCancellationRequested)
             {
                 failureCount++;
-                Log.Warning(ex, "Connection failure #{FailureCount}/{MaxFailures} - {Message}", failureCount, MaxFailures, ex.Message);
-                AnsiConsole.MarkupLine($"[red]Connection failure #{failureCount}/{MaxFailures}:[/] {ex.Message.EscapeMarkup()}");
+                Log.Warning(ex, "Connection failure #{FailureCount}/{MaxFailures} - {Message}", failureCount,
+                    MaxFailures, ex.Message);
+                AnsiConsole.MarkupLine(
+                    $"[red]Connection failure #{failureCount}/{MaxFailures}:[/] {ex.Message.EscapeMarkup()}");
 
                 if (failureCount < MaxFailures)
                 {
                     var retryDelay = TimeSpan.FromSeconds(Math.Min(30, Math.Pow(2, failureCount)));
-                    Log.Information("Retrying in {RetryDelay} seconds (attempt {NextAttempt})", retryDelay.TotalSeconds, failureCount + 1);
+                    Log.Information("Retrying in {RetryDelay} seconds (attempt {NextAttempt})", retryDelay.TotalSeconds,
+                        failureCount + 1);
                     AnsiConsole.MarkupLine($"[yellow]Retrying in {retryDelay.TotalSeconds:F0}s...[/]");
 
                     await Task.Delay(retryDelay, ct);
@@ -62,17 +60,17 @@ public class SessionRetryService
                     AnsiConsole.MarkupLine($"[red]Max retry attempts ({MaxFailures}) reached. Giving up.[/]");
 
                     // Ask if user wants to rescan
-                    if (AnsiConsole.Confirm("Scan for devices again?", defaultValue: true))
+                    if (AnsiConsole.Confirm("Scan for devices again?"))
                     {
                         Log.Information("User requested rescan");
                         var scanService = new DeviceScanService(TimeSpan.FromSeconds(10));
                         var newDevice = await scanService.ScanAndSelectDeviceAsync(preferences, ct);
                         if (newDevice != null)
                         {
-                            Log.Information("New device selected: {DeviceName} ({Address})", newDevice.Name, newDevice.Address);
+                            Log.Information("New device selected: {DeviceName} ({Address})", newDevice.Name,
+                                newDevice.Address);
                             currentDevice = newDevice;
                             failureCount = 0; // Reset counter for new device
-                            continue;
                         }
                     }
                     else
@@ -90,4 +88,3 @@ public class SessionRetryService
         }
     }
 }
-

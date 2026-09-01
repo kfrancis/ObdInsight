@@ -7,7 +7,7 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf;
 public class NissanLeaf : VehicleProfile
 {
     private static readonly VehicleVariant s_gen1 = new(
-        new("ZE0-2010-2012"),
+        new VehicleVariantId("ZE0-2010-2012"),
         "Gen1 (2010–2012) ZE0",
         2010, 2012,
         "ZE0",
@@ -20,7 +20,7 @@ public class NissanLeaf : VehicleProfile
         });
 
     private static readonly VehicleVariant s_gen2 = new(
-        new("AZE0-0-2013-2014"),
+        new VehicleVariantId("AZE0-0-2013-2014"),
         "Gen2 (2013–2014) AZE0-0",
         2013, 2014,
         "AZE0-0",
@@ -33,7 +33,7 @@ public class NissanLeaf : VehicleProfile
         });
 
     private static readonly VehicleVariant s_gen2_5 = new(
-        new("AZE0-1-2013-2014"),
+        new VehicleVariantId("AZE0-1-2013-2014"),
         "Gen2.5 (2013–2014) AZE0-1",
         2013, 2014,
         "AZE0-1",
@@ -46,7 +46,7 @@ public class NissanLeaf : VehicleProfile
         });
 
     private static readonly VehicleVariant s_gen3 = new(
-        new("AZE0-2-2016-2017"),
+        new VehicleVariantId("AZE0-2-2016-2017"),
         "Gen3 (2016–2017) AZE0-2",
         2016, 2017,
         "AZE0-2",
@@ -65,15 +65,22 @@ public class NissanLeaf : VehicleProfile
         [s_gen1, s_gen2, s_gen2_5, s_gen3];
 
     /// <summary>
-    /// Returns a set of vehicle commands appropriate for the specified Nissan Leaf variant and ELM327 session.
+    ///     Returns a set of vehicle commands appropriate for the specified Nissan Leaf variant and ELM327 session.
     /// </summary>
-    /// <remarks>Currently, only the "AZE0-2-2016-2017" variant is supported. To add support for additional
-    /// variants, extend this method accordingly.</remarks>
-    /// <param name="variantId">The identifier representing the Nissan Leaf vehicle variant for which commands are requested. Must correspond to
-    /// a supported variant.</param>
+    /// <remarks>
+    ///     Currently, only the "AZE0-2-2016-2017" variant is supported. To add support for additional
+    ///     variants, extend this method accordingly.
+    /// </remarks>
+    /// <param name="variantId">
+    ///     The identifier representing the Nissan Leaf vehicle variant for which commands are requested. Must correspond to
+    ///     a supported variant.
+    /// </param>
     /// <param name="session">The ELM327 session used to communicate with the vehicle. Cannot be null.</param>
-    /// <returns>An <see cref="IVehicleCommandSet"/> instance containing commands for the specified vehicle variant.</returns>
-    /// <exception cref="NotSupportedException">Thrown if <paramref name="variantId"/> does not correspond to a supported Nissan Leaf variant.</exception>
+    /// <returns>An <see cref="IVehicleCommandSet" /> instance containing commands for the specified vehicle variant.</returns>
+    /// <exception cref="NotSupportedException">
+    ///     Thrown if <paramref name="variantId" /> does not correspond to a supported
+    ///     Nissan Leaf variant.
+    /// </exception>
     public override IVehicleCommandSet GetCommands(VehicleVariantId variantId, IElmSession session) =>
         variantId.Value switch
         {
@@ -82,16 +89,16 @@ public class NissanLeaf : VehicleProfile
         };
 
     /// <summary>
-    /// Keep in sync with <see cref="GetCommands"/> — detection legitimately returns
-    /// ZE0/AZE0-0/AZE0-1 variants that have no command set yet, and callers
-    /// (VehicleResolver) must get a clean "variant unsupported" instead of a throw.
+    ///     Keep in sync with <see cref="GetCommands" /> — detection legitimately returns
+    ///     ZE0/AZE0-0/AZE0-1 variants that have no command set yet, and callers
+    ///     (VehicleResolver) must get a clean "variant unsupported" instead of a throw.
     /// </summary>
     public override bool SupportsVariant(VehicleVariantId variantId) =>
         variantId.Value == "AZE0-2-2016-2017";
 
     /// <summary>
-    /// Leaf VIN read: Mode 21 PID 81 on the charger/IDENT ECU (0x797/0x79A) — Leafs
-    /// don't answer standard OBD Mode 09. Same mechanism across Leaf generations.
+    ///     Leaf VIN read: Mode 21 PID 81 on the charger/IDENT ECU (0x797/0x79A) — Leafs
+    ///     don't answer standard OBD Mode 09. Same mechanism across Leaf generations.
     /// </summary>
     public override async ValueTask<string?> TryReadVinAsync(
         IElmSession session, CancellationToken ct = default)
@@ -112,35 +119,52 @@ public class NissanLeaf : VehicleProfile
     }
 
     /// <summary>
-    /// Identifies the Nissan Leaf vehicle variant based on the provided VIN, if possible.
+    ///     Identifies the Nissan Leaf vehicle variant based on the provided VIN, if possible.
     /// </summary>
-    /// <remarks>If the VIN does not correspond to a Nissan Leaf or cannot be mapped to a known variant, the
-    /// method returns <see langword="null"/>. For certain model years with multiple possible variants, additional VIN
-    /// segments are used to distinguish between them.</remarks>
-    /// <param name="vin">The vehicle identification number (VIN) to analyze. Must be a valid VIN corresponding to a Nissan Leaf.</param>
-    /// <returns>A <see cref="VehicleVariantId"/> representing the detected vehicle variant if identification is successful;
-    /// otherwise, <see langword="null"/>.</returns>
+    /// <remarks>
+    ///     If the VIN does not correspond to a Nissan Leaf or cannot be mapped to a known variant, the
+    ///     method returns <see langword="null" />. For certain model years with multiple possible variants, additional VIN
+    ///     segments are used to distinguish between them.
+    /// </remarks>
+    /// <param name="vin">
+    ///     The vehicle identification number (VIN) to analyze. Must be a valid VIN corresponding to a Nissan
+    ///     Leaf.
+    /// </param>
+    /// <returns>
+    ///     A <see cref="VehicleVariantId" /> representing the detected vehicle variant if identification is successful;
+    ///     otherwise, <see langword="null" />.
+    /// </returns>
     public override VehicleVariantId? DetectVariantFromVin(string vin)
     {
         if (!IsValidVin(vin))
+        {
             return null;
+        }
 
         // Verify it's a Nissan Leaf VIN
         var wmi = GetWmi(vin);
         if (!IsNissanLeafWmi(wmi))
+        {
             return null;
+        }
 
         var modelYear = DecodeModelYear(vin[9]);
         if (modelYear == null)
+        {
             return null;
+        }
 
         var matchingVariants = GetVariantsByYear(modelYear.Value);
 
         if (matchingVariants.Count == 0)
+        {
             return null;
+        }
 
         if (matchingVariants.Count == 1)
+        {
             return matchingVariants[0].Id;
+        }
 
         // Multiple variants for same year (e.g., Gen2 vs Gen2.5 in 2013-2014)
         // Use VDS to distinguish if possible
@@ -149,12 +173,16 @@ public class NissanLeaf : VehicleProfile
     }
 
     /// <summary>
-    /// Determines whether the specified World Manufacturer Identifier (WMI) corresponds to a Nissan Leaf vehicle.
+    ///     Determines whether the specified World Manufacturer Identifier (WMI) corresponds to a Nissan Leaf vehicle.
     /// </summary>
-    /// <remarks>Recognized Nissan Leaf WMIs include "JN1" (Japan), "1N4" (USA), and "SJN" (UK). The
-    /// comparison is case-sensitive.</remarks>
-    /// <param name="wmi">The WMI code to evaluate. Must be a non-null, three-character string representing the vehicle manufacturer and
-    /// country of origin.</param>
+    /// <remarks>
+    ///     Recognized Nissan Leaf WMIs include "JN1" (Japan), "1N4" (USA), and "SJN" (UK). The
+    ///     comparison is case-sensitive.
+    /// </remarks>
+    /// <param name="wmi">
+    ///     The WMI code to evaluate. Must be a non-null, three-character string representing the vehicle manufacturer and
+    ///     country of origin.
+    /// </param>
     /// <returns>true if the WMI matches a known Nissan Leaf code; otherwise, false.</returns>
     private static bool IsNissanLeafWmi(string wmi)
     {
@@ -166,14 +194,21 @@ public class NissanLeaf : VehicleProfile
     }
 
     /// <summary>
-    /// Attempts to identify the vehicle variant based on the provided Vehicle Descriptor Section (VDS) and a list of
-    /// candidate variants.
+    ///     Attempts to identify the vehicle variant based on the provided Vehicle Descriptor Section (VDS) and a list of
+    ///     candidate variants.
     /// </summary>
-    /// <remarks>This method currently returns the identifier of the first candidate in the list. Accurate
-    /// variant identification requires VIN decoding data and may be enhanced in future implementations.</remarks>
-    /// <param name="vds">The Vehicle Descriptor Section (VDS) portion of the VIN, typically containing model and trim information. Must
-    /// not be null.</param>
-    /// <param name="candidates">A read-only list of possible vehicle variants to consider for matching. Must contain at least one element.</param>
+    /// <remarks>
+    ///     This method currently returns the identifier of the first candidate in the list. Accurate
+    ///     variant identification requires VIN decoding data and may be enhanced in future implementations.
+    /// </remarks>
+    /// <param name="vds">
+    ///     The Vehicle Descriptor Section (VDS) portion of the VIN, typically containing model and trim information. Must
+    ///     not be null.
+    /// </param>
+    /// <param name="candidates">
+    ///     A read-only list of possible vehicle variants to consider for matching. Must contain at least
+    ///     one element.
+    /// </param>
     /// <returns>The identifier of the matched vehicle variant if a match is found; otherwise, null.</returns>
     private static VehicleVariantId? DistinguishVariantByVds(string vds, IReadOnlyList<VehicleVariant> candidates)
     {

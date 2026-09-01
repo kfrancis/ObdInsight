@@ -4,8 +4,8 @@ using Spectre.Console;
 namespace ObdInsight.DevTools;
 
 /// <summary>
-/// Binary protocol test - STUB implementation.
-/// TODO: Refactor for new architecture.
+///     Binary protocol test - STUB implementation.
+///     TODO: Refactor for new architecture.
 /// </summary>
 public static class BinaryProtocolTest
 {

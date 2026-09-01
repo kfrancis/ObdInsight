@@ -6,9 +6,9 @@ using ObdInsight.Simulation;
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
-/// Unit tests for Nissan Leaf VIN parsing using golden sample data.
-/// Exercises the PRODUCTION path — LeafAze0CommandSet → LeafAze0VehicleIdentification
-/// (Mode 21 PID 81 to the IDENT/Charger ECU) — over a replay transport. No BLE required.
+///     Unit tests for Nissan Leaf VIN parsing using golden sample data.
+///     Exercises the PRODUCTION path — LeafAze0CommandSet → LeafAze0VehicleIdentification
+///     (Mode 21 PID 81 to the IDENT/Charger ECU) — over a replay transport. No BLE required.
 /// </summary>
 [Timeout(30_000)]
 public class LeafChargerVinParsingTests

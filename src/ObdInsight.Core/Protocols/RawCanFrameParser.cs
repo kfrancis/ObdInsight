@@ -117,7 +117,8 @@ public static class RawCanFrameParser
                 continue;
             }
 
-            if (token.Length != 2 || !byte.TryParse(token, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var b))
+            if (token.Length != 2 ||
+                !byte.TryParse(token, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var b))
             {
                 return false;
             }
@@ -152,7 +153,8 @@ public static class RawCanFrameParser
         var bytes = new byte[byteCount];
         for (var i = 0; i < byteCount; i++)
         {
-            if (!byte.TryParse(dataPart.Slice(i * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out bytes[i]))
+            if (!byte.TryParse(dataPart.Slice(i * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture,
+                    out bytes[i]))
             {
                 return false;
             }

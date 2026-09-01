@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ObdInsight.Core.Communication.Elm327;
@@ -11,31 +10,29 @@ using IBleAdapter = Plugin.BLE.Abstractions.Contracts.IAdapter;
 namespace ObdInsight.Transports.Ble;
 
 /// <summary>
-/// <see cref="IElmTransport"/> over Plugin.BLE for Android/iOS (roadmap B9).
-/// Connects to a known device, auto-probes the GATT profile
-/// (<see cref="BleProfileResolver"/>), feeds reads from notifications (no busy-poll),
-/// and chunks writes to the profile's write size.
-///
-/// The wrapper is deliberately thin — all selection logic lives in the pure resolver.
-/// Hardware check against a real Vgate iCar Pro: pending (working rule 4).
+///     <see cref="IElmTransport" /> over Plugin.BLE for Android/iOS (roadmap B9).
+///     Connects to a known device, auto-probes the GATT profile
+///     (<see cref="BleProfileResolver" />), feeds reads from notifications (no busy-poll),
+///     and chunks writes to the profile's write size.
+///     The wrapper is deliberately thin — all selection logic lives in the pure resolver.
+///     Hardware check against a real Vgate iCar Pro: pending (working rule 4).
 /// </summary>
 public sealed class PluginBleElmTransport : IConnectionAwareTransport
 {
     private readonly IBleAdapter _adapter;
+    private readonly SemaphoreSlim _dataSignal = new(0);
     private readonly Guid _deviceId;
     private readonly ResolvedBleProfile? _forcedProfile;
-    private readonly ILogger<PluginBleElmTransport> _logger;
 
     private readonly object _gate = new();
+    private readonly ILogger<PluginBleElmTransport> _logger;
     private readonly Queue<byte> _rx = new();
-    private readonly SemaphoreSlim _dataSignal = new(0);
 
     private IDevice? _device;
-    private ICharacteristic? _writeCharacteristic;
-    private ICharacteristic? _notifyCharacteristic;
-    private ResolvedBleProfile? _activeProfile;
-    private BleProbeStage _probeStage = BleProbeStage.Connecting;
     private List<GattServiceInfo> _lastTopology = [];
+    private ICharacteristic? _notifyCharacteristic;
+    private BleProbeStage _probeStage = BleProbeStage.Connecting;
+    private ICharacteristic? _writeCharacteristic;
 
     public PluginBleElmTransport(
         IBleAdapter adapter,
@@ -49,12 +46,12 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
         _logger = logger ?? NullLogger<PluginBleElmTransport>.Instance;
     }
 
-    public event EventHandler? ConnectionLost;
-    public event Action<BleProbeReport>? ProbeCompleted;
-
     /// <summary>The profile in use after a successful open.</summary>
-    public ResolvedBleProfile? ActiveProfile => _activeProfile;
+    public ResolvedBleProfile? ActiveProfile { get; private set; }
+
     public BleProbeReport? LastProbeReport { get; private set; }
+
+    public event EventHandler? ConnectionLost;
 
     public bool IsOpen { get; private set; }
 
@@ -105,7 +102,7 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
             _adapter.DeviceDisconnected += OnDeviceDisconnected;
             _adapter.DeviceConnectionLost += OnDeviceDisconnected;
 
-            _activeProfile = resolved;
+            ActiveProfile = resolved;
             IsOpen = true;
             CompleteProbe(new BleProbeReport(BleProbeStage.Completed, _lastTopology, resolved, null, null));
         }
@@ -122,56 +119,11 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
         }
     }
 
-    private void CompleteProbe(BleProbeReport report)
-    {
-        LastProbeReport = report;
-        var handlers = ProbeCompleted;
-        if (handlers is null)
-            return;
-
-        foreach (Action<BleProbeReport> handler in handlers.GetInvocationList())
-        {
-            try
-            {
-                handler(report);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "BLE probe-completed callback failed.");
-            }
-        }
-    }
-
-    private static BleProbeFailureKind ClassifyFailure(BleProbeStage stage, Exception exception) =>
-        exception is OperationCanceledException
-            ? BleProbeFailureKind.Cancelled
-            : stage switch
-            {
-                BleProbeStage.Connecting => BleProbeFailureKind.ConnectionFailed,
-                BleProbeStage.DiscoveringServices => BleProbeFailureKind.ServiceDiscoveryFailed,
-                BleProbeStage.ResolvingProfile when exception is IOException => BleProbeFailureKind.NoCompatibleProfile,
-                BleProbeStage.BindingCharacteristics => BleProbeFailureKind.CharacteristicBindingFailed,
-                BleProbeStage.SubscribingNotifications => BleProbeFailureKind.NotificationSubscriptionFailed,
-                _ => BleProbeFailureKind.Unknown
-            };
-
-    private static string FailureMessage(BleProbeFailureKind kind) =>
-        kind switch
-        {
-            BleProbeFailureKind.Cancelled => "The BLE probe was cancelled.",
-            BleProbeFailureKind.ConnectionFailed => "The BLE connection failed.",
-            BleProbeFailureKind.ServiceDiscoveryFailed => "BLE service discovery failed.",
-            BleProbeFailureKind.NoCompatibleProfile => "No compatible BLE GATT profile was found.",
-            BleProbeFailureKind.CharacteristicBindingFailed => "BLE characteristic binding failed.",
-            BleProbeFailureKind.NotificationSubscriptionFailed => "BLE notification subscription failed.",
-            _ => "The BLE probe failed."
-        };
-
     public async ValueTask WriteAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
     {
         var characteristic = _writeCharacteristic
-            ?? throw new InvalidOperationException("Transport not open.");
-        var chunkSize = _activeProfile?.MaxWriteSize ?? 20;
+                             ?? throw new InvalidOperationException("Transport not open.");
+        var chunkSize = ActiveProfile?.MaxWriteSize ?? 20;
 
         foreach (var chunk in BleProfileResolver.Chunk(data, chunkSize))
         {
@@ -244,6 +196,53 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
 
         _dataSignal.Dispose();
     }
+
+    public event Action<BleProbeReport>? ProbeCompleted;
+
+    private void CompleteProbe(BleProbeReport report)
+    {
+        LastProbeReport = report;
+        var handlers = ProbeCompleted;
+        if (handlers is null)
+            return;
+
+        foreach (Action<BleProbeReport> handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(report);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "BLE probe-completed callback failed.");
+            }
+        }
+    }
+
+    private static BleProbeFailureKind ClassifyFailure(BleProbeStage stage, Exception exception) =>
+        exception is OperationCanceledException
+            ? BleProbeFailureKind.Cancelled
+            : stage switch
+            {
+                BleProbeStage.Connecting => BleProbeFailureKind.ConnectionFailed,
+                BleProbeStage.DiscoveringServices => BleProbeFailureKind.ServiceDiscoveryFailed,
+                BleProbeStage.ResolvingProfile when exception is IOException => BleProbeFailureKind.NoCompatibleProfile,
+                BleProbeStage.BindingCharacteristics => BleProbeFailureKind.CharacteristicBindingFailed,
+                BleProbeStage.SubscribingNotifications => BleProbeFailureKind.NotificationSubscriptionFailed,
+                _ => BleProbeFailureKind.Unknown
+            };
+
+    private static string FailureMessage(BleProbeFailureKind kind) =>
+        kind switch
+        {
+            BleProbeFailureKind.Cancelled => "The BLE probe was cancelled.",
+            BleProbeFailureKind.ConnectionFailed => "The BLE connection failed.",
+            BleProbeFailureKind.ServiceDiscoveryFailed => "BLE service discovery failed.",
+            BleProbeFailureKind.NoCompatibleProfile => "No compatible BLE GATT profile was found.",
+            BleProbeFailureKind.CharacteristicBindingFailed => "BLE characteristic binding failed.",
+            BleProbeFailureKind.NotificationSubscriptionFailed => "BLE notification subscription failed.",
+            _ => "The BLE probe failed."
+        };
 
     private void OnValueUpdated(object? sender, CharacteristicUpdatedEventArgs e)
     {

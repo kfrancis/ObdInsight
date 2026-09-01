@@ -1,15 +1,17 @@
 using ObdInsight.Core.Communication.Elm327;
+using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf;
 
 namespace ObdInsight.DevTools;
 
 /// <summary>
-/// Compatibility shim for DevTools - wraps ElmSession to provide old Elm327Adapter API.
-/// This is temporary to get DevTools building - should be refactored to use ElmSession directly.
+///     Compatibility shim for DevTools - wraps ElmSession to provide old Elm327Adapter API.
+///     This is temporary to get DevTools building - should be refactored to use ElmSession directly.
 /// </summary>
 public class Elm327Adapter
 {
     private ElmFramer? _framer;
-    private ElmSession? _session;
+
+    public ElmSession? Session { get; private set; }
 
     public event EventHandler<Elm327LogEventArgs>? Log;
 
@@ -17,11 +19,11 @@ public class Elm327Adapter
     {
         _framer = new ElmFramer(transport);
         // DevTools is Leaf-focused tooling — wire the Leaf wakeup probe.
-        _session = new ElmSession(_framer, new ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.LeafBmsWakeupStrategy());
+        Session = new ElmSession(_framer, new LeafBmsWakeupStrategy());
 
         try
         {
-            await _session.InitializeAndLockAsync(ct);
+            await Session.InitializeAndLockAsync(ct);
             return true;
         }
         catch
@@ -33,14 +35,12 @@ public class Elm327Adapter
     public void SetTransport(IElmTransport transport, bool markAsInitialized = false)
     {
         _framer = new ElmFramer(transport);
-        _session = new ElmSession(_framer, new ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.LeafBmsWakeupStrategy());
+        Session = new ElmSession(_framer, new LeafBmsWakeupStrategy());
     }
-
-    public ElmSession? Session => _session;
 }
 
 /// <summary>
-/// Compatibility log event args
+///     Compatibility log event args
 /// </summary>
 public class Elm327LogEventArgs : EventArgs
 {
@@ -49,7 +49,7 @@ public class Elm327LogEventArgs : EventArgs
 }
 
 /// <summary>
-/// Compatibility log level enum
+///     Compatibility log level enum
 /// </summary>
 public enum Elm327LogLevel
 {

@@ -4,8 +4,8 @@ using Spectre.Console;
 namespace ObdInsight.DevTools.Commands;
 
 /// <summary>
-/// Diagnostic commands - STUB implementation.
-/// TODO: Refactor for new architecture (ElmSession, VehicleProfile, etc.)
+///     Diagnostic commands - STUB implementation.
+///     TODO: Refactor for new architecture (ElmSession, VehicleProfile, etc.)
 /// </summary>
 public static class DiagnosticCommands
 {

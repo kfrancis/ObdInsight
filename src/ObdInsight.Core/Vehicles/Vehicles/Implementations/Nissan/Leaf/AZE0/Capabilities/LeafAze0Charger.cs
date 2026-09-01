@@ -4,13 +4,16 @@ using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 {
     /// <summary>
-    /// On-board charger capability as a view over the shared <see cref="CanMonitor"/>
-    /// (streaming design P3). Reads OBCpd broadcast frame 0x390 (charge power/status,
-    /// 100ms cadence) from the monitor's latest-frame cache.
+    ///     On-board charger capability as a view over the shared <see cref="CanMonitor" />
+    ///     (streaming design P3). Reads OBCpd broadcast frame 0x390 (charge power/status,
+    ///     100ms cadence) from the monitor's latest-frame cache.
     /// </summary>
     internal sealed class LeafAze0Charger : IOnboardCharger
     {
         private static readonly TimeSpan WarmupTimeout = TimeSpan.FromSeconds(4);
+
+        /// <summary>The frames that feed <see cref="ChargingStatus" />.</summary>
+        private static readonly int[] StatusFrameIds = [0x390];
 
         private readonly CanMonitor _monitor;
 
@@ -18,9 +21,6 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         {
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
         }
-
-        /// <summary>The frames that feed <see cref="ChargingStatus" />.</summary>
-        private static readonly int[] StatusFrameIds = [0x390];
 
         public async ValueTask<ChargingStatus?> GetChargingStatusAsync(CancellationToken ct = default)
         {
@@ -62,8 +62,8 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         }
 
         /// <summary>
-        /// Maps AC voltage status enum to actual voltage value.
-        /// 0=No Signal, 1=100V, 2=200V, 3=Abnormal Wave
+        ///     Maps AC voltage status enum to actual voltage value.
+        ///     0=No Signal, 1=100V, 2=200V, 3=Abnormal Wave
         /// </summary>
         private static double? MapAcVoltageStatus(int status) => status switch
         {

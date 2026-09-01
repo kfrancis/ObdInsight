@@ -34,5 +34,5 @@ public enum CanByteOrder
     Intel = 0,
 
     /// <summary>Big-endian; start bit is the signal's MSB. DBC <c>@0</c>.</summary>
-    Motorola = 1,
+    Motorola = 1
 }

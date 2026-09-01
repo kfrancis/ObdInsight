@@ -3,15 +3,15 @@ using ObdInsight.SourceGeneration.Attributes;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 
 /// <summary>
-/// Inverter/Motor Controller motor status frame for Nissan Leaf AZE0 platform (0x1DA)
+///     Inverter/Motor Controller motor status frame for Nissan Leaf AZE0 platform (0x1DA)
 /// </summary>
 /// <remarks>
-/// Torque/RPM layouts fixed 2026-07-18 against OVMS vehicle_nissanleaf.cpp (case 0x1da) —
-/// the previous Intel transcriptions of Motorola DBC start bits read the wrong bytes.
-/// Both fields cross byte boundaries, so they're declared as byte-aligned raw signals and
-/// recombined in computed properties. No hardware capture exists (EV-CAN, not visible on
-/// stock ELM327 adapters); OVMS is the reference. Values 0x7FFE/0x7FFF appear on the RPM
-/// field during power-on per OVMS.
+///     Torque/RPM layouts fixed 2026-07-18 against OVMS vehicle_nissanleaf.cpp (case 0x1da) —
+///     the previous Intel transcriptions of Motorola DBC start bits read the wrong bytes.
+///     Both fields cross byte boundaries, so they're declared as byte-aligned raw signals and
+///     recombined in computed properties. No hardware capture exists (EV-CAN, not visible on
+///     stock ELM327 adapters); OVMS is the reference. Values 0x7FFE/0x7FFF appear on the RPM
+///     field during power-on per OVMS.
 /// </remarks>
 [CanFrame(0x1DA, Description = "Inverter motor voltage, torque, and RPM (10ms)")]
 public partial class InvMcFrame_1DA_AZE0
@@ -57,8 +57,8 @@ public partial class InvMcFrame_1DA_AZE0
     public partial int OutputRevolutionRawLow { get; init; }
 
     /// <summary>
-    /// Motor generator effective torque in Nm (negative = regen). 11-bit two's complement
-    /// (byte2[2..0] + byte3), 0.5 Nm/bit, per OVMS.
+    ///     Motor generator effective torque in Nm (negative = regen). 11-bit two's complement
+    ///     (byte2[2..0] + byte3), 0.5 Nm/bit, per OVMS.
     /// </summary>
     public double EffectiveTorque
     {
@@ -71,9 +71,9 @@ public partial class InvMcFrame_1DA_AZE0
     }
 
     /// <summary>
-    /// Motor generator output revolution in rpm (negative = reverse). 15-bit two's
-    /// complement (byte4[6..0] + byte5) divided by 2, per OVMS (byte 4 bit 7 is
-    /// undocumented and excluded).
+    ///     Motor generator output revolution in rpm (negative = reverse). 15-bit two's
+    ///     complement (byte4[6..0] + byte5) divided by 2, per OVMS (byte 4 bit 7 is
+    ///     undocumented and excluded).
     /// </summary>
     public int OutputRevolution
     {
@@ -87,13 +87,13 @@ public partial class InvMcFrame_1DA_AZE0
 }
 
 /// <summary>
-/// Inverter/Motor Controller temperature frame for Nissan Leaf AZE0 platform (0x55A)
+///     Inverter/Motor Controller temperature frame for Nissan Leaf AZE0 platform (0x55A)
 /// </summary>
 [CanFrame(0x55A, Description = "Inverter and motor temperature sensors (100ms)")]
 public partial class InvMcFrame_55A_AZE0
 {
     /// <summary>
-    /// IGBT driver board temperature in °C
+    ///     IGBT driver board temperature in °C
     /// </summary>
     public double IgbtDriverBoardTempC => IgbtDriverBoardTempRaw / 2.0;
 
@@ -103,7 +103,7 @@ public partial class InvMcFrame_55A_AZE0
     public partial int IgbtDriverBoardTempRaw { get; init; }
 
     /// <summary>
-    /// IGBT temperature in °C
+    ///     IGBT temperature in °C
     /// </summary>
     public double IgbtTemperatureC => IgbtTemperatureRaw / 2.0;
 
@@ -113,22 +113,22 @@ public partial class InvMcFrame_55A_AZE0
     public partial int IgbtTemperatureRaw { get; init; }
 
     /// <summary>
-    /// Inverter communications board temperature in °C
+    ///     Inverter communications board temperature in °C
     /// </summary>
     public double InverterComBoardTempC => InverterComBoardTempRaw / 2.0;
 
     [CanSignal(8, 8, Unit = "°C",
-                            Description = "Inverter communications board temperature (divide by 2 for °C)",
+        Description = "Inverter communications board temperature (divide by 2 for °C)",
         MinValue = 0, MaxValue = 255)]
     public partial int InverterComBoardTempRaw { get; init; }
 
     /// <summary>
-    /// Motor temperature in °C
+    ///     Motor temperature in °C
     /// </summary>
     public double MotorTemperatureC => MotorTemperatureRaw / 2.0;
 
     [CanSignal(32, 8, Unit = "°C",
-            Description = "Motor temperature (divide by 2 for °C)",
+        Description = "Motor temperature (divide by 2 for °C)",
         MinValue = 0, MaxValue = 255)]
     public partial int MotorTemperatureRaw { get; init; }
 

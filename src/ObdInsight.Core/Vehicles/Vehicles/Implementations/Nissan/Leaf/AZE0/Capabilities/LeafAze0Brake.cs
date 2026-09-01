@@ -4,21 +4,24 @@ using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities;
 
 /// <summary>
-/// Brake capability as a view over the shared <see cref="CanMonitor"/> (streaming design P3).
-/// Reads brake broadcast frame 0x1CA (pressure sensors + regen level, 20ms cadence) from the
-/// monitor's latest-frame cache.
+///     Brake capability as a view over the shared <see cref="CanMonitor" /> (streaming design P3).
+///     Reads brake broadcast frame 0x1CA (pressure sensors + regen level, 20ms cadence) from the
+///     monitor's latest-frame cache.
 /// </summary>
 /// <remarks>
-/// LIMITATION (hardware-confirmed 2026-07-18): 0x1CA is an EV-CAN broadcast frame. Stock
-/// ELM327 adapters wire OBD pins 6/14 (CAR-CAN); EV-CAN sits on pins 12/13 and needs a
-/// rewired/modified adapter to monitor. On stock adapters the warmup times out and this
-/// capability reports BrakePressed=false. CAR-CAN 0x292 (FrictionBrakePressure via
-/// <see cref="IAntilockBrakingSystem"/>) is the stock-adapter alternative; see
-/// docs/FRAME_LAYOUT_AUDIT.md.
+///     LIMITATION (hardware-confirmed 2026-07-18): 0x1CA is an EV-CAN broadcast frame. Stock
+///     ELM327 adapters wire OBD pins 6/14 (CAR-CAN); EV-CAN sits on pins 12/13 and needs a
+///     rewired/modified adapter to monitor. On stock adapters the warmup times out and this
+///     capability reports BrakePressed=false. CAR-CAN 0x292 (FrictionBrakePressure via
+///     <see cref="IAntilockBrakingSystem" />) is the stock-adapter alternative; see
+///     docs/FRAME_LAYOUT_AUDIT.md.
 /// </remarks>
 internal sealed class LeafAze0Brake : IBrake
 {
     private static readonly TimeSpan WarmupTimeout = TimeSpan.FromSeconds(4);
+
+    /// <summary>The frames that feed <see cref="BrakeStatus" />.</summary>
+    private static readonly int[] StatusFrameIds = [0x1CA];
 
     private readonly CanMonitor _monitor;
 
@@ -26,9 +29,6 @@ internal sealed class LeafAze0Brake : IBrake
     {
         _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
     }
-
-    /// <summary>The frames that feed <see cref="BrakeStatus" />.</summary>
-    private static readonly int[] StatusFrameIds = [0x1CA];
 
     public async ValueTask<BrakeStatus> GetStatusAsync(CancellationToken ct = default)
     {
@@ -49,7 +49,7 @@ internal sealed class LeafAze0Brake : IBrake
     {
         if (!_monitor.TryGetLatest<BrakeFrame_1CA_AZE0>(out var frame1CA))
         {
-            return new BrakeStatus(BrakePressed: false, AbsActive: false);
+            return new BrakeStatus(false, false);
         }
 
         // Threshold of 5 is arbitrary but should detect light brake application.
@@ -60,6 +60,6 @@ internal sealed class LeafAze0Brake : IBrake
                            || frame1CA.BrakePressure4 > BrakeThreshold;
 
         // ABS activity would require cross-referencing ABS frames; not indicated by 0x1CA.
-        return new BrakeStatus(BrakePressed: brakePressed, AbsActive: false);
+        return new BrakeStatus(brakePressed, false);
     }
 }

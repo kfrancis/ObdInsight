@@ -1,8 +1,8 @@
-using ObdInsight.Core.Communication.Elm327;
-using Serilog;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using Windows.Storage.Streams;
+using ObdInsight.Core.Communication.Elm327;
+using Serilog;
 
 namespace ObdInsight.Transports.WindowsBle
 {
@@ -15,7 +15,6 @@ namespace ObdInsight.Transports.WindowsBle
         private readonly string _deviceId;
         private readonly Queue<byte> _receiveBuffer = new();
         private BluetoothLEDevice? _device;
-        private bool _isOpen;
         private GattCharacteristic? _notifyCharacteristic;
         private GattDeviceService? _serialService;
         private GattCharacteristic? _writeCharacteristic;
@@ -26,13 +25,7 @@ namespace ObdInsight.Transports.WindowsBle
         }
 
         public bool EnableDebugLogging { get; set; }
-        public bool IsOpen => _isOpen;
-
-        public static ulong MAC802DOT3(string macAddress)
-        {
-            var hex = macAddress.Replace(":", "");
-            return Convert.ToUInt64(hex, 16);
-        }
+        public bool IsOpen { get; private set; }
 
         public void ClearBuffer()
         {
@@ -50,7 +43,7 @@ namespace ObdInsight.Transports.WindowsBle
 
         public async ValueTask OpenAsync(CancellationToken ct)
         {
-            if (_isOpen) return;
+            if (IsOpen) return;
 
             if (EnableDebugLogging)
                 Log.Debug("Connecting to BLE device {DeviceId}...", _deviceId);
@@ -72,6 +65,7 @@ namespace ObdInsight.Transports.WindowsBle
 
                 // Subscribe to connection status changes
                 var connectionTcs = new TaskCompletionSource<bool>();
+
                 void OnConnectionStatusChanged(BluetoothLEDevice sender, object args)
                 {
                     if (sender.ConnectionStatus == BluetoothConnectionStatus.Connected)
@@ -154,7 +148,8 @@ namespace ObdInsight.Transports.WindowsBle
 
             // Verify characteristic supports notifications
             var props = _notifyCharacteristic.CharacteristicProperties;
-            if (!props.HasFlag(GattCharacteristicProperties.Notify) && !props.HasFlag(GattCharacteristicProperties.Indicate))
+            if (!props.HasFlag(GattCharacteristicProperties.Notify) &&
+                !props.HasFlag(GattCharacteristicProperties.Indicate))
                 throw new IOException("Characteristic doesn't support notifications");
 
             if (EnableDebugLogging)
@@ -184,7 +179,8 @@ namespace ObdInsight.Transports.WindowsBle
                         Log.Debug("Attempt {Attempt}: Writing CCCD ({CccdValue}) to characteristic...",
                             attempt + 1, cccdValue);
 
-                    var status = await _notifyCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(cccdValue);
+                    var status =
+                        await _notifyCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(cccdValue);
 
                     if (status == GattCommunicationStatus.Success)
                     {
@@ -196,17 +192,18 @@ namespace ObdInsight.Transports.WindowsBle
                     }
 
                     if (EnableDebugLogging)
-                        Log.Warning("CCCD write attempt {Attempt} returned {Status}. Device connection: {ConnStatus}, Session: {SessionStatus}",
+                        Log.Warning(
+                            "CCCD write attempt {Attempt} returned {Status}. Device connection: {ConnStatus}, Session: {SessionStatus}",
                             attempt + 1, status, _device.ConnectionStatus, _serialService.Session?.SessionStatus);
 
                     // If unreachable, provide helpful diagnostic info
                     if (status == GattCommunicationStatus.Unreachable)
                     {
                         Log.Error("Device unreachable. Troubleshooting steps:\n" +
-                                 "  1. Check if device is powered on and in range\n" +
-                                 "  2. Restart Windows Bluetooth service: Restart-Service bthserv\n" +
-                                 "  3. Remove device from Windows Bluetooth settings and re-pair\n" +
-                                 "  4. Reboot Windows if issue persists");
+                                  "  1. Check if device is powered on and in range\n" +
+                                  "  2. Restart Windows Bluetooth service: Restart-Service bthserv\n" +
+                                  "  3. Remove device from Windows Bluetooth settings and re-pair\n" +
+                                  "  4. Reboot Windows if issue persists");
                     }
 
                     lastException = new IOException($"CCCD write returned {status}");
@@ -235,7 +232,7 @@ namespace ObdInsight.Transports.WindowsBle
                 throw new IOException("Failed to enable notifications after 3 attempts", lastException);
             }
 
-            _isOpen = true;
+            IsOpen = true;
         }
 
         public async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct)
@@ -269,15 +266,24 @@ namespace ObdInsight.Transports.WindowsBle
 
             var writer = new DataWriter();
             writer.WriteBytes(data.ToArray());
-            var status = await _writeCharacteristic.WriteValueAsync(writer.DetachBuffer(), GattWriteOption.WriteWithoutResponse);
+            var status =
+                await _writeCharacteristic.WriteValueAsync(writer.DetachBuffer(), GattWriteOption.WriteWithoutResponse);
             if (status != GattCommunicationStatus.Success)
                 throw new IOException("Write failed");
         }
 
-        private static async Task<GattCharacteristic?> FindCharacteristicAsync(GattDeviceService service, Guid uuid, CancellationToken ct)
+        public static ulong MAC802DOT3(string macAddress)
+        {
+            var hex = macAddress.Replace(":", "");
+            return Convert.ToUInt64(hex, 16);
+        }
+
+        private static async Task<GattCharacteristic?> FindCharacteristicAsync(GattDeviceService service, Guid uuid,
+            CancellationToken ct)
         {
             var characteristics = await service.GetCharacteristicsForUuidAsync(uuid).AsTask(ct);
-            return characteristics.Status == GattCommunicationStatus.Success && characteristics.Characteristics.Count > 0
+            return characteristics.Status == GattCommunicationStatus.Success &&
+                   characteristics.Characteristics.Count > 0
                 ? characteristics.Characteristics[0]
                 : null;
         }
@@ -289,7 +295,8 @@ namespace ObdInsight.Transports.WindowsBle
                 if (_notifyCharacteristic != null)
                 {
                     _notifyCharacteristic.ValueChanged -= OnNotifyValueChanged;
-                    await _notifyCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.None);
+                    await _notifyCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(
+                        GattClientCharacteristicConfigurationDescriptorValue.None);
                 }
             }
             catch (Exception ex)
@@ -302,7 +309,7 @@ namespace ObdInsight.Transports.WindowsBle
                 _device?.Dispose();
                 _serialService = null;
                 _device = null;
-                _isOpen = false;
+                IsOpen = false;
                 ClearBuffer();
             }
         }

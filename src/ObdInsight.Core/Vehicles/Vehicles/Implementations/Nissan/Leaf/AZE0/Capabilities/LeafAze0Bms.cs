@@ -5,7 +5,7 @@ using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 {
     /// <summary>
-    /// IBatteryManagementSystem adapter that wraps the generated UDS diagnostics.
+    ///     IBatteryManagementSystem adapter that wraps the generated UDS diagnostics.
     /// </summary>
     internal sealed class LeafAze0Bms : IBatteryManagementSystem
     {
@@ -98,13 +98,13 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         }
 
         /// <summary>
-        /// Parses ISO-TP frames - exposed for LeafAze0Charger compatibility.
+        ///     Parses ISO-TP frames - exposed for LeafAze0Charger compatibility.
         /// </summary>
         internal static List<(int FrameType, int SeqOrLen, byte[] Data)> ParseIsoTpFrames(string[] lines) =>
             LeafBmsDiagnostics.ParseIsoTpFrames(lines);
 
         /// <summary>
-        /// Reassembles ISO-TP payload - exposed for LeafAze0Charger compatibility.
+        ///     Reassembles ISO-TP payload - exposed for LeafAze0Charger compatibility.
         /// </summary>
         internal static byte[] ReassembleIsoTpPayload(List<(int FrameType, int SeqOrLen, byte[] Data)> frames) =>
             LeafBmsDiagnostics.ReassembleIsoTpPayload(frames);

@@ -1,8 +1,8 @@
 namespace ObdInsight.Telemetry;
 
 /// <summary>
-/// One-shot diagnostic snapshot (pre-/post-check). Every field is nullable —
-/// null always means "not available on this vehicle/adapter right now", never an error.
+///     One-shot diagnostic snapshot (pre-/post-check). Every field is nullable —
+///     null always means "not available on this vehicle/adapter right now", never an error.
 /// </summary>
 public sealed record TelemetrySnapshot
 {
@@ -63,14 +63,14 @@ public sealed record TelemetrySnapshot
     public decimal? ChargeCycleCount { get; init; }
 
     /// <summary>
-    /// Stored (Mode 03) DTC codes. Null when the vehicle exposes no DTC capability;
-    /// empty when readable and clean.
+    ///     Stored (Mode 03) DTC codes. Null when the vehicle exposes no DTC capability;
+    ///     empty when readable and clean.
     /// </summary>
     public IReadOnlyList<string>? StoredDtcCodes { get; init; }
 
     /// <summary>
-    /// Pending (Mode 07) DTC codes. Null when the vehicle exposes no DTC capability;
-    /// empty when readable and clean.
+    ///     Pending (Mode 07) DTC codes. Null when the vehicle exposes no DTC capability;
+    ///     empty when readable and clean.
     /// </summary>
     public IReadOnlyList<string>? PendingDtcCodes { get; init; }
 }

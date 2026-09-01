@@ -5,20 +5,22 @@ using ObdInsight.Core.Communication.Elm327;
 namespace OdbTestApp.Tests.Elm327;
 
 /// <summary>
-/// Property-based tests (CsCheck) for <see cref="ElmFramer"/> framing: the bytes a caller gets
-/// back must not depend on where the transport happened to split its reads. Example-based tests
-/// can only cover the split points someone thought of; these cover splits mid-frame, mid-prompt
-/// and mid-delimiter, which is exactly where the carry-over buffer earns its keep.
-///
-/// On failure CsCheck prints the shrunk counterexample plus a seed — rerun that case with
-/// <c>seed:</c> on the failing Sample call, then pin it as an example test.
+///     Property-based tests (CsCheck) for <see cref="ElmFramer" /> framing: the bytes a caller gets
+///     back must not depend on where the transport happened to split its reads. Example-based tests
+///     can only cover the split points someone thought of; these cover splits mid-frame, mid-prompt
+///     and mid-delimiter, which is exactly where the carry-over buffer earns its keep.
+///     On failure CsCheck prints the shrunk counterexample plus a seed — rerun that case with
+///     <c>seed:</c> on the failing Sample call, then pin it as an example test.
 /// </summary>
 [Timeout(120_000)]
 public class ElmFramerPropertyTests
 {
     private const int Iterations = 200;
 
-    /// <summary>ELM response alphabet: hex, spaces and line breaks. Excludes '\0' (dropped by the framer) and '>' (the prompt).</summary>
+    /// <summary>
+    ///     ELM response alphabet: hex, spaces and line breaks. Excludes '\0' (dropped by the framer) and '>' (the
+    ///     prompt).
+    /// </summary>
     private static readonly char[] ResponseAlphabet =
         "0123456789ABCDEF abcdefNODATSRHUK:?\r\n".ToCharArray();
 
@@ -32,11 +34,9 @@ public class ElmFramerPropertyTests
     [Test]
     public async Task PromptFramedResponses_SurviveArbitraryChunkBoundaries(CancellationToken ct)
     {
-        var gen = Gen.Select(PayloadsGen(ResponseAlphabet), ChunkSizesGen);
+        var gen = PayloadsGen(ResponseAlphabet).Select(ChunkSizesGen);
 
-        await Check.SampleAsync(
-            gen,
-            async t =>
+        await gen.SampleAsync(async t =>
             {
                 var (payloads, chunks) = t;
 
@@ -61,11 +61,9 @@ public class ElmFramerPropertyTests
     [Test]
     public async Task ReadUntil_SurvivesArbitraryChunkBoundaries(CancellationToken ct)
     {
-        var gen = Gen.Select(PayloadsGen(ResponseAlphabetNoCr), ChunkSizesGen);
+        var gen = PayloadsGen(ResponseAlphabetNoCr).Select(ChunkSizesGen);
 
-        await Check.SampleAsync(
-            gen,
-            async t =>
+        await gen.SampleAsync(async t =>
             {
                 var (payloads, chunks) = t;
 
@@ -92,11 +90,9 @@ public class ElmFramerPropertyTests
     {
         // A command response followed by monitoring lines: the carry-over buffer has to hand
         // bytes read past the prompt to the next reader, in order.
-        var gen = Gen.Select(PayloadsGen(ResponseAlphabetNoCr), PayloadsGen(ResponseAlphabetNoCr), ChunkSizesGen);
+        var gen = PayloadsGen(ResponseAlphabetNoCr).Select(PayloadsGen(ResponseAlphabetNoCr), ChunkSizesGen);
 
-        await Check.SampleAsync(
-            gen,
-            async t =>
+        await gen.SampleAsync(async t =>
             {
                 var (command, lines, chunks) = t;
 

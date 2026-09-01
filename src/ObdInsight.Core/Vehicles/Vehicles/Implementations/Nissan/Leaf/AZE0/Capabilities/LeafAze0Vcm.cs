@@ -4,16 +4,24 @@ using ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 {
     /// <summary>
-    /// VCM capability as a view over the shared <see cref="CanMonitor"/> (streaming design P3).
-    /// Replaces the former EV-CAN/CAR-CAN helper split — the shared monitor's cache holds
-    /// frames from both buses, demuxed by CAN ID:
-    /// 0x11A (gear position, 10ms), 0x510 (power/climate, primary status) with 0x180
-    /// (motor current/throttle) as fallback.
+    ///     VCM capability as a view over the shared <see cref="CanMonitor" /> (streaming design P3).
+    ///     Replaces the former EV-CAN/CAR-CAN helper split — the shared monitor's cache holds
+    ///     frames from both buses, demuxed by CAN ID:
+    ///     0x11A (gear position, 10ms), 0x510 (power/climate, primary status) with 0x180
+    ///     (motor current/throttle) as fallback.
     /// </summary>
     internal sealed class LeafAze0Vcm : IVcm
     {
         private static readonly TimeSpan GearWarmupTimeout = TimeSpan.FromSeconds(4);
         private static readonly TimeSpan StatusWarmupTimeout = TimeSpan.FromSeconds(4);
+
+        /// <summary>
+        ///     Gets comprehensive VCM status. Prefers frame 0x510 (power consumption, climate,
+        ///     ambient temp); falls back to 0x180 (motor current, throttle) which broadcasts
+        ///     even when stationary.
+        /// </summary>
+        /// <summary>The frames that feed <see cref="VcmStatus" />.</summary>
+        private static readonly int[] StatusFrameIds = [0x510, 0x180, 0x5A9];
 
         private readonly CanMonitor _monitor;
 
@@ -23,16 +31,16 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         }
 
         /// <summary>
-        /// Reads current gear position — preferring EV-CAN broadcast frame 0x11A
-        /// (JoystickGearPosition), falling back to the CAR-CAN 0x421 dashboard shifter relay.
+        ///     Reads current gear position — preferring EV-CAN broadcast frame 0x11A
+        ///     (JoystickGearPosition), falling back to the CAR-CAN 0x421 dashboard shifter relay.
         /// </summary>
         /// <remarks>
-        /// 0x11A is an EV-CAN broadcast frame: stock ELM327 adapters wire OBD pins 6/14
-        /// (CAR-CAN); EV-CAN sits on pins 12/13 and needs a rewired adapter
-        /// (hardware-confirmed 2026-07-18). On stock adapters the 0x421 fallback is the
-        /// path that actually fires. 0x421 is 1 byte on the wire, which the typed decoder
-        /// accepts (its only signal sits in byte 0); value map per OVMS
-        /// vehicle_nissanleaf.cpp: 0/1=Park, 2=Reverse, 3=Neutral, 4=Drive, 7=Drive/B.
+        ///     0x11A is an EV-CAN broadcast frame: stock ELM327 adapters wire OBD pins 6/14
+        ///     (CAR-CAN); EV-CAN sits on pins 12/13 and needs a rewired adapter
+        ///     (hardware-confirmed 2026-07-18). On stock adapters the 0x421 fallback is the
+        ///     path that actually fires. 0x421 is 1 byte on the wire, which the typed decoder
+        ///     accepts (its only signal sits in byte 0); value map per OVMS
+        ///     vehicle_nissanleaf.cpp: 0/1=Park, 2=Reverse, 3=Neutral, 4=Drive, 7=Drive/B.
         /// </remarks>
         public async ValueTask<GearPosition> GetGearPositionAsync(CancellationToken ct = default)
         {
@@ -75,14 +83,6 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
             return GearPosition.Unknown;
         }
 
-        /// <summary>
-        /// Gets comprehensive VCM status. Prefers frame 0x510 (power consumption, climate,
-        /// ambient temp); falls back to 0x180 (motor current, throttle) which broadcasts
-        /// even when stationary.
-        /// </summary>
-        /// <summary>The frames that feed <see cref="VcmStatus" />.</summary>
-        private static readonly int[] StatusFrameIds = [0x510, 0x180, 0x5A9];
-
         public async ValueTask<VcmStatus> GetStatusAsync(CancellationToken ct = default)
         {
             await _monitor.StartAsync(ct);
@@ -121,8 +121,7 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
             {
                 status = new VcmStatus
                 {
-                    MotorCurrentAmps = frame180.MotorAmp,
-                    ThrottlePositionPercent = frame180.ThrottlePosition
+                    MotorCurrentAmps = frame180.MotorAmp, ThrottlePositionPercent = frame180.ThrottlePosition
                 };
             }
             else

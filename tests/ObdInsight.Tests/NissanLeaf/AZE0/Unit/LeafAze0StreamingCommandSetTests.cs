@@ -6,9 +6,9 @@ using ObdInsight.Simulation;
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
-/// Whole-model test for the streaming migration (design P2/P3): broadcast capabilities read
-/// the shared CanMonitor while UDS capabilities transparently suspend/resume it around
-/// queries — both through the production LeafAze0CommandSet over replay.
+///     Whole-model test for the streaming migration (design P2/P3): broadcast capabilities read
+///     the shared CanMonitor while UDS capabilities transparently suspend/resume it around
+///     queries — both through the production LeafAze0CommandSet over replay.
 /// </summary>
 [Timeout(30_000)]
 public class LeafAze0StreamingCommandSetTests

@@ -22,21 +22,23 @@ namespace ObdInsight.Core.Communication.Elm327
     public sealed class CanMonitor : IAsyncDisposable
     {
         private readonly EcuContext _context;
+
+        // Serializes suspend/resume cycles (external query arbitration vs the keep-alive timer).
+        private readonly SemaphoreSlim _controlGate = new(1, 1);
         private readonly ConcurrentDictionary<int, RawCanFrame> _latest = new();
         private readonly Lock _lock = new();
         private readonly ILogger _logger;
         private readonly IElmSession _session;
         private readonly List<Subscription> _subscriptions = [];
         private bool _ended;
+        private CancellationTokenSource? _keepAliveCts;
+        private Task? _keepAliveTask;
 
         private CancellationTokenSource? _loopCts;
         private Task? _loopTask;
         private bool _suspending;
 
-        // Serializes suspend/resume cycles (external query arbitration vs the keep-alive timer).
-        private readonly SemaphoreSlim _controlGate = new(1, 1);
-        private CancellationTokenSource? _keepAliveCts;
-        private Task? _keepAliveTask;
+        private int _windowIndex;
 
         /// <param name="session">The session to monitor through. The monitor owns mode transitions while running.</param>
         /// <param name="monitoringContext">
@@ -86,8 +88,6 @@ namespace ObdInsight.Core.Communication.Elm327
         /// </summary>
         public IReadOnlyList<CanFilterWindow> FilterRotation { get; set; } = [];
 
-        private int _windowIndex;
-
         public async ValueTask DisposeAsync()
         {
             try
@@ -124,7 +124,9 @@ namespace ObdInsight.Core.Communication.Elm327
                 var activated = await _session.ActivateSessionAsync(_context, ct);
                 if (!activated)
                 {
-                    _logger.LogDebug("[CanMonitor] Session activation failed for '{Context}' - starting anyway (frames may be absent)", _context.Name);
+                    _logger.LogDebug(
+                        "[CanMonitor] Session activation failed for '{Context}' - starting anyway (frames may be absent)",
+                        _context.Name);
                 }
             }
 
@@ -296,7 +298,7 @@ namespace ObdInsight.Core.Communication.Elm327
             {
                 FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true
             });
-            var subscription = new Subscription(channel, canIds.Length == 0 ? null : [..canIds.ToArray()]);
+            var subscription = new Subscription(channel, canIds.Length == 0 ? null : [.. canIds.ToArray()]);
 
             lock (_lock)
             {
@@ -432,7 +434,9 @@ namespace ObdInsight.Core.Communication.Elm327
                         }
 
                         // Unexpected end without a recorded reason.
-                        reason = sessionReason == MonitoringEndReason.None ? MonitoringEndReason.Stopped : sessionReason;
+                        reason = sessionReason == MonitoringEndReason.None
+                            ? MonitoringEndReason.Stopped
+                            : sessionReason;
                         break;
                     }
                     finally

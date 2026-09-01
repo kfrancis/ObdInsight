@@ -29,9 +29,10 @@ public sealed class SerialElmTransport : IElmTransport
     /// </summary>
     public const int DefaultBaudRate = 115200;
 
+    private readonly int _baudRate;
+
     private readonly ILogger<SerialElmTransport>? _logger;
     private readonly string _portName;
-    private readonly int _baudRate;
 
     private SerialPort? _port;
 
@@ -47,9 +48,6 @@ public sealed class SerialElmTransport : IElmTransport
 
     /// <inheritdoc />
     public bool IsOpen => _port?.IsOpen == true;
-
-    /// <summary>Serial ports available on this machine, for presenting a choice to an operator.</summary>
-    public static string[] AvailablePorts() => SerialPort.GetPortNames();
 
     /// <inheritdoc />
     public ValueTask OpenAsync(CancellationToken ct)
@@ -70,7 +68,7 @@ public sealed class SerialElmTransport : IElmTransport
             // ReadAsync is cancelled by the caller's token rather than by a port timeout, but
             // SerialPort still needs finite values or a read can block past cancellation.
             ReadTimeout = 500,
-            WriteTimeout = 2000,
+            WriteTimeout = 2000
         };
 
         try
@@ -190,4 +188,7 @@ public sealed class SerialElmTransport : IElmTransport
 
         return ValueTask.CompletedTask;
     }
+
+    /// <summary>Serial ports available on this machine, for presenting a choice to an operator.</summary>
+    public static string[] AvailablePorts() => SerialPort.GetPortNames();
 }

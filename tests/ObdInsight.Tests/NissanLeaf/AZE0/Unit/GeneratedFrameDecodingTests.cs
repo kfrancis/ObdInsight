@@ -4,10 +4,10 @@ using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
-/// Regression tests for source-generated CAN frame decoders, exercising the actual
-/// generated production code path (not a test-side re-implementation).
-/// Guards against the signed-signal decode defect where negative raw values
-/// (regen/charge current, negative torque) decoded as huge positive numbers.
+///     Regression tests for source-generated CAN frame decoders, exercising the actual
+///     generated production code path (not a test-side re-implementation).
+///     Guards against the signed-signal decode defect where negative raw values
+///     (regen/charge current, negative torque) decoded as huge positive numbers.
 /// </summary>
 public class GeneratedFrameDecodingTests
 {
@@ -89,12 +89,11 @@ public class GeneratedFrameDecodingTests
     }
 
     /// <summary>
-    /// 0x5C0's integrated-current field is 8-bit signed, not unsigned.
-    ///
-    /// Byte 3 is only ever 0x00 or 0xFF across all 447 captured frames. Read unsigned that is
-    /// 0 or 153 Ah - more than the pack holds, and impossible as a historical figure. Read signed
-    /// it is 0 or -0.6 Ah, which is ordinary. The DBC marks the field "+" but declares its range
-    /// as [-76.2..76.2], exactly +/-127 x 0.6: the range is right and the sign marker is wrong.
+    ///     0x5C0's integrated-current field is 8-bit signed, not unsigned.
+    ///     Byte 3 is only ever 0x00 or 0xFF across all 447 captured frames. Read unsigned that is
+    ///     0 or 153 Ah - more than the pack holds, and impossible as a historical figure. Read signed
+    ///     it is 0 or -0.6 Ah, which is ordinary. The DBC marks the field "+" but declares its range
+    ///     as [-76.2..76.2], exactly +/-127 x 0.6: the range is right and the sign marker is wrong.
     /// </summary>
     [Test]
     public async Task BatteryFrame5c0_IntegratedCurrent_IsSigned()
@@ -106,23 +105,21 @@ public class GeneratedFrameDecodingTests
     }
 
     /// <summary>
-    /// 0x5C0 is multiplexed: bits 6-7 of byte 0 select whether the payload carries the maximum,
-    /// average or minimum of the battery's recorded history, and every HistData* group reuses the
-    /// same bit positions across all three.
-    ///
-    /// Before multiplexor support each group's three variants decoded identical bits and returned
-    /// identical values, so two of every three were wrong on every frame. These payloads are real,
-    /// one per branch, taken from the 2026-08-31 captures - 447 frames of 0x5C0 were recorded with
-    /// all three selectors present.
-    ///
-    /// The assertion that matters is as much about the nulls as the values: a variant that does
-    /// not apply must report absent rather than a number, because zero is a legitimate reading for
-    /// these fields and a default would be indistinguishable from a real measurement.
+    ///     0x5C0 is multiplexed: bits 6-7 of byte 0 select whether the payload carries the maximum,
+    ///     average or minimum of the battery's recorded history, and every HistData* group reuses the
+    ///     same bit positions across all three.
+    ///     Before multiplexor support each group's three variants decoded identical bits and returned
+    ///     identical values, so two of every three were wrong on every frame. These payloads are real,
+    ///     one per branch, taken from the 2026-08-31 captures - 447 frames of 0x5C0 were recorded with
+    ///     all three selectors present.
+    ///     The assertion that matters is as much about the nulls as the values: a variant that does
+    ///     not apply must report absent rather than a number, because zero is a legitimate reading for
+    ///     these fields and a default would be indistinguishable from a real measurement.
     /// </summary>
     [Test]
-    [Arguments("407E7E0042081F00", 1)]   // byte 0 = 0x40 -> maximum
-    [Arguments("807C7CFF80DC1F00", 2)]   // byte 0 = 0x80 -> average
-    [Arguments("C07C7CFF42DC1F00", 3)]   // byte 0 = 0xC0 -> minimum
+    [Arguments("407E7E0042081F00", 1)] // byte 0 = 0x40 -> maximum
+    [Arguments("807C7CFF80DC1F00", 2)] // byte 0 = 0x80 -> average
+    [Arguments("C07C7CFF42DC1F00", 3)] // byte 0 = 0xC0 -> minimum
     public async Task BatteryFrame5c0_PopulatesOnlyTheSelectedMuxBranch(string payload, int expectedMux)
     {
         var frame = BatteryFrame_5C0_AZE0.Parse(Captured(payload));
@@ -142,8 +139,8 @@ public class GeneratedFrameDecodingTests
     }
 
     /// <summary>
-    /// The three variants of a group share bit positions, so the one that is populated must carry
-    /// the value those bits actually hold - the mux gate must not disturb the decode itself.
+    ///     The three variants of a group share bit positions, so the one that is populated must carry
+    ///     the value those bits actually hold - the mux gate must not disturb the decode itself.
     /// </summary>
     [Test]
     public async Task BatteryFrame5c0_SelectedBranchDecodesTheSharedBits()
@@ -215,14 +212,14 @@ public class GeneratedFrameDecodingTests
         var frame = BatteryFrame_55B_AZE0.Parse(Captured("E800AA00E380135D"));
 
         await Assert.That(frame.Soc).IsEqualTo(928);
-        await Assert.That(frame.AluAnswer).IsEqualTo(0xAA);      // 16|8@1 - Intel, unchanged
+        await Assert.That(frame.AluAnswer).IsEqualTo(0xAA); // 16|8@1 - Intel, unchanged
         await Assert.That(frame.IrSensorWaveVoltage).IsEqualTo(910);
         await Assert.That(frame.SleepEnabled).IsEqualTo(1);
     }
 
     /// <summary>
-    /// A second capture five weeks later at a different charge level, so SOC is pinned by two
-    /// independent observations rather than one. 972 = 97.2 %, matching the vehicle display.
+    ///     A second capture five weeks later at a different charge level, so SOC is pinned by two
+    ///     independent observations rather than one. 972 = 97.2 %, matching the vehicle display.
     /// </summary>
     [Test]
     public async Task BatteryFrame55b_SecondCapture_SocTracksActualCharge()
@@ -287,20 +284,18 @@ public class GeneratedFrameDecodingTests
     }
 
     /// <summary>
-    /// Pins the byte order of 0x284's three 16-bit speed fields.
-    ///
-    /// The captured parked payloads read 0 for all of them, and zero is zero under either order,
-    /// so they cannot show that these are big-endian. These payloads are therefore synthetic:
-    /// each places a single 0x01 byte where only a Motorola read can see it.
-    ///
-    /// Wheel_Speed_FR is 7|16@0, so byte 0 is its high byte: 0x0100 = 256, x0.005 = 1.28 km/h.
-    /// Read as Intel from bit 7 the same payload yields 0. The factors themselves stay unverified
-    /// until the vehicle is driven - a stationary capture cannot confirm a scale.
+    ///     Pins the byte order of 0x284's three 16-bit speed fields.
+    ///     The captured parked payloads read 0 for all of them, and zero is zero under either order,
+    ///     so they cannot show that these are big-endian. These payloads are therefore synthetic:
+    ///     each places a single 0x01 byte where only a Motorola read can see it.
+    ///     Wheel_Speed_FR is 7|16@0, so byte 0 is its high byte: 0x0100 = 256, x0.005 = 1.28 km/h.
+    ///     Read as Intel from bit 7 the same payload yields 0. The factors themselves stay unverified
+    ///     until the vehicle is driven - a stationary capture cannot confirm a scale.
     /// </summary>
     [Test]
-    [Arguments("0100000000000000", 1.28, 0.0, 0.0)]   // byte 0 -> FR high byte
-    [Arguments("0000010000000000", 0.0, 1.28, 0.0)]   // byte 2 -> FL high byte
-    [Arguments("0000000001000000", 0.0, 0.0, 2.56)]   // byte 4 -> vehicle speed high byte, x0.01
+    [Arguments("0100000000000000", 1.28, 0.0, 0.0)] // byte 0 -> FR high byte
+    [Arguments("0000010000000000", 0.0, 1.28, 0.0)] // byte 2 -> FL high byte
+    [Arguments("0000000001000000", 0.0, 0.0, 2.56)] // byte 4 -> vehicle speed high byte, x0.01
     public async Task AbsFrame284_SpeedFields_ReadBigEndian(
         string payload, double fr, double fl, double vehicle)
     {
@@ -312,16 +307,14 @@ public class GeneratedFrameDecodingTests
     }
 
     /// <summary>
-    /// 0x260 is a 4-byte frame whose three signals are all Motorola in CAR-can_AZE0.dbc. They
-    /// were declared Intel, which put every one outside its own declared range on real payloads.
-    ///
-    /// <c>C8127D00</c> is the most common payload across the 2026-08-31 captures, taken with the
-    /// vehicle parked. PowerConsumptMotor is the physical check: ~0 kW is right for a stationary
-    /// car, whereas the Intel reading claimed a constant -100 kW draw.
-    ///
-    /// This also exercises a 4-byte payload against Motorola signals, which is what forced
-    /// GetMinimumLength to become endianness-aware - the Intel expression demanded 5 bytes for
-    /// a frame the vehicle only ever sends as 4, so Parse threw on every real frame.
+    ///     0x260 is a 4-byte frame whose three signals are all Motorola in CAR-can_AZE0.dbc. They
+    ///     were declared Intel, which put every one outside its own declared range on real payloads.
+    ///     <c>C8127D00</c> is the most common payload across the 2026-08-31 captures, taken with the
+    ///     vehicle parked. PowerConsumptMotor is the physical check: ~0 kW is right for a stationary
+    ///     car, whereas the Intel reading claimed a constant -100 kW draw.
+    ///     This also exercises a 4-byte payload against Motorola signals, which is what forced
+    ///     GetMinimumLength to become endianness-aware - the Intel expression demanded 5 bytes for
+    ///     a frame the vehicle only ever sends as 4, so Parse threw on every real frame.
     /// </summary>
     [Test]
     public async Task VcmFrame260_ParkedCapture_MotorPowerDecodesWithinRange()
@@ -426,21 +419,18 @@ public class GeneratedFrameDecodingTests
     }
 
     /// <summary>
-    /// Pins 0x60D bits 3 and 4 to the correct doors.
-    ///
-    /// These were transposed until 2026-08-31 and nothing caught it: both bits decoded, and the
-    /// only existing 0x60D test used the all-doors-closed payload, where the two are
-    /// indistinguishable. Telling them apart requires knowing which door was physically open,
-    /// which is why these payloads come from guided stimulus probes on a 2017 AZE0 rather than
-    /// from a DBC or a passive capture.
-    ///
-    /// Captured, three repetitions each, byte 0 identical every time:
-    ///   all closed       0x06 = 0000 0110
-    ///   driver open      0x0E = 0000 1110   (bit 3)
-    ///   passenger open   0x16 = 0001 0110   (bit 4)
-    ///
-    /// Bits 1-2 stay set throughout (ParkingLights) and bits 5-7 stay clear, so the difference
-    /// between the two payloads is exactly the one bit under test.
+    ///     Pins 0x60D bits 3 and 4 to the correct doors.
+    ///     These were transposed until 2026-08-31 and nothing caught it: both bits decoded, and the
+    ///     only existing 0x60D test used the all-doors-closed payload, where the two are
+    ///     indistinguishable. Telling them apart requires knowing which door was physically open,
+    ///     which is why these payloads come from guided stimulus probes on a 2017 AZE0 rather than
+    ///     from a DBC or a passive capture.
+    ///     Captured, three repetitions each, byte 0 identical every time:
+    ///     all closed       0x06 = 0000 0110
+    ///     driver open      0x0E = 0000 1110   (bit 3)
+    ///     passenger open   0x16 = 0001 0110   (bit 4)
+    ///     Bits 1-2 stay set throughout (ParkingLights) and bits 5-7 stay clear, so the difference
+    ///     between the two payloads is exactly the one bit under test.
     /// </summary>
     [Test]
     public async Task BcmFrame60d_DriverDoorOpen_SetsBit3Only()
@@ -467,8 +457,8 @@ public class GeneratedFrameDecodingTests
     }
 
     /// <summary>
-    /// The confirmed-correct neighbours, pinned alongside the fix. Their being right either side
-    /// of the swap is what made the swap unambiguous rather than a shifted field.
+    ///     The confirmed-correct neighbours, pinned alongside the fix. Their being right either side
+    ///     of the swap is what made the swap unambiguous rather than a shifted field.
     /// </summary>
     [Test]
     public async Task BcmFrame60d_LightingAndLocks_MatchGuidedProbeBits()
@@ -483,9 +473,9 @@ public class GeneratedFrameDecodingTests
     }
 
     /// <summary>
-    /// The three remaining openings, each captured with only that one open. Byte 0 walks
-    /// 0x26 / 0x46 / 0x86 over the 0x06 closed baseline - one bit at a time, which is what makes
-    /// each assignment unambiguous.
+    ///     The three remaining openings, each captured with only that one open. Byte 0 walks
+    ///     0x26 / 0x46 / 0x86 over the 0x06 closed baseline - one bit at a time, which is what makes
+    ///     each assignment unambiguous.
     /// </summary>
     [Test]
     [Arguments("2606000000000000", "rear-left")]
@@ -514,9 +504,9 @@ public class GeneratedFrameDecodingTests
     }
 
     /// <summary>
-    /// Indicator lamp feedback, captured mid-flash. Both phases are asserted because a blinking
-    /// bit is only meaningful as a pair - a test pinning one phase would pass against a decoder
-    /// that returned a constant.
+    ///     Indicator lamp feedback, captured mid-flash. Both phases are asserted because a blinking
+    ///     bit is only meaningful as a pair - a test pinning one phase would pass against a decoder
+    ///     that returned a constant.
     /// </summary>
     [Test]
     public async Task BcmFrame60d_LeftIndicatorLamp_TracksBothBlinkPhases()
@@ -533,9 +523,9 @@ public class GeneratedFrameDecodingTests
     }
 
     /// <summary>
-    /// 0x174 byte 3 carries the shifter position: 0xAA in Park, 0x99 in Reverse. The guided probe
-    /// flagged bits 24, 25, 28 and 29 as responding, and 0xAA ^ 0x99 = 0x33 - precisely those
-    /// four bits. Byte 4 is a free-running counter and is deliberately not asserted.
+    ///     0x174 byte 3 carries the shifter position: 0xAA in Park, 0x99 in Reverse. The guided probe
+    ///     flagged bits 24, 25, 28 and 29 as responding, and 0xAA ^ 0x99 = 0x33 - precisely those
+    ///     four bits. Byte 4 is a free-running counter and is deliberately not asserted.
     /// </summary>
     [Test]
     [Arguments("000000AA0A000000", 170)]
@@ -548,12 +538,11 @@ public class GeneratedFrameDecodingTests
     }
 
     /// <summary>
-    /// 0x54B FanSpeed occupies bits 35-39. Captured with the fan at maximum and off:
-    /// byte 4 = 0x3C vs 0x04, giving (0x3C &gt;&gt; 3) &amp; 0x1F = 7 and 0.
-    ///
-    /// ClimateControlStatus is asserted alongside it because byte 0 is claimed by three separate
-    /// signals in the current definition with incompatible scalings; these bytes match its
-    /// documented 0x10/0x11 values and nothing else.
+    ///     0x54B FanSpeed occupies bits 35-39. Captured with the fan at maximum and off:
+    ///     byte 4 = 0x3C vs 0x04, giving (0x3C &gt;&gt; 3) &amp; 0x1F = 7 and 0.
+    ///     ClimateControlStatus is asserted alongside it because byte 0 is claimed by three separate
+    ///     signals in the current definition with incompatible scalings; these bytes match its
+    ///     documented 0x10/0x11 values and nothing else.
     /// </summary>
     [Test]
     public async Task HvacFrame54b_FanSpeed_MatchesCapturedMaxAndOff()

@@ -1,17 +1,17 @@
+using System.Diagnostics;
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
-using ObdInsight.Core.Vehicles;
 
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 {
     /// <summary>
-    /// Vehicle identification implementation for Nissan Leaf AZE0.
-    /// Queries the "CHARGER" ECU (0x792/0x793) for VIN via Mode 21 PID 81.
+    ///     Vehicle identification implementation for Nissan Leaf AZE0.
+    ///     Queries the "CHARGER" ECU (0x792/0x793) for VIN via Mode 21 PID 81.
     /// </summary>
     internal sealed class LeafAze0VehicleIdentification : IVehicleIdentification
     {
-        private readonly IElmSession _session;
         private readonly EcuContext _context;
+        private readonly IElmSession _session;
 
         public LeafAze0VehicleIdentification(IElmSession session, EcuContext context)
         {
@@ -41,8 +41,8 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         }
 
         /// <summary>
-        /// Parses VIN from ELM327 response lines containing ISO-TP frames.
-        /// Expected format: Mode 21 PID 81 response with header [61 81] followed by VIN ASCII bytes.
+        ///     Parses VIN from ELM327 response lines containing ISO-TP frames.
+        ///     Expected format: Mode 21 PID 81 response with header [61 81] followed by VIN ASCII bytes.
         /// </summary>
         private static string? ParseNissanVin(string[] lines)
         {
@@ -64,7 +64,8 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
             // Validate response header (61 81 = positive response to Mode 21 PID 81)
             if (payload.Length < 3 || payload[0] != 0x61 || payload[1] != 0x81)
             {
-                Log($"[VehicleID VIN] Invalid header: {Convert.ToHexString(payload.AsSpan(0, Math.Min(10, payload.Length)))}");
+                Log(
+                    $"[VehicleID VIN] Invalid header: {Convert.ToHexString(payload.AsSpan(0, Math.Min(10, payload.Length)))}");
                 return null;
             }
 
@@ -106,7 +107,7 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 
         private static void Log(string message)
         {
-            System.Diagnostics.Debug.WriteLine(message);
+            Debug.WriteLine(message);
         }
     }
 }

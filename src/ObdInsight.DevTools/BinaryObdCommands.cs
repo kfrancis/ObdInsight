@@ -1,7 +1,9 @@
+using System.Text;
+
 namespace ObdInsight.DevTools;
 
 /// <summary>
-/// Binary OBD command helper - minimal stub for DevTools.
+///     Binary OBD command helper - minimal stub for DevTools.
 /// </summary>
 public static class BinaryObdCommands
 {
@@ -9,7 +11,7 @@ public static class BinaryObdCommands
     {
         try
         {
-            ascii = System.Text.Encoding.ASCII.GetString(data);
+            ascii = Encoding.ASCII.GetString(data);
             return ascii.All(c => !char.IsControl(c) || c == '\r' || c == '\n');
         }
         catch

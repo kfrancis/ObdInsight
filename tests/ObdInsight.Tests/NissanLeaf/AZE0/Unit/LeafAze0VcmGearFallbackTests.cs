@@ -6,10 +6,10 @@ using ObdInsight.Simulation;
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
-/// Gear position via the CAR-CAN 0x421 shifter relay — the path that actually fires on
-/// stock ELM327 adapters, where EV-CAN 0x11A never appears (see CLAUDE.md gotcha).
-/// Exercises the production path end-to-end: 1-byte frame through ElmSession/CanMonitor
-/// raw cache into LeafAze0Vcm's fallback decode.
+///     Gear position via the CAR-CAN 0x421 shifter relay — the path that actually fires on
+///     stock ELM327 adapters, where EV-CAN 0x11A never appears (see CLAUDE.md gotcha).
+///     Exercises the production path end-to-end: 1-byte frame through ElmSession/CanMonitor
+///     raw cache into LeafAze0Vcm's fallback decode.
 /// </summary>
 [Timeout(30_000)]
 public class LeafAze0VcmGearFallbackTests

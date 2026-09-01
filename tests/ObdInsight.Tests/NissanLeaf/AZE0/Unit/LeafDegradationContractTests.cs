@@ -6,10 +6,10 @@ using ObdInsight.Simulation;
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
-/// Roadmap B7 — the unified degradation contract: data absence yields null / all-null
-/// results from every capability, never an exception. Each scenario scripts the
-/// adapter answering "NO DATA" twice (the session retries an invalid response once
-/// before surfacing an IOException — which capabilities must absorb).
+///     Roadmap B7 — the unified degradation contract: data absence yields null / all-null
+///     results from every capability, never an exception. Each scenario scripts the
+///     adapter answering "NO DATA" twice (the session retries an invalid response once
+///     before surfacing an IOException — which capabilities must absorb).
 /// </summary>
 [Timeout(30_000)]
 public class LeafDegradationContractTests

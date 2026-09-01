@@ -13,16 +13,16 @@ public interface IVehicleProfile
     IVehicleCommandSet GetCommands(VehicleVariantId variantId, IElmSession session);
 
     /// <summary>
-    /// Attempts to read the VIN using this vehicle family's protocol quirks (e.g. the
-    /// Leaf answers Mode 21 PID 81 on the charger ECU, not standard OBD Mode 09).
-    /// Returns null when this profile's method gets no answer — the resolver then tries
-    /// the next profile. Must not throw for missing data.
+    ///     Attempts to read the VIN using this vehicle family's protocol quirks (e.g. the
+    ///     Leaf answers Mode 21 PID 81 on the charger ECU, not standard OBD Mode 09).
+    ///     Returns null when this profile's method gets no answer — the resolver then tries
+    ///     the next profile. Must not throw for missing data.
     /// </summary>
     ValueTask<string?> TryReadVinAsync(IElmSession session, CancellationToken ct = default);
 
     /// <summary>
-    /// Whether <see cref="GetCommands"/> has an implementation for the variant —
-    /// detection can succeed for variants whose command set isn't built yet.
+    ///     Whether <see cref="GetCommands" /> has an implementation for the variant —
+    ///     detection can succeed for variants whose command set isn't built yet.
     /// </summary>
     bool SupportsVariant(VehicleVariantId variantId);
 }
@@ -34,8 +34,8 @@ public abstract class VehicleProfile : IVehicleProfile
     public abstract IReadOnlyList<VehicleVariant> Variants { get; }
 
     /// <summary>
-    /// Attempts to detect the vehicle variant from a VIN.
-    /// Override in derived classes to implement vehicle-specific VIN parsing logic.
+    ///     Attempts to detect the vehicle variant from a VIN.
+    ///     Override in derived classes to implement vehicle-specific VIN parsing logic.
     /// </summary>
     /// <param name="vin">The 17-character Vehicle Identification Number</param>
     /// <returns>The detected variant ID, or null if detection failed</returns>
@@ -47,8 +47,8 @@ public abstract class VehicleProfile : IVehicleProfile
     public abstract IVehicleCommandSet GetCommands(VehicleVariantId variantId, IElmSession session);
 
     /// <summary>
-    /// Default: no profile-specific VIN read. Override with the family's actual
-    /// mechanism; implementations must return null (not throw) when nothing answers.
+    ///     Default: no profile-specific VIN read. Override with the family's actual
+    ///     mechanism; implementations must return null (not throw) when nothing answers.
     /// </summary>
     public virtual ValueTask<string?> TryReadVinAsync(IElmSession session, CancellationToken ct = default)
     {
@@ -59,7 +59,7 @@ public abstract class VehicleProfile : IVehicleProfile
     public virtual bool SupportsVariant(VehicleVariantId variantId) => true;
 
     /// <summary>
-    /// Decodes the model year from VIN position 10 (standard across all manufacturers).
+    ///     Decodes the model year from VIN position 10 (standard across all manufacturers).
     /// </summary>
     protected static int? DecodeModelYear(char modelYearChar)
     {
@@ -104,22 +104,22 @@ public abstract class VehicleProfile : IVehicleProfile
     }
 
     /// <summary>
-    /// Gets the Vehicle Descriptor Section (VDS) - characters 4-9 of VIN.
+    ///     Gets the Vehicle Descriptor Section (VDS) - characters 4-9 of VIN.
     /// </summary>
     protected static string GetVds(string vin) => vin.Substring(3, 6);
 
     /// <summary>
-    /// Gets the Vehicle Identifier Section (VIS) - characters 10-17 of VIN.
+    ///     Gets the Vehicle Identifier Section (VIS) - characters 10-17 of VIN.
     /// </summary>
     protected static string GetVis(string vin) => vin[9..];
 
     /// <summary>
-    /// Gets the World Manufacturer Identifier (WMI) - first 3 characters of VIN.
+    ///     Gets the World Manufacturer Identifier (WMI) - first 3 characters of VIN.
     /// </summary>
     protected static string GetWmi(string vin) => vin[..3];
 
     /// <summary>
-    /// Validates that a VIN is properly formatted (17 characters, no I/O/Q).
+    ///     Validates that a VIN is properly formatted (17 characters, no I/O/Q).
     /// </summary>
     protected static bool IsValidVin(string? vin)
     {
@@ -131,7 +131,7 @@ public abstract class VehicleProfile : IVehicleProfile
     }
 
     /// <summary>
-    /// Filters variants by model year range.
+    ///     Filters variants by model year range.
     /// </summary>
     protected IReadOnlyList<VehicleVariant> GetVariantsByYear(int modelYear)
     {

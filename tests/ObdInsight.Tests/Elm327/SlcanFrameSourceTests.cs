@@ -1,4 +1,3 @@
-using System.Text;
 using ObdInsight.Core.Communication.Slcan;
 using ObdInsight.Core.Protocols;
 using ObdInsight.Simulation;
@@ -6,19 +5,18 @@ using ObdInsight.Simulation;
 namespace OdbTestApp.Tests.Elm327;
 
 /// <summary>
-/// Drives <see cref="SlcanFrameSource"/> end to end over the replay transport, so the whole path
-/// from device bytes to <see cref="RawCanFrame"/> is exercised without a CANable attached.
-///
-/// This is the abstraction that lets a raw CAN interface feed the same consumers an ELM327 does.
-/// The parts worth pinning are the ones a real device will break: frames split across reads,
-/// adapter chatter interleaved with data, and the listen-only default.
+///     Drives <see cref="SlcanFrameSource" /> end to end over the replay transport, so the whole path
+///     from device bytes to <see cref="RawCanFrame" /> is exercised without a CANable attached.
+///     This is the abstraction that lets a raw CAN interface feed the same consumers an ELM327 does.
+///     The parts worth pinning are the ones a real device will break: frames split across reads,
+///     adapter chatter interleaved with data, and the listen-only default.
 /// </summary>
 [Timeout(30_000)]
 public class SlcanFrameSourceTests
 {
     /// <summary>
-    /// The replay transport auto-answers AT commands but not SLCAN verbs, so the handshake is
-    /// scripted here. A real device answers each with a bare CR meaning "accepted".
+    ///     The replay transport auto-answers AT commands but not SLCAN verbs, so the handshake is
+    ///     scripted here. A real device answers each with a bare CR meaning "accepted".
     /// </summary>
     private static ReplayElmTransport Transport()
     {
@@ -74,8 +72,8 @@ public class SlcanFrameSourceTests
     }
 
     /// <summary>
-    /// Opening for transmission has to be asked for. On a powertrain bus the difference is a
-    /// safety property, not a preference, so the default must be the safe one.
+    ///     Opening for transmission has to be asked for. On a powertrain bus the difference is a
+    ///     safety property, not a preference, so the default must be the safe one.
     /// </summary>
     [Test]
     public async Task Start_OpensNormalOnlyWhenExplicitlyRequested(CancellationToken token)
@@ -107,9 +105,9 @@ public class SlcanFrameSourceTests
     }
 
     /// <summary>
-    /// A real device splits lines across reads whenever the buffer boundary lands mid-frame. The
-    /// carry-over buffer is the only thing preventing that from silently dropping frames, so it
-    /// is worth pinning at the nastiest split: one byte at a time.
+    ///     A real device splits lines across reads whenever the buffer boundary lands mid-frame. The
+    ///     carry-over buffer is the only thing preventing that from silently dropping frames, so it
+    ///     is worth pinning at the nastiest split: one byte at a time.
     /// </summary>
     [Test]
     public async Task ReadFrames_ReassemblesFrameSplitAcrossReads(CancellationToken token)
@@ -131,9 +129,9 @@ public class SlcanFrameSourceTests
     }
 
     /// <summary>
-    /// Adapter chatter is interleaved with frames in practice - version banners on open, bell
-    /// characters on error, acknowledgements after a transmit. A capture loop has to run straight
-    /// through them, so they are counted rather than treated as failures.
+    ///     Adapter chatter is interleaved with frames in practice - version banners on open, bell
+    ///     characters on error, acknowledgements after a transmit. A capture loop has to run straight
+    ///     through them, so they are counted rather than treated as failures.
     /// </summary>
     [Test]
     public async Task ReadFrames_SkipsNonFrameLinesAndCountsThem(CancellationToken token)
@@ -152,8 +150,8 @@ public class SlcanFrameSourceTests
     }
 
     /// <summary>
-    /// An FD frame on a bus believed to be classic CAN is worth surfacing: it is the evidence
-    /// that a vehicle needs FD-capable hardware, and silently dropping it would hide that.
+    ///     An FD frame on a bus believed to be classic CAN is worth surfacing: it is the evidence
+    ///     that a vehicle needs FD-capable hardware, and silently dropping it would hide that.
     /// </summary>
     [Test]
     public async Task ReadFrames_CountsCanFdFramesSeparately(CancellationToken token)

@@ -1,16 +1,17 @@
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
-using ObdInsight.SourceGeneration.Models;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
+using ObdInsight.SourceGeneration.Attributes;
+using ObdInsight.SourceGeneration.Models;
 
 namespace ObdInsight.SourceGeneration;
 
 /// <summary>
-/// Source generator for UDS (Unified Diagnostic Services) message definitions.
+///     Source generator for UDS (Unified Diagnostic Services) message definitions.
 /// </summary>
 [Generator]
 public class UdsGenerator : IIncrementalGenerator
@@ -20,15 +21,19 @@ public class UdsGenerator : IIncrementalGenerator
     private const string UdsFieldAttributeName = "ObdInsight.SourceGeneration.Attributes.UdsFieldAttribute";
     private const string UdsPidAttributeName = "ObdInsight.SourceGeneration.Attributes.UdsPidAttribute";
     private const string UdsResponseAttributeName = "ObdInsight.SourceGeneration.Attributes.UdsResponseAttribute";
-    private const string UdsResponseVariantAttributeName = "ObdInsight.SourceGeneration.Attributes.UdsResponseVariantAttribute";
+
+    private const string UdsResponseVariantAttributeName =
+        "ObdInsight.SourceGeneration.Attributes.UdsResponseVariantAttribute";
+
     private const string UdsServiceAttributeName = "ObdInsight.SourceGeneration.Attributes.UdsServiceAttribute";
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         // Find all classes with [UdsService] attribute
         var serviceProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
-                predicate: static (node, _) => IsServiceCandidate(node),
-                transform: static (ctx, _) => GetServiceModel(ctx))
+                static (node, _) => IsServiceCandidate(node),
+                static (ctx, _) => GetServiceModel(ctx))
             .Where(static m => m is not null);
 
         // Generate code for each service
@@ -43,8 +48,10 @@ public class UdsGenerator : IIncrementalGenerator
 
     private static void GenerateArrayFieldExtraction(StringBuilder sb, UdsFieldModel field)
     {
-        sb.AppendLine($"        var {field.PropertyName.ToLower()}List = new System.Collections.Generic.List<{GetElementType(field.PropertyType)}>();");
-        sb.AppendLine($"        for (int i = {field.Offset}; i + {field.ElementLength - 1} < data.Length && {field.PropertyName.ToLower()}List.Count < {field.ElementCount}; i += {field.ElementLength})");
+        sb.AppendLine(
+            $"        var {field.PropertyName.ToLower()}List = new System.Collections.Generic.List<{GetElementType(field.PropertyType)}>();");
+        sb.AppendLine(
+            $"        for (int i = {field.Offset}; i + {field.ElementLength - 1} < data.Length && {field.PropertyName.ToLower()}List.Count < {field.ElementCount}; i += {field.ElementLength})");
         sb.AppendLine("        {");
 
         // Generate element extraction based on type
@@ -63,7 +70,8 @@ public class UdsGenerator : IIncrementalGenerator
                 break;
 
             case "UInt32BE":
-                sb.AppendLine("            var value = ((uint)data[i] << 24) | ((uint)data[i + 1] << 16) | ((uint)data[i + 2] << 8) | data[i + 3];");
+                sb.AppendLine(
+                    "            var value = ((uint)data[i] << 24) | ((uint)data[i + 1] << 16) | ((uint)data[i + 2] << 8) | data[i + 3];");
                 break;
 
             default:
@@ -106,7 +114,8 @@ public class UdsGenerator : IIncrementalGenerator
         // Check data availability based on frame source
         if (field.FrameSource == "ConsecutiveFrame")
         {
-            sb.AppendLine($"        var cf{field.FrameSequence} = frames.FirstOrDefault(f => f.FrameType == 2 && f.SeqOrLen == {field.FrameSequence}).Data;");
+            sb.AppendLine(
+                $"        var cf{field.FrameSequence} = frames.FirstOrDefault(f => f.FrameType == 2 && f.SeqOrLen == {field.FrameSequence}).Data;");
             sb.AppendLine($"        if (cf{field.FrameSequence}?.Length >= {field.Offset + field.Length})");
             sb.AppendLine("        {");
             GenerateValueExtraction(sb, field, $"cf{field.FrameSequence}", "            ");
@@ -132,11 +141,13 @@ public class UdsGenerator : IIncrementalGenerator
     {
         var methodName = $"Query{pid.MethodName}Async";
 
-        sb.AppendLine($"    public async System.Threading.Tasks.Task<{pid.ClassName}?> {methodName}(System.Threading.CancellationToken ct = default)");
+        sb.AppendLine(
+            $"    public async System.Threading.Tasks.Task<{pid.ClassName}?> {methodName}(System.Threading.CancellationToken ct = default)");
         sb.AppendLine("    {");
 
         // Send UDS request
-        sb.AppendLine($"        var lines = await _session.QueryAsync(\"{service.ServiceId:X2}{pid.PidId:X2}\", _context, ct);");
+        sb.AppendLine(
+            $"        var lines = await _session.QueryAsync(\"{service.ServiceId:X2}{pid.PidId:X2}\", _context, ct);");
         sb.AppendLine();
 
         // Parse ISO-TP frames
@@ -150,7 +161,8 @@ public class UdsGenerator : IIncrementalGenerator
 
         // Validate header
         var expectedResponse = service.ServiceId + 0x40;
-        sb.AppendLine($"        if (payload.Length < 2 || payload[0] != 0x{expectedResponse:X2} || payload[1] != 0x{pid.PidId:X2})");
+        sb.AppendLine(
+            $"        if (payload.Length < 2 || payload[0] != 0x{expectedResponse:X2} || payload[1] != 0x{pid.PidId:X2})");
         sb.AppendLine("            return null;");
         sb.AppendLine();
 
@@ -167,6 +179,7 @@ public class UdsGenerator : IIncrementalGenerator
             {
                 sb.AppendLine($"            {variant.Length} => \"{variant.Model}\",");
             }
+
             sb.AppendLine("            _ => null");
             sb.AppendLine("        };");
             sb.AppendLine();
@@ -181,11 +194,14 @@ public class UdsGenerator : IIncrementalGenerator
                 sb.AppendLine("            string? bestVariant = null;");
                 foreach (var v in pid.Variants)
                 {
-                    sb.AppendLine($"            if (System.Math.Abs({v.Length} - data.Length) < bestDistance) {{ bestDistance = System.Math.Abs({v.Length} - data.Length); bestVariant = \"{v.Model}\"; }}");
+                    sb.AppendLine(
+                        $"            if (System.Math.Abs({v.Length} - data.Length) < bestDistance) {{ bestDistance = System.Math.Abs({v.Length} - data.Length); bestVariant = \"{v.Model}\"; }}");
                 }
+
                 sb.AppendLine("            variant = bestVariant;");
                 sb.AppendLine("        }");
             }
+
             sb.AppendLine();
         }
         else
@@ -255,15 +271,18 @@ public class UdsGenerator : IIncrementalGenerator
                 break;
 
             case "UInt24BE":
-                sb.AppendLine($"{indent}var {rawVarName} = ({dataVar}[{offset}] << 16) | ({dataVar}[{offset + 1}] << 8) | {dataVar}[{offset + 2}];");
+                sb.AppendLine(
+                    $"{indent}var {rawVarName} = ({dataVar}[{offset}] << 16) | ({dataVar}[{offset + 1}] << 8) | {dataVar}[{offset + 2}];");
                 break;
 
             case "UInt32BE":
-                sb.AppendLine($"{indent}var {rawVarName} = ((uint){dataVar}[{offset}] << 24) | ((uint){dataVar}[{offset + 1}] << 16) | ((uint){dataVar}[{offset + 2}] << 8) | {dataVar}[{offset + 3}];");
+                sb.AppendLine(
+                    $"{indent}var {rawVarName} = ((uint){dataVar}[{offset}] << 24) | ((uint){dataVar}[{offset + 1}] << 16) | ((uint){dataVar}[{offset + 2}] << 8) | {dataVar}[{offset + 3}];");
                 break;
 
             case "Int32BE":
-                sb.AppendLine($"{indent}var {rawVarName}Unsigned = ((uint){dataVar}[{offset}] << 24) | ((uint){dataVar}[{offset + 1}] << 16) | ((uint){dataVar}[{offset + 2}] << 8) | {dataVar}[{offset + 3}];");
+                sb.AppendLine(
+                    $"{indent}var {rawVarName}Unsigned = ((uint){dataVar}[{offset}] << 24) | ((uint){dataVar}[{offset + 1}] << 16) | ((uint){dataVar}[{offset + 2}] << 8) | {dataVar}[{offset + 3}];");
                 sb.AppendLine($"{indent}var {rawVarName} = unchecked((int){rawVarName}Unsigned);");
                 break;
 
@@ -310,7 +329,7 @@ public class UdsGenerator : IIncrementalGenerator
     private static UdsServiceModel? GetServiceModel(GeneratorSyntaxContext context)
     {
         var classDecl = (ClassDeclarationSyntax)context.Node;
-        var symbol = context.SemanticModel.GetDeclaredSymbol(classDecl);
+        var symbol = ModelExtensions.GetDeclaredSymbol(context.SemanticModel, classDecl);
 
         if (symbol is not INamedTypeSymbol classSymbol)
             return null;
@@ -354,8 +373,7 @@ public class UdsGenerator : IIncrementalGenerator
 
             var pidModel = new UdsPidModel
             {
-                ClassName = nestedType.Name,
-                PidId = (byte)(pidAttr.ConstructorArguments[0].Value ?? 0x01)
+                ClassName = nestedType.Name, PidId = (byte)(pidAttr.ConstructorArguments[0].Value ?? 0x01)
             };
 
             // Extract method name
@@ -410,6 +428,7 @@ public class UdsGenerator : IIncrementalGenerator
                             break;
                     }
                 }
+
                 pidModel.Variants.Add(variant);
             }
 
@@ -464,16 +483,15 @@ public class UdsGenerator : IIncrementalGenerator
     private static bool IsServiceCandidate(SyntaxNode node)
     {
         return node is ClassDeclarationSyntax classDecl
-            && classDecl.AttributeLists.Count > 0
-            && classDecl.Modifiers.Any(Microsoft.CodeAnalysis.CSharp.SyntaxKind.PartialKeyword);
+               && classDecl.AttributeLists.Count > 0
+               && classDecl.Modifiers.Any(SyntaxKind.PartialKeyword);
     }
+
     private static UdsFieldModel ParseArrayField(IPropertySymbol property, AttributeData arrayFieldAttr)
     {
         var model = new UdsFieldModel
         {
-            PropertyName = property.Name,
-            PropertyType = property.Type.ToDisplayString(),
-            IsArray = true
+            PropertyName = property.Name, PropertyType = property.Type.ToDisplayString(), IsArray = true
         };
 
         foreach (var namedArg in arrayFieldAttr.NamedArguments)
@@ -495,12 +513,13 @@ public class UdsGenerator : IIncrementalGenerator
                     if (typeValue is int enumIntValue)
                     {
                         // Convert numeric enum value to string name
-                        model.FieldType = ((ObdInsight.SourceGeneration.Attributes.UdsFieldType)enumIntValue).ToString();
+                        model.FieldType = ((UdsFieldType)enumIntValue).ToString();
                     }
                     else
                     {
                         model.FieldType = typeValue?.ToString() ?? "UInt8";
                     }
+
                     break;
                 case "ValidRange":
                     model.ValidRange = namedArg.Value.Value?.ToString();
@@ -513,11 +532,7 @@ public class UdsGenerator : IIncrementalGenerator
 
     private static UdsFieldModel ParseField(IPropertySymbol property, AttributeData fieldAttr)
     {
-        var model = new UdsFieldModel
-        {
-            PropertyName = property.Name,
-            PropertyType = property.Type.ToDisplayString()
-        };
+        var model = new UdsFieldModel { PropertyName = property.Name, PropertyType = property.Type.ToDisplayString() };
 
         foreach (var namedArg in fieldAttr.NamedArguments)
         {
@@ -535,12 +550,13 @@ public class UdsGenerator : IIncrementalGenerator
                     if (typeValue is int enumIntValue)
                     {
                         // Convert numeric enum value to string name
-                        model.FieldType = ((ObdInsight.SourceGeneration.Attributes.UdsFieldType)enumIntValue).ToString();
+                        model.FieldType = ((UdsFieldType)enumIntValue).ToString();
                     }
                     else
                     {
                         model.FieldType = typeValue?.ToString() ?? "UInt8";
                     }
+
                     break;
                 case "Scale":
                     model.Scale = (double)(namedArg.Value.Value ?? 1.0);
@@ -557,12 +573,13 @@ public class UdsGenerator : IIncrementalGenerator
                     var frameSourceValue = namedArg.Value.Value;
                     if (frameSourceValue is int frameSourceInt)
                     {
-                        model.FrameSource = ((ObdInsight.SourceGeneration.Attributes.FrameSource)frameSourceInt).ToString();
+                        model.FrameSource = ((FrameSource)frameSourceInt).ToString();
                     }
                     else
                     {
                         model.FrameSource = frameSourceValue?.ToString() ?? "Payload";
                     }
+
                     break;
                 case "FrameSequence":
                     model.FrameSequence = (int)(namedArg.Value.Value ?? 0);

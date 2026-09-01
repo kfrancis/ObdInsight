@@ -45,14 +45,20 @@ namespace ObdInsight.Core.Communication.Elm327
         ///     the newest frame triggers the emission and the rest of the DTO comes from the cache.
         /// </summary>
         /// <remarks>
-        ///     <para>Registration is immediate — frames arriving before the consumer starts iterating
-        ///     are buffered, not lost. The monitor is started on first enumeration if it has not run
-        ///     yet; a monitor that has already ended is not restarted, so the stream just completes.</para>
-        ///     <para>Cold start: the first emission fires on the first contributing frame, so fields
-        ///     sourced from IDs not yet seen are null/default. That matches the pull API's
-        ///     degradation contract (absence is null, never an exception).</para>
-        ///     <para>The stream completes when the monitor's run ends (see
-        ///     <see cref="CanMonitor.EndReason" /> for why).</para>
+        ///     <para>
+        ///         Registration is immediate — frames arriving before the consumer starts iterating
+        ///         are buffered, not lost. The monitor is started on first enumeration if it has not run
+        ///         yet; a monitor that has already ended is not restarted, so the stream just completes.
+        ///     </para>
+        ///     <para>
+        ///         Cold start: the first emission fires on the first contributing frame, so fields
+        ///         sourced from IDs not yet seen are null/default. That matches the pull API's
+        ///         degradation contract (absence is null, never an exception).
+        ///     </para>
+        ///     <para>
+        ///         The stream completes when the monitor's run ends (see
+        ///         <see cref="CanMonitor.EndReason" /> for why).
+        ///     </para>
         /// </remarks>
         /// <param name="monitor">The shared monitor to view.</param>
         /// <param name="canIds">The CAN IDs that contribute to the projection. Empty = every frame.</param>

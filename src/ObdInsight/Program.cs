@@ -1,14 +1,18 @@
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using ObdInsight.Application;
+using ObdInsight.Core.Communication.Bluetooth;
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
-using ObdInsight.UI;
 using ObdInsight.Core.Vehicles;
-using ObdInsight.Core.Communication.Bluetooth;
-using ObdInsight.Transports.WindowsBle;
-using Microsoft.Extensions.Logging;
-using Serilog;
-using Spectre.Console;
+using ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf;
+using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
+using ObdInsight.Transports.WindowsBle;
+using ObdInsight.UI;
+using Serilog;
+using Serilog.Extensions.Logging;
+using Spectre.Console;
 
 namespace ObdInsight
 {
@@ -17,7 +21,7 @@ namespace ObdInsight
         private static readonly TimeSpan s_scanDuration = TimeSpan.FromSeconds(10);
 
         /// <summary>
-        /// Decode VIN information for Nissan Leaf.
+        ///     Decode VIN information for Nissan Leaf.
         /// </summary>
         private static void DecodeVin(string vin)
         {
@@ -114,7 +118,7 @@ namespace ObdInsight
         }
 
         /// <summary>
-        /// Logs errors using Serilog for proper file logging and diagnostics
+        ///     Logs errors using Serilog for proper file logging and diagnostics
         /// </summary>
         private static void LogError(Exception ex, int successCount, int failCount, TimeSpan uptime)
         {
@@ -123,10 +127,10 @@ namespace ObdInsight
         }
 
         /// <summary>
-        /// Captures raw broadcast frames + decoded values for hardware verification of the
-        /// monitoring wire format and signal bit layouts. Logs the first samples per CAN ID
-        /// (raw hex + JSON decode), per-ID frame counts, and a 0x1DB voltage/current decode
-        /// for cross-checking against the BMS 2101 query values.
+        ///     Captures raw broadcast frames + decoded values for hardware verification of the
+        ///     monitoring wire format and signal bit layouts. Logs the first samples per CAN ID
+        ///     (raw hex + JSON decode), per-ID frame counts, and a 0x1DB voltage/current decode
+        ///     for cross-checking against the BMS 2101 query values.
         /// </summary>
         private static async Task RunBroadcastDiagnosticAsync(CanMonitor monitor, CancellationToken ct)
         {
@@ -153,7 +157,8 @@ namespace ObdInsight
                         rawSamplesPerId[id] = samples + 1;
                         var hex = Convert.ToHexString(frame.Data.ToArray());
                         var decoded = TryDecodeForDiagnostic(id, frame.Data.Span);
-                        Log.Information("BROADCAST RAW {CanId:X3} [{Hex}] => {Decoded}", id, hex, decoded ?? "(no decoder)");
+                        Log.Information("BROADCAST RAW {CanId:X3} [{Hex}] => {Decoded}", id, hex,
+                            decoded ?? "(no decoder)");
                     }
                 }
             }
@@ -168,15 +173,19 @@ namespace ObdInsight
             {
                 Log.Information("  ID {CanId:X3}: {Count} frames", kvp.Key, kvp.Value);
             }
-            AnsiConsole.MarkupLine($"[cyan]Broadcast diagnostic:[/] {totalFrames} frames across {countsPerId.Count} IDs (details in log)");
+
+            AnsiConsole.MarkupLine(
+                $"[cyan]Broadcast diagnostic:[/] {totalFrames} frames across {countsPerId.Count} IDs (details in log)");
 
             // Cross-check: broadcast 0x1DB carries the same physical quantities as the BMS
             // 2101 query — matching values prove the bit-layout convention end-to-end.
-            if (monitor.TryGetLatest<ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0.BatteryFrame_1DB_AZE0>(out var battery1db))
+            if (monitor.TryGetLatest<BatteryFrame_1DB_AZE0>(out var battery1db))
             {
-                Log.Information("CROSS-CHECK 1DB: Voltage={Voltage:F2}V Current={Current:F2}A UsableSoc={Soc}% - compare against the BMS 2101 read above",
+                Log.Information(
+                    "CROSS-CHECK 1DB: Voltage={Voltage:F2}V Current={Current:F2}A UsableSoc={Soc}% - compare against the BMS 2101 read above",
                     battery1db.Voltage, battery1db.Current, battery1db.UsableSoc);
-                AnsiConsole.MarkupLine($"[cyan]1DB cross-check:[/] {battery1db.Voltage:F2}V / {battery1db.Current:F2}A (BMS said ~check log)");
+                AnsiConsole.MarkupLine(
+                    $"[cyan]1DB cross-check:[/] {battery1db.Voltage:F2}V / {battery1db.Current:F2}A (BMS said ~check log)");
             }
             else
             {
@@ -193,23 +202,25 @@ namespace ObdInsight
                 return $"(len={data.Length}, decoders need 8 bytes)";
             }
 
-            object? decoded =
-                ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0.CanFrameRouter.TryParseAny(canId, data)
-                ?? ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames.CanFrameRouter.TryParseAny(canId, data);
+            var decoded =
+                CanFrameRouter.TryParseAny(canId, data)
+                ?? Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames.CanFrameRouter.TryParseAny(canId, data);
 
             return decoded is null
                 ? null
-                : $"{decoded.GetType().Name} {System.Text.Json.JsonSerializer.Serialize(decoded, decoded.GetType())}";
+                : $"{decoded.GetType().Name} {JsonSerializer.Serialize(decoded, decoded.GetType())}";
         }
 
         /// <summary>
-        /// Logs session summary using Serilog for proper file logging and analysis
+        ///     Logs session summary using Serilog for proper file logging and analysis
         /// </summary>
-        private static void LogSessionSummary(BleDeviceInfo device, DateTime start, TimeSpan duration, int success, int invalid, int failed)
+        private static void LogSessionSummary(BleDeviceInfo device, DateTime start, TimeSpan duration, int success,
+            int invalid, int failed)
         {
             var total = success + invalid + failed;
             var successRate = total > 0 ? (double)success / total * 100 : 0;
-            Log.Information("Session completed - Device={DeviceName}({DeviceAddress}), Start={StartTime}, Duration={Duration}, SuccessCount={SuccessCount}, InvalidCount={InvalidCount}, FailCount={FailCount}, SuccessRate={SuccessRate:F1}%",
+            Log.Information(
+                "Session completed - Device={DeviceName}({DeviceAddress}), Start={StartTime}, Duration={Duration}, SuccessCount={SuccessCount}, InvalidCount={InvalidCount}, FailCount={FailCount}, SuccessRate={SuccessRate:F1}%",
                 device.Name, device.Address, start, duration, success, invalid, failed, successRate);
         }
 
@@ -229,7 +240,8 @@ namespace ObdInsight
 
                 Log.Logger = new LoggerConfiguration()
                     .MinimumLevel.Debug()
-                    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss.fff} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+                    .WriteTo.Console(
+                        outputTemplate: "[{Timestamp:HH:mm:ss.fff} {Level:u3}] {Message:lj}{NewLine}{Exception}")
                     .WriteTo.File(
                         logFilePath,
                         outputTemplate: "{Timestamp:HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
@@ -250,7 +262,7 @@ namespace ObdInsight
             }
 
             // Parse command-line arguments
-            var autoConnect = args.Contains("--auto") || !Console.IsInputRedirected && Environment.UserInteractive;
+            var autoConnect = args.Contains("--auto") || (!Console.IsInputRedirected && Environment.UserInteractive);
             var targetAddress = args.FirstOrDefault(a => a.StartsWith("--device="))?["--device=".Length..];
 
             var preferences = DevicePreferences.Load();
@@ -277,7 +289,8 @@ namespace ObdInsight
                         0,
                         []);
                     Log.Information("Using device from command line: {Address}", targetAddress);
-                    AnsiConsole.MarkupLine($"[green]✓[/] Using device from command line: [cyan]{targetAddress.EscapeMarkup()}[/]");
+                    AnsiConsole.MarkupLine(
+                        $"[green]✓[/] Using device from command line: [cyan]{targetAddress.EscapeMarkup()}[/]");
                 }
                 else
                 {
@@ -290,21 +303,23 @@ namespace ObdInsight
                     var favorite = preferences.GetFavoriteDevice();
                     if (favorite != null)
                     {
-                        Log.Information("Found favorite device: {DeviceName} ({Address})", favorite.Name, favorite.Address);
-                        AnsiConsole.MarkupLine($"[yellow]★[/] Found favorite device: [cyan]{favorite.Address.EscapeMarkup()}[/]");
+                        Log.Information("Found favorite device: {DeviceName} ({Address})", favorite.Name,
+                            favorite.Address);
+                        AnsiConsole.MarkupLine(
+                            $"[yellow]★[/] Found favorite device: [cyan]{favorite.Address.EscapeMarkup()}[/]");
 
                         // Auto-connect without prompting in non-interactive mode or with --auto flag
                         if (!Console.IsInputRedirected || args.Contains("--auto"))
                         {
                             selectedDevice = favorite;
                             Log.Information("Auto-connecting to favorite device (non-interactive or --auto flag)");
-                            AnsiConsole.MarkupLine($"[green]✓[/] Auto-connecting to favorite device (no scan required)");
+                            AnsiConsole.MarkupLine("[green]✓[/] Auto-connecting to favorite device (no scan required)");
                         }
-                        else if (AnsiConsole.Confirm("Auto-connect to favorite?", defaultValue: true))
+                        else if (AnsiConsole.Confirm("Auto-connect to favorite?"))
                         {
                             selectedDevice = favorite;
                             Log.Information("User confirmed auto-connect to favorite device");
-                            AnsiConsole.MarkupLine($"[green]✓[/] Auto-connecting to favorite device (no scan required)");
+                            AnsiConsole.MarkupLine("[green]✓[/] Auto-connecting to favorite device (no scan required)");
                         }
                         else
                         {
@@ -329,16 +344,20 @@ namespace ObdInsight
                         AnsiConsole.MarkupLine("[yellow]No device selected. Exiting.[/]");
                         return;
                     }
-                    Log.Information("Device selected: {DeviceName} ({Address})", selectedDevice.Name, selectedDevice.Address);
+
+                    Log.Information("Device selected: {DeviceName} ({Address})", selectedDevice.Name,
+                        selectedDevice.Address);
                 }
 
                 // Vehicle selection is VIN-driven (roadmap B6): RunElm327SessionAsync
                 // resolves the profile/variant from the car's own VIN once the session
                 // is up, via VehicleResolver. No hardcoded vehicle.
-                Log.Information("Starting session with device: {DeviceName} ({Address}); vehicle resolved from VIN after connect",
+                Log.Information(
+                    "Starting session with device: {DeviceName} ({Address}); vehicle resolved from VIN after connect",
                     selectedDevice.Name, selectedDevice.Address);
                 var retryService = new SessionRetryService();
-                await retryService.RunWithRetryAsync(selectedDevice, preferences, RunElm327SessionAsync, null, null, cts.Token);
+                await retryService.RunWithRetryAsync(selectedDevice, preferences, RunElm327SessionAsync, null, null,
+                    cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -361,7 +380,8 @@ namespace ObdInsight
             }
         }
 
-        private static async Task RunElm327SessionAsync(BleDeviceInfo selectedDevice, IVehicleProfile? vehicleProfile, VehicleVariant? vehicleVariant, CancellationToken ct)
+        private static async Task RunElm327SessionAsync(BleDeviceInfo selectedDevice, IVehicleProfile? vehicleProfile,
+            VehicleVariant? vehicleVariant, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(selectedDevice);
 
@@ -384,7 +404,8 @@ namespace ObdInsight
             }
 
             AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine($"[cyan]Connecting to:[/] {selectedDevice.Name.EscapeMarkup()} [grey]({selectedDevice.Address.EscapeMarkup()})[/]");
+            AnsiConsole.MarkupLine(
+                $"[cyan]Connecting to:[/] {selectedDevice.Name.EscapeMarkup()} [grey]({selectedDevice.Address.EscapeMarkup()})[/]");
 
             await using var transport = new BleElmTransport(selectedDevice.Address);
 
@@ -403,19 +424,20 @@ namespace ObdInsight
 
                 // Bridge Core's ILogger-based logging into the app's Serilog pipeline
                 // (console + file sinks configured in Main).
-                using var loggerFactory = new Serilog.Extensions.Logging.SerilogLoggerFactory(Log.Logger);
+                using var loggerFactory = new SerilogLoggerFactory(Log.Logger);
 
                 var framer = new ElmFramer(transport, loggerFactory.CreateLogger<ElmFramer>())
                 {
                     EnableDebugLogging = true
                 };
 
-                var session = new ElmSession(framer, new LeafBmsWakeupStrategy(), loggerFactory.CreateLogger<ElmSession>())
-                {
-                    CommandTimeout = TimeSpan.FromSeconds(5),
-                    MaxConsecutiveFailures = 3,
-                    EnableDebugLogging = true
-                };
+                var session =
+                    new ElmSession(framer, new LeafBmsWakeupStrategy(), loggerFactory.CreateLogger<ElmSession>())
+                    {
+                        CommandTimeout = TimeSpan.FromSeconds(5),
+                        MaxConsecutiveFailures = 3,
+                        EnableDebugLogging = true
+                    };
 
                 Log.Information("Initializing ELM327 session (Timeout={CommandTimeout}s, MaxFailures={MaxFailures})",
                     session.CommandTimeout.TotalSeconds, session.MaxConsecutiveFailures);
@@ -429,16 +451,16 @@ namespace ObdInsight
 
                 AnsiConsole.WriteLine();
                 AnsiConsole.MarkupLine("[yellow]IMPORTANT: Vehicle must be in one of these states:[/]\n" +
-                    "[green]1. READY mode[/] (Press brake + Start button) - [cyan]BEST[/]\n" +
-                    "[green]2. Charging[/] (Plugged in and charging)\n" +
-                    "[green]3. ACC mode[/] (Start button without brake) - [yellow]May work[/]\n\n" +
-                    "[red]If car is completely OFF, you will get NO DATA.[/]");
+                                       "[green]1. READY mode[/] (Press brake + Start button) - [cyan]BEST[/]\n" +
+                                       "[green]2. Charging[/] (Plugged in and charging)\n" +
+                                       "[green]3. ACC mode[/] (Start button without brake) - [yellow]May work[/]\n\n" +
+                                       "[red]If car is completely OFF, you will get NO DATA.[/]");
 
                 AnsiConsole.WriteLine();
                 AnsiConsole.MarkupLine("[yellow]Waking up ECUs and configuring BMS...[/]");
 
                 // Multi-tier wakeup strategy for Nissan Leaf
-                bool wakeupSucceeded = false;
+                var wakeupSucceeded = false;
 
                 // Tier 1: Send to VCM wakeup address (0x679)
                 Log.Information("Wakeup Tier 1: Sending VCM wakeup (679)");
@@ -446,9 +468,11 @@ namespace ObdInsight
                 {
                     await framer.SendAndReadFrameAsync("ATSH679", session.CommandTimeout, ct);
                     var vcmWakeupResponse = await framer.SendAndReadFrameAsync("00", session.CommandTimeout, ct);
-                    if (!vcmWakeupResponse.Contains("NO DATA", StringComparison.OrdinalIgnoreCase) && vcmWakeupResponse.Length > 3)
+                    if (!vcmWakeupResponse.Contains("NO DATA", StringComparison.OrdinalIgnoreCase) &&
+                        vcmWakeupResponse.Length > 3)
                     {
-                        Log.Information("Tier 1 VCM wakeup succeeded: {Response}", vcmWakeupResponse.Substring(0, Math.Min(50, vcmWakeupResponse.Length)));
+                        Log.Information("Tier 1 VCM wakeup succeeded: {Response}",
+                            vcmWakeupResponse.Substring(0, Math.Min(50, vcmWakeupResponse.Length)));
                         wakeupSucceeded = true;
                     }
                 }
@@ -464,10 +488,13 @@ namespace ObdInsight
                     try
                     {
                         await framer.SendAndReadFrameAsync("ATSH5C0", session.CommandTimeout, ct);
-                        var battHeaterWakeupResponse = await framer.SendAndReadFrameAsync("00000000", session.CommandTimeout, ct);
-                        if (!battHeaterWakeupResponse.Contains("NO DATA", StringComparison.OrdinalIgnoreCase) && battHeaterWakeupResponse.Length > 3)
+                        var battHeaterWakeupResponse =
+                            await framer.SendAndReadFrameAsync("00000000", session.CommandTimeout, ct);
+                        if (!battHeaterWakeupResponse.Contains("NO DATA", StringComparison.OrdinalIgnoreCase) &&
+                            battHeaterWakeupResponse.Length > 3)
                         {
-                            Log.Information("Tier 2 battery heater wakeup succeeded: {Response}", battHeaterWakeupResponse.Substring(0, Math.Min(50, battHeaterWakeupResponse.Length)));
+                            Log.Information("Tier 2 battery heater wakeup succeeded: {Response}",
+                                battHeaterWakeupResponse.Substring(0, Math.Min(50, battHeaterWakeupResponse.Length)));
                             wakeupSucceeded = true;
                         }
                     }
@@ -485,7 +512,8 @@ namespace ObdInsight
                 if (wakeupResponse.Contains("NO DATA", StringComparison.OrdinalIgnoreCase))
                 {
                     Log.Warning("All wakeup attempts returned NO DATA - ECUs may be sleeping");
-                    AnsiConsole.MarkupLine("[red]⚠[/] [yellow]Wakeup query returned NO DATA - ECUs appear to be sleeping![/]");
+                    AnsiConsole.MarkupLine(
+                        "[red]⚠[/] [yellow]Wakeup query returned NO DATA - ECUs appear to be sleeping![/]");
                     AnsiConsole.MarkupLine("[yellow]  → Make sure car is in READY mode or charging[/]");
                     AnsiConsole.WriteLine();
                 }
@@ -517,7 +545,7 @@ namespace ObdInsight
                         VehicleDetectionStatus.VariantUnsupported =>
                             $"{detection.Profile?.Make} {detection.Profile?.Model} variant " +
                             $"'{detection.VariantId?.Value}' (VIN {detection.Vin}) has no command set yet.",
-                        _ => "Unknown detection failure.",
+                        _ => "Unknown detection failure."
                     };
                     Log.Error("Vehicle detection failed: {Status} — {Detail}", detection.Status, detail);
                     AnsiConsole.MarkupLine($"[red]Vehicle detection failed:[/] {detail.EscapeMarkup()}");
@@ -532,12 +560,16 @@ namespace ObdInsight
                     $"[green]✓[/] Detected: {vehicleProfile.Make} {vehicleProfile.Model} " +
                     $"[grey]{vehicleVariant?.DisplayName.EscapeMarkup()} — VIN {detection.Vin!.EscapeMarkup()}[/]");
 
-                AnsiConsole.MarkupLine($"[cyan]Testing {vehicleProfile.Make} {vehicleProfile.Model} data collection...[/]");
-                AnsiConsole.MarkupLine("[grey]Note: Only testing capabilities that work when vehicle is stationary in READY mode[/]");
-                AnsiConsole.MarkupLine("[grey]Skipped: Motor (requires accelerator), Charger (requires charging), VCM/ABS (require motion)[/]");
+                AnsiConsole.MarkupLine(
+                    $"[cyan]Testing {vehicleProfile.Make} {vehicleProfile.Model} data collection...[/]");
+                AnsiConsole.MarkupLine(
+                    "[grey]Note: Only testing capabilities that work when vehicle is stationary in READY mode[/]");
+                AnsiConsole.MarkupLine(
+                    "[grey]Skipped: Motor (requires accelerator), Charger (requires charging), VCM/ABS (require motion)[/]");
                 AnsiConsole.WriteLine();
 
-                Log.Information("Starting data collection test for {Make} {Model}", vehicleProfile.Make, vehicleProfile.Model);
+                Log.Information("Starting data collection test for {Make} {Model}", vehicleProfile.Make,
+                    vehicleProfile.Model);
 
                 try
                 {
@@ -554,8 +586,10 @@ namespace ObdInsight
                         const double CurrentStabilityThreshold = 3.0; // A
                         const double HxStabilityThreshold = 0.5; // %
 
-                        AnsiConsole.MarkupLine($"[cyan]Running {RequiredReads} consecutive BMS reads for stability verification...[/]");
-                        Log.Information("Starting {Count} consecutive BMS reads for acceptance criteria", RequiredReads);
+                        AnsiConsole.MarkupLine(
+                            $"[cyan]Running {RequiredReads} consecutive BMS reads for stability verification...[/]");
+                        Log.Information("Starting {Count} consecutive BMS reads for acceptance criteria",
+                            RequiredReads);
 
                         var voltageReadings = new List<double>();
                         var currentReadings = new List<double>();
@@ -576,19 +610,25 @@ namespace ObdInsight
                                     parts.Add($"V: {voltage:F2}V");
                                     voltageReadings.Add(voltage);
                                 }
+
                                 if (battery.CurrentAmps is double current)
                                 {
-                                    var dir = current > 0 ? "dis" : (current < 0 ? "chg" : "idle");
+                                    var dir = current > 0 ? "dis" : current < 0 ? "chg" : "idle";
                                     parts.Add($"I: {current:F3}A ({dir})");
                                     currentReadings.Add(current);
                                 }
+
                                 if (battery.SocPercent is double soc)
+                                {
                                     parts.Add($"SOC: {soc:F1}%");
+                                }
+
                                 if (battery.HealthPercent is double health)
                                 {
                                     parts.Add($"Hx: {health:F2}%");
                                     hxReadings.Add(health);
                                 }
+
                                 if (battery.CapacityAh is double capacity)
                                 {
                                     parts.Add($"AHR: {capacity:F2}Ah");
@@ -596,13 +636,16 @@ namespace ObdInsight
                                 }
 
                                 AnsiConsole.MarkupLine($"  [green]✓[/] {string.Join(", ", parts)}");
-                                Log.Information("Read {Index}/{Total}: {Status}", i, RequiredReads, string.Join(", ", parts));
+                                Log.Information("Read {Index}/{Total}: {Status}", i, RequiredReads,
+                                    string.Join(", ", parts));
                                 successCount++;
                                 successfulQueries++; // Track for session stats
 
                                 // Small delay between reads
                                 if (i < RequiredReads)
+                                {
                                     await Task.Delay(500, ct);
+                                }
                             }
                             catch (Exception ex)
                             {
@@ -627,7 +670,8 @@ namespace ObdInsight
                             allStable &= vStable;
                             var status = vStable ? "[green]✓ STABLE[/]" : "[red]✗ UNSTABLE[/]";
                             AnsiConsole.MarkupLine($"  Voltage: {vMin:F2}V - {vMax:F2}V (Δ{vDelta:F2}V) {status}");
-                            Log.Information("Voltage stability: Min={Min:F2}V, Max={Max:F2}V, Delta={Delta:F2}V, Stable={Stable}",
+                            Log.Information(
+                                "Voltage stability: Min={Min:F2}V, Max={Max:F2}V, Delta={Delta:F2}V, Stable={Stable}",
                                 vMin, vMax, vDelta, vStable);
                         }
                         else
@@ -645,7 +689,8 @@ namespace ObdInsight
                             allStable &= iStable;
                             var status = iStable ? "[green]✓ STABLE[/]" : "[yellow]⚠ VARIABLE[/]";
                             AnsiConsole.MarkupLine($"  Current: {iMin:F3}A - {iMax:F3}A (Δ{iDelta:F3}A) {status}");
-                            Log.Information("Current stability: Min={Min:F3}A, Max={Max:F3}A, Delta={Delta:F3}A, Stable={Stable}",
+                            Log.Information(
+                                "Current stability: Min={Min:F3}A, Max={Max:F3}A, Delta={Delta:F3}A, Stable={Stable}",
                                 iMin, iMax, iDelta, iStable);
                         }
 
@@ -658,7 +703,8 @@ namespace ObdInsight
                             allStable &= hStable;
                             var status = hStable ? "[green]✓ STABLE[/]" : "[red]✗ UNSTABLE[/]";
                             AnsiConsole.MarkupLine($"  Hx (Health): {hMin:F2}% - {hMax:F2}% (Δ{hDelta:F2}%) {status}");
-                            Log.Information("Hx stability: Min={Min:F2}%, Max={Max:F2}%, Delta={Delta:F2}%, Stable={Stable}",
+                            Log.Information(
+                                "Hx stability: Min={Min:F2}%, Max={Max:F2}%, Delta={Delta:F2}%, Stable={Stable}",
                                 hMin, hMax, hDelta, hStable);
                         }
 
@@ -670,22 +716,27 @@ namespace ObdInsight
                             var aStable = aDelta <= 0.1; // 0.1 Ah tolerance
                             allStable &= aStable;
                             var status = aStable ? "[green]✓ STABLE[/]" : "[red]✗ UNSTABLE[/]";
-                            AnsiConsole.MarkupLine($"  AHR (Capacity): {aMin:F2}Ah - {aMax:F2}Ah (Δ{aDelta:F2}Ah) {status}");
-                            Log.Information("AHR stability: Min={Min:F2}Ah, Max={Max:F2}Ah, Delta={Delta:F2}Ah, Stable={Stable}",
+                            AnsiConsole.MarkupLine(
+                                $"  AHR (Capacity): {aMin:F2}Ah - {aMax:F2}Ah (Δ{aDelta:F2}Ah) {status}");
+                            Log.Information(
+                                "AHR stability: Min={Min:F2}Ah, Max={Max:F2}Ah, Delta={Delta:F2}Ah, Stable={Stable}",
                                 aMin, aMax, aDelta, aStable);
                         }
 
                         AnsiConsole.WriteLine();
                         if (successCount == RequiredReads && allStable)
                         {
-                            AnsiConsole.MarkupLine($"[green]═══ ACCEPTANCE CRITERIA: PASSED ═══[/]");
-                            Log.Information("Acceptance criteria PASSED: {SuccessCount}/{RequiredReads} reads, all stable",
+                            AnsiConsole.MarkupLine("[green]═══ ACCEPTANCE CRITERIA: PASSED ═══[/]");
+                            Log.Information(
+                                "Acceptance criteria PASSED: {SuccessCount}/{RequiredReads} reads, all stable",
                                 successCount, RequiredReads);
                         }
                         else
                         {
-                            AnsiConsole.MarkupLine($"[yellow]═══ ACCEPTANCE CRITERIA: {(successCount < RequiredReads ? "INCOMPLETE" : "UNSTABLE")} ═══[/]");
-                            Log.Warning("Acceptance criteria not fully met: {SuccessCount}/{RequiredReads} reads, stable={AllStable}",
+                            AnsiConsole.MarkupLine(
+                                $"[yellow]═══ ACCEPTANCE CRITERIA: {(successCount < RequiredReads ? "INCOMPLETE" : "UNSTABLE")} ═══[/]");
+                            Log.Warning(
+                                "Acceptance criteria not fully met: {SuccessCount}/{RequiredReads} reads, stable={AllStable}",
                                 successCount, RequiredReads, allStable);
                         }
 
@@ -698,9 +749,10 @@ namespace ObdInsight
                             if (cells != null)
                             {
                                 AnsiConsole.MarkupLine($"[green]✓[/] Cells: {cells.CellCount} cells, " +
-                                    $"Min: {cells.MinVoltageMv}mV, Max: {cells.MaxVoltageMv}mV, Delta: {cells.DeltaVoltageMv}mV");
+                                                       $"Min: {cells.MinVoltageMv}mV, Max: {cells.MaxVoltageMv}mV, Delta: {cells.DeltaVoltageMv}mV");
 
-                                Log.Information("Cell voltages: Count={CellCount}, Min={Min}mV, Max={Max}mV, Avg={Avg}mV, Delta={Delta}mV",
+                                Log.Information(
+                                    "Cell voltages: Count={CellCount}, Min={Min}mV, Max={Max}mV, Avg={Avg}mV, Delta={Delta}mV",
                                     cells.CellCount,
                                     cells.MinVoltageMv,
                                     cells.MaxVoltageMv,
@@ -712,7 +764,8 @@ namespace ObdInsight
                                 // Note: 21 cells is partial - Leaf has 96 cell pairs, may need multiple Group 02 queries
                                 if (cells.CellCount < 96)
                                 {
-                                    AnsiConsole.MarkupLine($"[yellow]⚠[/] Note: Only {cells.CellCount}/96 cells returned (partial response)");
+                                    AnsiConsole.MarkupLine(
+                                        $"[yellow]⚠[/] Note: Only {cells.CellCount}/96 cells returned (partial response)");
                                     Log.Warning("Partial cell data: {CellCount}/96 cells", cells.CellCount);
                                 }
                             }
@@ -735,7 +788,6 @@ namespace ObdInsight
                         Log.Warning("BMS commands not available for vehicle variant: {VariantId}",
                             "AZE0-2-2016-2017");
                     }
-
 
 
                     // ===========================================
@@ -790,7 +842,8 @@ namespace ObdInsight
                     // NOTE: Motor controller frames (0x1DA, 0x55A) only broadcast when accelerator is pressed
                     // or motor is actively running. Skipping this test when vehicle is stationary.
                     AnsiConsole.WriteLine();
-                    AnsiConsole.MarkupLine("[grey]Skipping Motor Controller (requires accelerator/motor running)...[/]");
+                    AnsiConsole.MarkupLine(
+                        "[grey]Skipping Motor Controller (requires accelerator/motor running)...[/]");
                     Log.Information("Motor Controller test skipped - requires vehicle in motion");
 
                     // ===========================================
@@ -823,17 +876,34 @@ namespace ObdInsight
                             else
                             {
                                 if (vcmStatus.ClimateControlActive is bool climateActive)
+                                {
                                     parts.Add($"Climate: {(climateActive ? "ON" : "OFF")}");
+                                }
+
                                 if (vcmStatus.ClimateControlPowerKw is double climatePower)
+                                {
                                     parts.Add($"Climate Power: {climatePower:F2}kW");
+                                }
+
                                 if (vcmStatus.OutsideAmbientTempC is double outsideTemp)
+                                {
                                     parts.Add($"Outside: {outsideTemp:F1}°C");
+                                }
+
                                 if (vcmStatus.EcoIndicator is int eco)
+                                {
                                     parts.Add($"Eco: {eco}/15");
+                                }
+
                                 if (vcmStatus.MotorCurrentAmps is int motorAmps)
+                                {
                                     parts.Add($"Motor: {motorAmps}A");
+                                }
+
                                 if (vcmStatus.ThrottlePositionPercent is double throttle)
+                                {
                                     parts.Add($"Throttle: {throttle:F1}%");
+                                }
 
                                 if (parts.Count > 0)
                                 {
@@ -897,7 +967,7 @@ namespace ObdInsight
                         {
                             var brakeStatus = await brake.GetStatusAsync(ct);
                             // BrakeStatus is a struct, check if it has any meaningful data
-                            AnsiConsole.MarkupLine($"[green]✓[/] Brake: Status retrieved");
+                            AnsiConsole.MarkupLine("[green]✓[/] Brake: Status retrieved");
                             Log.Information("Brake status retrieved: {@BrakeStatus}", brakeStatus);
                             successfulQueries++;
                         }
@@ -924,7 +994,7 @@ namespace ObdInsight
                         try
                         {
                             var hvacStatus = await hvac.GetStatusAsync(ct);
-                            AnsiConsole.MarkupLine($"[green]✓[/] HVAC: Status retrieved");
+                            AnsiConsole.MarkupLine("[green]✓[/] HVAC: Status retrieved");
                             Log.Information("HVAC status retrieved: {@HvacStatus}", hvacStatus);
                             successfulQueries++;
                         }
@@ -952,11 +1022,11 @@ namespace ObdInsight
                         {
                             var bodyStatus = await bodyControl.GetStatusAsync(ct);
                             var parts = new List<string>
-                        {
-                            $"Doors: {(bodyStatus.DoorsLocked ? "Locked" : "Unlocked")}",
-                            $"Headlights: {(bodyStatus.HeadlightsOn ? "ON" : "OFF")}",
-                            $"Hazards: {(bodyStatus.HazardLightsOn ? "ON" : "OFF")}"
-                        };
+                            {
+                                $"Doors: {(bodyStatus.DoorsLocked ? "Locked" : "Unlocked")}",
+                                $"Headlights: {(bodyStatus.HeadlightsOn ? "ON" : "OFF")}",
+                                $"Hazards: {(bodyStatus.HazardLightsOn ? "ON" : "OFF")}"
+                            };
 
                             AnsiConsole.MarkupLine($"[green]✓[/] Body Control: {string.Join(", ", parts)}");
                             Log.Information("Body Control status: {Status}", string.Join(", ", parts));
@@ -985,7 +1055,8 @@ namespace ObdInsight
                         try
                         {
                             var steeringStatus = await steering.GetStatusAsync(ct);
-                            AnsiConsole.MarkupLine($"[green]✓[/] Steering: Angle={steeringStatus.AngleDegrees:F1}°, Torque={steeringStatus.TorqueNm:F1}Nm");
+                            AnsiConsole.MarkupLine(
+                                $"[green]✓[/] Steering: Angle={steeringStatus.AngleDegrees:F1}°, Torque={steeringStatus.TorqueNm:F1}Nm");
                             Log.Information("Steering status: Angle={Angle:F1}°, Torque={Torque:F1}Nm",
                                 steeringStatus.AngleDegrees, steeringStatus.TorqueNm);
                             successfulQueries++;
@@ -1012,7 +1083,7 @@ namespace ObdInsight
                     // ===========================================
                     AnsiConsole.WriteLine();
                     AnsiConsole.MarkupLine("[cyan]Broadcast decode diagnostic (20s, filter rotation)...[/]");
-                    if (commands is ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.LeafAze0CommandSet leafCommands)
+                    if (commands is LeafAze0CommandSet leafCommands)
                     {
                         try
                         {
@@ -1030,7 +1101,8 @@ namespace ObdInsight
                     var totalQueries = successfulQueries + invalidResponseQueries;
                     var successRate = totalQueries > 0 ? (double)successfulQueries / totalQueries * 100 : 0;
 
-                    AnsiConsole.MarkupLine($"[cyan]Queries:[/] {successfulQueries}/{totalQueries} successful ({successRate:F0}%)");
+                    AnsiConsole.MarkupLine(
+                        $"[cyan]Queries:[/] {successfulQueries}/{totalQueries} successful ({successRate:F0}%)");
                     Log.Information("Test complete - MonitorFrames={FrameCount}, QuerySuccess={Success}/{Total}",
                         0, successfulQueries, totalQueries);
                 }
@@ -1061,15 +1133,16 @@ namespace ObdInsight
 
                 // Log session summary
                 var totalQueries = successfulQueries + failedQueries + invalidResponseQueries;
-                LogSessionSummary(selectedDevice, sessionStart, totalUptime, successfulQueries, invalidResponseQueries, failedQueries);
+                LogSessionSummary(selectedDevice, sessionStart, totalUptime, successfulQueries, invalidResponseQueries,
+                    failedQueries);
             }
         }
 
         /// <summary>
-        /// Parse VIN from charger response.
-        /// From 2017 Leaf: 79A10156181314E3442\r79A215A304350334843\r79A2233313034303800
-        /// Decoded: 61 81 31 4E 34 42 5A 30 43 50 33 48 43 33 31 30 34 30 38 00
-        ///        = "1N4BZ0CP3HC310408" (example)
+        ///     Parse VIN from charger response.
+        ///     From 2017 Leaf: 79A10156181314E3442\r79A215A304350334843\r79A2233313034303800
+        ///     Decoded: 61 81 31 4E 34 42 5A 30 43 50 33 48 43 33 31 30 34 30 38 00
+        ///     = "1N4BZ0CP3HC310408" (example)
         /// </summary>
         private static bool TryParseVin(string? response, out string? vin)
         {
@@ -1079,6 +1152,7 @@ namespace ObdInsight
             {
                 return false;
             }
+
             try
             {
                 var bytes = IsoTpParser.ParseIsoTpResponse(response);
@@ -1119,7 +1193,9 @@ namespace ObdInsight
                     foreach (var b in vinBytes)
                     {
                         if (b == 0x00)
+                        {
                             break;
+                        }
 
                         if (b >= (byte)'0' && b <= (byte)'9')
                         {
@@ -1131,7 +1207,9 @@ namespace ObdInsight
                         }
 
                         if (vinLen == vinChars.Length)
+                        {
                             break;
+                        }
                     }
 
                     if (vinLen == vinChars.Length)
@@ -1154,18 +1232,18 @@ namespace ObdInsight
                     var rawVin = new string(allPrintable);
                     // Take first 17 VIN characters
                     if (rawVin.Length > 17)
+                    {
                         rawVin = rawVin[..17];
+                    }
 
                     vin = rawVin;
                     AnsiConsole.MarkupLine($"   [green]VIN: {vin}[/]");
                     DecodeVin(vin);
                     return true;
                 }
-                else
-                {
-                    AnsiConsole.MarkupLine("[yellow]   Could not extract VIN[/]");
-                    return false;
-                }
+
+                AnsiConsole.MarkupLine("[yellow]   Could not extract VIN[/]");
+                return false;
             }
             catch (Exception ex)
             {

@@ -1,7 +1,7 @@
 namespace ObdInsight.Core.Communication.Bluetooth;
 
 /// <summary>
-/// Information about a discovered BLE device.
+///     Information about a discovered BLE device.
 /// </summary>
 /// <param name="Name">Device display name</param>
 /// <param name="Address">Device MAC address or identifier</param>
@@ -17,7 +17,7 @@ public record BleDeviceInfo(
 );
 
 /// <summary>
-/// Filter criteria for BLE device scanning.
+///     Filter criteria for BLE device scanning.
 /// </summary>
 /// <param name="ServiceUuids">Only discover devices advertising these services</param>
 /// <param name="DeviceNames">Only discover devices with names containing these strings</param>
@@ -31,33 +31,33 @@ public record BleScanFilter(
 );
 
 /// <summary>
-/// Event args for device discovery events.
+///     Event args for device discovery events.
 /// </summary>
 public class BleDeviceDiscoveredEventArgs : EventArgs
 {
     /// <summary>
-    /// Creates a new device discovery event
+    ///     Creates a new device discovery event
     /// </summary>
     public BleDeviceDiscoveredEventArgs(BleDeviceInfo device) => Device = device;
 
     /// <summary>
-    /// The discovered device
+    ///     The discovered device
     /// </summary>
     public BleDeviceInfo Device { get; }
 }
 
 /// <summary>
-/// Event args for scan state change events.
+///     Event args for scan state change events.
 /// </summary>
 public class BleScanStateChangedEventArgs : EventArgs
 {
     /// <summary>
-    /// Creates a new scan state change event
+    ///     Creates a new scan state change event
     /// </summary>
     public BleScanStateChangedEventArgs(bool isScanning) => IsScanning = isScanning;
 
     /// <summary>
-    /// Whether scanning is currently active
+    ///     Whether scanning is currently active
     /// </summary>
     public bool IsScanning { get; }
 }

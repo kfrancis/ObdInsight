@@ -1,14 +1,15 @@
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
+using ObdInsight.IntegrationTests;
 using OdbTestApp.Tests.Fixtures;
 using static ObdInsight.IntegrationTests.BmsParsingHelpers;
 
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
 
 /// <summary>
-/// Integration tests for Nissan Leaf BMS Group 01 using a real BLE connection.
-/// These tests require a physical Nissan Leaf OBD adapter to be connected.
+///     Integration tests for Nissan Leaf BMS Group 01 using a real BLE connection.
+///     These tests require a physical Nissan Leaf OBD adapter to be connected.
 /// </summary>
-[ObdInsight.IntegrationTests.RequiresLeafHardware]
+[RequiresLeafHardware]
 [ClassDataSource<BleSessionFixture>(Shared = SharedType.Keyed)]
 public class LeafBmsGroup01IntegrationTests(BleSessionFixture bleFixture)
 {

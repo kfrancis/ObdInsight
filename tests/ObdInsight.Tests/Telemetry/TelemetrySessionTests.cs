@@ -1,15 +1,15 @@
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
-using ObdInsight.Telemetry;
 using ObdInsight.Simulation;
+using ObdInsight.Telemetry;
 
 namespace OdbTestApp.Tests.Telemetry;
 
 /// <summary>
-/// Roadmap B1 acceptance: a three-tier telemetry session over scripted Leaf data
-/// end-to-end — cache-served broadcast signals and UDS signals interleave while the
-/// shared monitor keeps running, and the consumer only ever touches
-/// <see cref="ITelemetrySession"/> (never ElmSession/CanMonitor).
+///     Roadmap B1 acceptance: a three-tier telemetry session over scripted Leaf data
+///     end-to-end — cache-served broadcast signals and UDS signals interleave while the
+///     shared monitor keeps running, and the consumer only ever touches
+///     <see cref="ITelemetrySession" /> (never ElmSession/CanMonitor).
 /// </summary>
 [Timeout(30_000)]
 public class TelemetrySessionTests
@@ -19,7 +19,7 @@ public class TelemetrySessionTests
         HighPeriod = TimeSpan.FromMilliseconds(100),
         MediumPeriod = TimeSpan.FromMilliseconds(250),
         LowPeriod = TimeSpan.FromMilliseconds(500),
-        CacheReadTimeout = TimeSpan.FromMilliseconds(150),
+        CacheReadTimeout = TimeSpan.FromMilliseconds(150)
     };
 
     private static readonly TelemetrySubscription TestSubscription = new(
@@ -31,7 +31,7 @@ public class TelemetrySessionTests
             [TelemetrySignal.CabinTemperature] = CadenceTier.Medium,
             [TelemetrySignal.RemainingRange] = CadenceTier.Medium,
             [TelemetrySignal.CellVoltages] = CadenceTier.Low,
-            [TelemetrySignal.Odometer] = CadenceTier.Low, // no provider — must degrade, not throw
+            [TelemetrySignal.Odometer] = CadenceTier.Low // no provider — must degrade, not throw
         });
 
     [Test]
@@ -70,7 +70,8 @@ public class TelemetrySessionTests
         }
 
         pumpCts.Cancel();
-        try { await pump; } catch (OperationCanceledException) { }
+        try { await pump; }
+        catch (OperationCanceledException) { }
 
         // UDS-sourced (BMS Group 01, golden capture), decimal-normalized:
         await Assert.That(soc!.Value.Scalar!.Value).IsEqualTo(41.921m);
@@ -78,9 +79,9 @@ public class TelemetrySessionTests
         await Assert.That(soc.Tier).IsEqualTo(CadenceTier.High);
 
         // Cache-sourced, same session, monitor never stopped:
-        await Assert.That(speed!.Value.Scalar!.Value).IsEqualTo(25.6m);   // 0x284 bytes 4-5 ×0.01
-        await Assert.That(cabin!.Value.Scalar!.Value).IsEqualTo(-14.0m);  // 0x54F zeros
-        await Assert.That(range!.Value.Scalar!.Value).IsEqualTo(179.2m);  // 0x5A9 capture
+        await Assert.That(speed!.Value.Scalar!.Value).IsEqualTo(25.6m); // 0x284 bytes 4-5 ×0.01
+        await Assert.That(cabin!.Value.Scalar!.Value).IsEqualTo(-14.0m); // 0x54F zeros
+        await Assert.That(range!.Value.Scalar!.Value).IsEqualTo(179.2m); // 0x5A9 capture
         await Assert.That(cabin.Tier).IsEqualTo(CadenceTier.Medium);
 
         // Full cell set normalized mV → V:
@@ -113,7 +114,8 @@ public class TelemetrySessionTests
         var snapshot = await session.GetSnapshotAsync(token);
 
         pumpCts.Cancel();
-        try { await pump; } catch (OperationCanceledException) { }
+        try { await pump; }
+        catch (OperationCanceledException) { }
 
         await Assert.That(snapshot.Vin).IsEqualTo("1N4AZ0CP7HC000001");
         await Assert.That(snapshot.SocPercent!.Value).IsEqualTo(41.921m);
@@ -190,15 +192,16 @@ public class TelemetrySessionTests
         var cells = cellSamples.Current;
 
         pumpCts.Cancel();
-        try { await pump; } catch (OperationCanceledException) { }
+        try { await pump; }
+        catch (OperationCanceledException) { }
 
         // decimal, not TelemetryValue: no Scalar/Vector/Boolean unpacking at the call site.
-        decimal socPercent = soc.Value;
+        var socPercent = soc.Value;
         await Assert.That(socPercent).IsEqualTo(41.921m);
         await Assert.That(soc.Signal).IsEqualTo(TelemetrySignal.StateOfCharge);
         await Assert.That(soc.Tier).IsEqualTo(CadenceTier.High);
 
-        IReadOnlyList<decimal> cellVoltages = cells.Value;
+        var cellVoltages = cells.Value;
         await Assert.That(cellVoltages.Count).IsEqualTo(96);
         await Assert.That(cells.Tier).IsEqualTo(CadenceTier.Low);
 
@@ -283,9 +286,9 @@ public class TelemetrySessionTests
     }
 
     /// <summary>
-    /// Continuously re-enqueues broadcast frames (a rotation window transition's buffer
-    /// clear can eat frames that land during an Enter sequence — same pattern as
-    /// LeafAze0StreamingCommandSetTests).
+    ///     Continuously re-enqueues broadcast frames (a rotation window transition's buffer
+    ///     clear can eat frames that land during an Enter sequence — same pattern as
+    ///     LeafAze0StreamingCommandSetTests).
     /// </summary>
     private static async Task PumpBroadcastFramesAsync(
         ReplayElmTransport transport, LeafAze0CommandSet commands, CancellationToken ct)

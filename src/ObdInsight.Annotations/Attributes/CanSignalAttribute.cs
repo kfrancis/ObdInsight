@@ -8,13 +8,17 @@ namespace ObdInsight.SourceGeneration.Attributes;
 /// </summary>
 /// <remarks>
 ///     Apply this attribute to a property to define how its value is encoded or decoded from a CAN frame,
-///     including the bit position, length, scaling, offset, and optional validation constraints. This attribute is typically
+///     including the bit position, length, scaling, offset, and optional validation constraints. This attribute is
+///     typically
 ///     used in code generation or serialization scenarios to automate CAN signal handling. The attribute is not inherited
 ///     and cannot be applied multiple times to the same property.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Property)]
 public sealed class CanSignalAttribute : Attribute
 {
+    /// <summary>Sentinel for <see cref="MuxValue" /> meaning "present in every frame".</summary>
+    public const int NotMultiplexed = -1;
+
     /// <summary>
     ///     Defines a CAN signal within a frame.
     /// </summary>
@@ -131,7 +135,4 @@ public sealed class CanSignalAttribute : Attribute
     ///     where a default would be indistinguishable from a real reading of zero.
     /// </remarks>
     public int MuxValue { get; set; } = NotMultiplexed;
-
-    /// <summary>Sentinel for <see cref="MuxValue" /> meaning "present in every frame".</summary>
-    public const int NotMultiplexed = -1;
 }

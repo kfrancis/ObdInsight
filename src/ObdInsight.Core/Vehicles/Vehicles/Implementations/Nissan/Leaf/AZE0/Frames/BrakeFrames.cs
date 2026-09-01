@@ -3,7 +3,7 @@ using ObdInsight.SourceGeneration.Attributes;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 
 /// <summary>
-/// Brake control module frame for Nissan Leaf AZE0 platform (0x1CA)
+///     Brake control module frame for Nissan Leaf AZE0 platform (0x1CA)
 /// </summary>
 [CanFrame(0x1CA, Description = "Brake control module pressure and regen braking status (20ms)")]
 public partial class BrakeFrame_1CA_AZE0
@@ -34,7 +34,7 @@ public partial class BrakeFrame_1CA_AZE0
     public partial int RegenBraking { get; init; }
 
     [CanSignal(32, 8,
-            Description = "Unknown byte 4",
+        Description = "Unknown byte 4",
         MinValue = 0, MaxValue = 255)]
     public partial int Unknown4 { get; init; }
 

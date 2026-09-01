@@ -1,13 +1,14 @@
+using System.Diagnostics;
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
 
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf;
 
 /// <summary>
-/// Nissan Leaf wakeup strategy: the Leaf does not respond to standard OBD-II Mode 01
-/// broadcast queries — it uses EV-CAN. Probe the BMS (LBC) directly with a Mode 21 query
-/// on 0x79B/0x7BB; a response both wakes the ECUs and confirms CAN 11-bit 500k (protocol 6).
-/// Extracted from ElmSession so the generic session layer stays vehicle-agnostic.
+///     Nissan Leaf wakeup strategy: the Leaf does not respond to standard OBD-II Mode 01
+///     broadcast queries — it uses EV-CAN. Probe the BMS (LBC) directly with a Mode 21 query
+///     on 0x79B/0x7BB; a response both wakes the ECUs and confirms CAN 11-bit 500k (protocol 6).
+///     Extracted from ElmSession so the generic session layer stays vehicle-agnostic.
 /// </summary>
 public sealed class LeafBmsWakeupStrategy : IEcuWakeupStrategy
 {
@@ -50,6 +51,6 @@ public sealed class LeafBmsWakeupStrategy : IEcuWakeupStrategy
 
     private static void Log(string message)
     {
-        System.Diagnostics.Debug.WriteLine($"[LeafBmsWakeupStrategy] {message}");
+        Debug.WriteLine($"[LeafBmsWakeupStrategy] {message}");
     }
 }

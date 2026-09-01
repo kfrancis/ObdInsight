@@ -4,8 +4,8 @@ using ObdInsight.Simulation;
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
-/// Unit tests for the PRODUCTION ISO-TP parser (ObdInsight.Core.Protocols.IsoTpParser)
-/// using golden Nissan Leaf sample data. No BLE required.
+///     Unit tests for the PRODUCTION ISO-TP parser (ObdInsight.Core.Protocols.IsoTpParser)
+///     using golden Nissan Leaf sample data. No BLE required.
 /// </summary>
 public class LeafIsoTpParsingTests
 {

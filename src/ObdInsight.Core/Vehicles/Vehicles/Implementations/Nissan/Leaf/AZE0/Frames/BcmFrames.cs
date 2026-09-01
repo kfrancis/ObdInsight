@@ -1,10 +1,9 @@
-using ObdInsight.SourceGeneration;
 using ObdInsight.SourceGeneration.Attributes;
 
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 
 /// <summary>
-/// BCM (Body Control Module) main status frame for Nissan Leaf AZE0 platform (0x60D)
+///     BCM (Body Control Module) main status frame for Nissan Leaf AZE0 platform (0x60D)
 /// </summary>
 [CanFrame(0x60D, Description = "Body Control Module status including doors, locks, and lights (20ms)")]
 public partial class BcmFrame_60D_AZE0
@@ -133,7 +132,7 @@ public partial class BcmFrame_60D_AZE0
 }
 
 /// <summary>
-/// BCM headlight and foglight status frame for Nissan Leaf AZE0 platform (0x625)
+///     BCM headlight and foglight status frame for Nissan Leaf AZE0 platform (0x625)
 /// </summary>
 [CanFrame(0x625, Description = "Body Control Module headlight and foglight status (20ms)")]
 public partial class BcmFrame_625_AZE0
@@ -168,6 +167,3 @@ public partial class BcmFrame_625_AZE0
         MinValue = 0, MaxValue = 255)]
     public partial int Unknown5 { get; init; }
 }
-
-
-

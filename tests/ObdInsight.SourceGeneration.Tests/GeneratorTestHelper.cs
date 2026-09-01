@@ -3,13 +3,15 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using ObdInsight.SourceGeneration;
 using ObdInsight.SourceGeneration.Attributes;
+using Assembly = System.Reflection.Assembly;
+
 /// <summary>
-/// Base helper for testing source generators with proper compilation setup
+///     Base helper for testing source generators with proper compilation setup
 /// </summary>
 public static class GeneratorTestHelper
 {
     /// <summary>
-    /// Creates a compilation with the necessary references for testing CAN frame generation
+    ///     Creates a compilation with the necessary references for testing CAN frame generation
     /// </summary>
     public static CSharpCompilation CreateCompilation(string source)
     {
@@ -18,16 +20,16 @@ public static class GeneratorTestHelper
         var references = new List<MetadataReference>
         {
             // Core BCL references
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),                    // System.Private.CoreLib
-            MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),                   // System.Console
-            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),                // System.Linq
-            MetadataReference.CreateFromFile(typeof(Attribute).Assembly.Location),                 // System.Runtime
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location), // System.Private.CoreLib
+            MetadataReference.CreateFromFile(typeof(Console).Assembly.Location), // System.Console
+            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location), // System.Linq
+            MetadataReference.CreateFromFile(typeof(Attribute).Assembly.Location) // System.Runtime
         };
 
         // Add System.Runtime if it's not already included
         try
         {
-            var systemRuntimeAssembly = System.Reflection.Assembly.Load(new AssemblyName("System.Runtime"));
+            var systemRuntimeAssembly = Assembly.Load(new AssemblyName("System.Runtime"));
             references.Add(MetadataReference.CreateFromFile(systemRuntimeAssembly.Location));
         }
         catch
@@ -38,7 +40,7 @@ public static class GeneratorTestHelper
         // Add netstandard if available (for .NET Framework compatibility)
         try
         {
-            var netstandardAssembly = System.Reflection.Assembly.Load(new AssemblyName("netstandard"));
+            var netstandardAssembly = Assembly.Load(new AssemblyName("netstandard"));
             references.Add(MetadataReference.CreateFromFile(netstandardAssembly.Location));
         }
         catch
@@ -53,7 +55,7 @@ public static class GeneratorTestHelper
         // Add System.Memory if available (for ReadOnlySpan<T>)
         try
         {
-            var memoryAssembly = System.Reflection.Assembly.Load(new AssemblyName("System.Memory"));
+            var memoryAssembly = Assembly.Load(new AssemblyName("System.Memory"));
             references.Add(MetadataReference.CreateFromFile(memoryAssembly.Location));
         }
         catch
@@ -62,16 +64,16 @@ public static class GeneratorTestHelper
         }
 
         return CSharpCompilation.Create(
-            assemblyName: "TestAssembly",
-            syntaxTrees: new[] { syntaxTree },
-            references: references,
-            options: new CSharpCompilationOptions(
+            "TestAssembly",
+            new[] { syntaxTree },
+            references,
+            new CSharpCompilationOptions(
                 OutputKind.DynamicallyLinkedLibrary,
                 nullableContextOptions: NullableContextOptions.Enable));
     }
 
     /// <summary>
-    /// Runs the generator and returns the generated sources
+    ///     Runs the generator and returns the generated sources
     /// </summary>
     public static GeneratorDriverRunResult RunGenerator(string source)
     {
@@ -88,9 +90,10 @@ public static class GeneratorTestHelper
     }
 
     /// <summary>
-    /// Runs a specific generator type and returns the generated sources
+    ///     Runs a specific generator type and returns the generated sources
     /// </summary>
-    public static GeneratorDriverRunResult RunGenerator<TGenerator>(string source) where TGenerator : IIncrementalGenerator, new()
+    public static GeneratorDriverRunResult RunGenerator<TGenerator>(string source)
+        where TGenerator : IIncrementalGenerator, new()
     {
         var compilation = CreateCompilation(source);
         var generator = new TGenerator();
@@ -105,7 +108,7 @@ public static class GeneratorTestHelper
     }
 
     /// <summary>
-    /// Gets the single generated source from the result
+    ///     Gets the single generated source from the result
     /// </summary>
     public static string GetGeneratedSource(GeneratorDriverRunResult result)
     {
@@ -119,7 +122,7 @@ public static class GeneratorTestHelper
     }
 
     /// <summary>
-    /// Gets all generated sources indexed by hint name
+    ///     Gets all generated sources indexed by hint name
     /// </summary>
     public static Dictionary<string, string> GetAllGeneratedSources(GeneratorDriverRunResult result)
     {

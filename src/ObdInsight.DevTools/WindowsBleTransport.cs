@@ -1,75 +1,83 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
+using Spectre.Console;
 
 namespace ObdInsight.DevTools;
 
 /// <summary>
-/// Windows-specific BLE transport using WinRT APIs.
-/// Works on Windows 10/11 desktop with Bluetooth LE support.
-///
-/// This implementation follows Windows BLE best practices:
-/// - Event-driven readiness instead of fixed delays
-/// - Targeted UUID enumeration (Cached then Uncached)
-/// - WriteValueWithResultAsync for detailed error reporting
-/// - Serialized writes with configurable pacing
-/// - Proper CCCD notification handling
-/// - ArrayPool for reduced allocations in notification path
+///     Windows-specific BLE transport using WinRT APIs.
+///     Works on Windows 10/11 desktop with Bluetooth LE support.
+///     This implementation follows Windows BLE best practices:
+///     - Event-driven readiness instead of fixed delays
+///     - Targeted UUID enumeration (Cached then Uncached)
+///     - WriteValueWithResultAsync for detailed error reporting
+///     - Serialized writes with configurable pacing
+///     - Proper CCCD notification handling
+///     - ArrayPool for reduced allocations in notification path
 /// </summary>
 public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
 {
     private readonly ArrayPool<byte> _arrayPool = ArrayPool<byte>.Shared;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
+    private int _bytesReceived;
     private BluetoothLEDevice? _device;
     private TaskCompletionSource<bool>? _gattReadyTcs;
     private GattSession? _gattSession;
     private volatile bool _isConnected;
     private int _maxPduSize;
+
+    // Diagnostic counters
+    private int _notificationsReceived;
     private GattCharacteristic? _notifyCharacteristic;
     private GattDeviceService? _service;
     private volatile bool _userDisconnecting;
-    private GattCharacteristic? _writeCharacteristic;
-    
-    // Diagnostic counters
-    private int _notificationsReceived;
-    private int _bytesReceived;
     private int _writeAttempts;
+    private GattCharacteristic? _writeCharacteristic;
     private int _writeSuccesses;
-    
-    /// <summary>
-    /// Enable verbose debug logging to console (useful for troubleshooting connectivity issues).
-    /// </summary>
-    public bool EnableDebugLogging { get; set; }
-
-    /// <summary>
-    /// Event raised when data is sent to the device.
-    /// </summary>
-    public event EventHandler<string>? DataSent;
-
-    /// <summary>
-    /// Event raised when data is received from the device.
-    /// </summary>
-    public event EventHandler<string>? DataReceived;
 
     public WindowsBleTransport(BleDeviceProfile profile) : base(profile)
     {
     }
 
     /// <summary>
-    /// Delay between consecutive writes in milliseconds. Some ELM327 clones need pacing.
+    ///     Enable verbose debug logging to console (useful for troubleshooting connectivity issues).
+    /// </summary>
+    public bool EnableDebugLogging { get; set; }
+
+    /// <summary>
+    ///     Delay between consecutive writes in milliseconds. Some ELM327 clones need pacing.
     /// </summary>
     public int InterWriteDelayMs { get; set; } = 20;
 
     public override bool IsConnected => _isConnected && _device != null && _writeCharacteristic != null;
 
+    public new async ValueTask DisposeAsync()
+    {
+        await DisconnectAsync();
+        _writeGate.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    ///     Event raised when data is sent to the device.
+    /// </summary>
+    public event EventHandler<string>? DataSent;
+
+    /// <summary>
+    ///     Event raised when data is received from the device.
+    /// </summary>
+    public event EventHandler<string>? DataReceived;
+
     public override async Task<bool> ConnectAsync(string deviceAddress, CancellationToken cancellationToken = default)
     {
         const int maxRetries = 3;
         Exception? lastException = null;
-        
-        for (int attempt = 1; attempt <= maxRetries; attempt++)
+
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
             try
             {
@@ -79,7 +87,7 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                 _bytesReceived = 0;
                 _writeAttempts = 0;
                 _writeSuccesses = 0;
-                
+
                 SetConnectionState(BleConnectionState.Connecting);
                 DeviceAddress = deviceAddress;
 
@@ -92,7 +100,7 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                 {
                     Log("Failed to get BluetoothLEDevice");
                     lastException = new IOException("Failed to get BluetoothLEDevice from address");
-                    
+
                     if (attempt < maxRetries)
                     {
                         var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1)); // Exponential backoff
@@ -100,7 +108,7 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                         await Task.Delay(delay, cancellationToken);
                         continue;
                     }
-                    
+
                     SetConnectionState(BleConnectionState.Disconnected);
                     return false;
                 }
@@ -113,7 +121,8 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
 
                 try
                 {
-                    _gattSession = await GattSession.FromDeviceIdAsync(_device.BluetoothDeviceId).AsTask(cancellationToken);
+                    _gattSession = await GattSession.FromDeviceIdAsync(_device.BluetoothDeviceId)
+                        .AsTask(cancellationToken);
                     if (_gattSession != null)
                     {
                         _gattSession.MaintainConnection = true;
@@ -135,7 +144,7 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                     Log($"Service {Profile.ServiceUuid} not found");
                     lastException = new IOException($"Service {Profile.ServiceUuid} not found");
                     await DisconnectAsync();
-                    
+
                     if (attempt < maxRetries)
                     {
                         var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
@@ -143,20 +152,22 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                         await Task.Delay(delay, cancellationToken);
                         continue;
                     }
-                    
+
                     return false;
                 }
 
                 Log($"Found target service: {_service.Uuid}");
 
                 // Get characteristics using targeted enumeration
-                _writeCharacteristic = await GetCharacteristicForUuidAsync(_service, Profile.WriteCharacteristicUuid, cancellationToken);
+                _writeCharacteristic =
+                    await GetCharacteristicForUuidAsync(_service, Profile.WriteCharacteristicUuid, cancellationToken);
                 if (_writeCharacteristic == null)
                 {
                     Log($"Write characteristic {Profile.WriteCharacteristicUuid} not found");
-                    lastException = new IOException($"Write characteristic {Profile.WriteCharacteristicUuid} not found");
+                    lastException =
+                        new IOException($"Write characteristic {Profile.WriteCharacteristicUuid} not found");
                     await DisconnectAsync();
-                    
+
                     if (attempt < maxRetries)
                     {
                         var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
@@ -164,16 +175,19 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                         await Task.Delay(delay, cancellationToken);
                         continue;
                     }
-                    
+
                     return false;
                 }
 
-                Log($"Write characteristic found: {_writeCharacteristic.Uuid}, Props: {_writeCharacteristic.CharacteristicProperties}");
+                Log(
+                    $"Write characteristic found: {_writeCharacteristic.Uuid}, Props: {_writeCharacteristic.CharacteristicProperties}");
 
-                _notifyCharacteristic = await GetCharacteristicForUuidAsync(_service, Profile.NotifyCharacteristicUuid, cancellationToken);
+                _notifyCharacteristic =
+                    await GetCharacteristicForUuidAsync(_service, Profile.NotifyCharacteristicUuid, cancellationToken);
                 if (_notifyCharacteristic != null)
                 {
-                    Log($"Notify characteristic found: {_notifyCharacteristic.Uuid}, Props: {_notifyCharacteristic.CharacteristicProperties}");
+                    Log(
+                        $"Notify characteristic found: {_notifyCharacteristic.Uuid}, Props: {_notifyCharacteristic.CharacteristicProperties}");
 
                     // Adapters sharing a service UUID do not always agree on which characteristic
                     // plays which role, and a profile table cannot know. Trust the properties the
@@ -181,14 +195,19 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                     // swap them rather than failing. Hardware-confirmed on a Veepeak BLE where
                     // FFF1 advertises Notify and FFF2 advertises Write/WriteWithoutResponse -
                     // the reverse of what the profile declares.
-                    if (!Supports(_notifyCharacteristic, GattCharacteristicProperties.Notify | GattCharacteristicProperties.Indicate)
-                        && Supports(_writeCharacteristic, GattCharacteristicProperties.Notify | GattCharacteristicProperties.Indicate)
-                        && Supports(_notifyCharacteristic, GattCharacteristicProperties.Write | GattCharacteristicProperties.WriteWithoutResponse))
+                    if (!Supports(_notifyCharacteristic,
+                            GattCharacteristicProperties.Notify | GattCharacteristicProperties.Indicate)
+                        && Supports(_writeCharacteristic,
+                            GattCharacteristicProperties.Notify | GattCharacteristicProperties.Indicate)
+                        && Supports(_notifyCharacteristic,
+                            GattCharacteristicProperties.Write | GattCharacteristicProperties.WriteWithoutResponse))
                     {
                         Log("Profile roles are transposed for this device - swapping write/notify characteristics");
                         (_writeCharacteristic, _notifyCharacteristic) = (_notifyCharacteristic, _writeCharacteristic);
-                        Log($"Write is now {_writeCharacteristic.Uuid} ({_writeCharacteristic.CharacteristicProperties})");
-                        Log($"Notify is now {_notifyCharacteristic.Uuid} ({_notifyCharacteristic.CharacteristicProperties})");
+                        Log(
+                            $"Write is now {_writeCharacteristic.Uuid} ({_writeCharacteristic.CharacteristicProperties})");
+                        Log(
+                            $"Notify is now {_notifyCharacteristic.Uuid} ({_notifyCharacteristic.CharacteristicProperties})");
                     }
 
                     var notifyOk = await EnableNotificationsAsync(_notifyCharacteristic, cancellationToken);
@@ -197,7 +216,7 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                         Log("Failed to enable required notifications - aborting connect");
                         lastException = new IOException("Failed to enable required notifications");
                         await DisconnectAsync();
-                        
+
                         if (attempt < maxRetries)
                         {
                             var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
@@ -205,16 +224,18 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                             await Task.Delay(delay, cancellationToken);
                             continue;
                         }
-                        
+
                         return false;
                     }
                 }
                 else if (Profile.NotificationsRequired)
                 {
                     Log($"Notify characteristic {Profile.NotifyCharacteristicUuid} not found but required");
-                    lastException = new IOException($"Notify characteristic {Profile.NotifyCharacteristicUuid} not found but required");
+                    lastException =
+                        new IOException(
+                            $"Notify characteristic {Profile.NotifyCharacteristicUuid} not found but required");
                     await DisconnectAsync();
-                    
+
                     if (attempt < maxRetries)
                     {
                         var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
@@ -222,7 +243,7 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                         await Task.Delay(delay, cancellationToken);
                         continue;
                     }
-                    
+
                     return false;
                 }
 
@@ -246,11 +267,11 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                 SetConnectionState(BleConnectionState.Connected);
 
                 Log("Connection complete, IsConnected=true");
-                
+
                 // Do a test write to wake up the adapter
                 Log("Sending wake-up sequence...");
                 await TestCommunicationAsync(cancellationToken);
-                
+
                 Log($"Connection successful after {attempt} attempt(s)!");
                 return true;
             }
@@ -258,9 +279,9 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
             {
                 lastException = ex;
                 Log($"Connection attempt {attempt}/{maxRetries} failed: {ex.GetType().Name}: {ex.Message}");
-                
+
                 await DisconnectAsync();
-                
+
                 if (attempt < maxRetries)
                 {
                     var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
@@ -269,29 +290,29 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                 }
             }
         }
-        
+
         Log($"Connection failed after {maxRetries} attempts. Last error: {lastException?.Message}");
         SetConnectionState(BleConnectionState.Disconnected);
         return false;
     }
 
     /// <summary>
-    /// Test basic communication by sending a carriage return and waiting for any response.
+    ///     Test basic communication by sending a carriage return and waiting for any response.
     /// </summary>
     private async Task TestCommunicationAsync(CancellationToken ct)
     {
         try
         {
             // Send a few carriage returns to clear any pending state
-            for (int i = 0; i < 3; i++)
+            for (var i = 0; i < 3; i++)
             {
                 await WriteCharacteristicDirectAsync(new byte[] { 0x0D }, ct); // CR
                 await Task.Delay(100, ct);
             }
-            
+
             // Wait a bit and check if we received anything
             await Task.Delay(500, ct);
-            
+
             Log($"After wake-up: notifications={_notificationsReceived}, bytes={_bytesReceived}");
         }
         catch (Exception ex)
@@ -301,20 +322,23 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
     }
 
     /// <summary>
-    /// Direct write without the semaphore (for internal use during connect).
+    ///     Direct write without the semaphore (for internal use during connect).
     /// </summary>
     private async Task WriteCharacteristicDirectAsync(byte[] data, CancellationToken ct)
     {
-        if (_writeCharacteristic == null) return;
-        
+        if (_writeCharacteristic == null)
+        {
+            return;
+        }
+
         _writeAttempts++;
         var buffer = data.AsBuffer();
         var writeType = Profile.WriteWithResponse
             ? GattWriteOption.WriteWithResponse
             : GattWriteOption.WriteWithoutResponse;
-            
+
         var result = await _writeCharacteristic.WriteValueWithResultAsync(buffer, writeType).AsTask(ct);
-        
+
         if (result.Status == GattCommunicationStatus.Success)
         {
             _writeSuccesses++;
@@ -330,7 +354,8 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
     {
         _userDisconnecting = true;
         SetConnectionState(BleConnectionState.Disconnecting);
-        Log($"DisconnectAsync called. Stats: notifications={_notificationsReceived}, bytes={_bytesReceived}, writes={_writeSuccesses}/{_writeAttempts}");
+        Log(
+            $"DisconnectAsync called. Stats: notifications={_notificationsReceived}, bytes={_bytesReceived}, writes={_writeSuccesses}/{_writeAttempts}");
 
         try
         {
@@ -345,7 +370,10 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                     await _notifyCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(
                         GattClientCharacteristicConfigurationDescriptorValue.None);
                 }
-                catch { /* Ignore errors during disconnect */ }
+                catch
+                {
+                    /* Ignore errors during disconnect */
+                }
             }
 
             _service?.Dispose();
@@ -386,7 +414,9 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
         try
         {
             if (_notifyCharacteristic != null)
+            {
                 _notifyCharacteristic.ValueChanged -= OnCharacteristicValueChanged;
+            }
 
             _service?.Dispose();
 
@@ -404,7 +434,10 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                 _device.Dispose();
             }
         }
-        catch { /* Best effort */ }
+        catch
+        {
+            /* Best effort */
+        }
         finally
         {
             _device = null;
@@ -419,34 +452,30 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
         base.Dispose();
     }
 
-    public new async ValueTask DisposeAsync()
-    {
-        await DisconnectAsync();
-        _writeGate.Dispose();
-        GC.SuppressFinalize(this);
-    }
-
     /// <summary>
-    /// Drains any pending data from the receive buffer.
+    ///     Drains any pending data from the receive buffer.
     /// </summary>
     public void DrainBuffer()
     {
         ClearBuffer();
         Log("Buffer drained");
     }
-    
+
     /// <summary>
-    /// Gets diagnostic statistics about the connection.
+    ///     Gets diagnostic statistics about the connection.
     /// </summary>
     public string GetDiagnostics()
     {
-        return $"Notifications: {_notificationsReceived}, Bytes: {_bytesReceived}, Writes: {_writeSuccesses}/{_writeAttempts}";
+        return
+            $"Notifications: {_notificationsReceived}, Bytes: {_bytesReceived}, Writes: {_writeSuccesses}/{_writeAttempts}";
     }
 
     protected override async Task WriteCharacteristicAsync(byte[] data, CancellationToken cancellationToken)
     {
         if (_writeCharacteristic == null)
+        {
             throw new InvalidOperationException("Write characteristic not available");
+        }
 
         if (_device?.ConnectionStatus != BluetoothConnectionStatus.Connected)
         {
@@ -461,13 +490,13 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
         try
         {
             _writeAttempts++;
-            
+
             var writeType = Profile.WriteWithResponse
                 ? GattWriteOption.WriteWithResponse
                 : GattWriteOption.WriteWithoutResponse;
 
             var buffer = data.AsBuffer();
-            
+
             // Log what we're sending
             var dataStr = Encoding.ASCII.GetString(data).Replace("\r", "\\r").Replace("\n", "\\n");
             Log($"Writing {data.Length} bytes: '{dataStr}' (hex: {BitConverter.ToString(data)})");
@@ -490,10 +519,13 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                     {
                         _writeSuccesses++;
                         Log($"Write success (attempt {attempt + 1})");
-                        
+
                         // Optional write pacing for slow adapters
                         if (InterWriteDelayMs > 0)
+                        {
                             await Task.Delay(InterWriteDelayMs, cancellationToken);
+                        }
+
                         return;
                     }
 
@@ -544,7 +576,7 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
 
         if (result.Status == GattCommunicationStatus.Success && result.Characteristics.Count > 0)
         {
-            Log($"Found characteristic via Cached mode");
+            Log("Found characteristic via Cached mode");
             return result.Characteristics[0];
         }
 
@@ -560,7 +592,8 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                 return result.Characteristics[0];
             }
 
-            Log($"Characteristic fetch attempt {attempt + 1}: Status={result.Status}, Count={result.Characteristics.Count}");
+            Log(
+                $"Characteristic fetch attempt {attempt + 1}: Status={result.Status}, Count={result.Characteristics.Count}");
             await Task.Delay(300, ct);
         }
 
@@ -569,7 +602,10 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
 
     private async Task<GattDeviceService?> GetServiceForUuidAsync(Guid serviceUuid, CancellationToken ct)
     {
-        if (_device == null) return null;
+        if (_device == null)
+        {
+            return null;
+        }
 
         // Try Cached first (more reliable immediately after connect on Windows)
         Log($"Getting service {serviceUuid} (Cached)...");
@@ -577,7 +613,7 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
 
         if (result.Status == GattCommunicationStatus.Success && result.Services.Count > 0)
         {
-            Log($"Found service via Cached mode");
+            Log("Found service via Cached mode");
             return result.Services[0];
         }
 
@@ -641,24 +677,27 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
             try
             {
                 // Use WriteValueWithResultAsync for CCCD to get detailed errors
-                var result = await characteristic.WriteClientCharacteristicConfigurationDescriptorWithResultAsync(cccdValue)
+                var result = await characteristic
+                    .WriteClientCharacteristicConfigurationDescriptorWithResultAsync(cccdValue)
                     .AsTask(ct);
 
                 if (result.Status == GattCommunicationStatus.Success)
                 {
                     Log("CCCD write SUCCESS - notifications should now be enabled");
-                    
+
                     // Verify we can read the CCCD back
                     try
                     {
-                        var readResult = await characteristic.ReadClientCharacteristicConfigurationDescriptorAsync().AsTask(ct);
-                        Log($"CCCD read back: Status={readResult.Status}, Value={readResult.ClientCharacteristicConfigurationDescriptor}");
+                        var readResult = await characteristic.ReadClientCharacteristicConfigurationDescriptorAsync()
+                            .AsTask(ct);
+                        Log(
+                            $"CCCD read back: Status={readResult.Status}, Value={readResult.ClientCharacteristicConfigurationDescriptor}");
                     }
                     catch (Exception ex)
                     {
                         Log($"CCCD read-back failed: {ex.Message}");
                     }
-                    
+
                     return true;
                 }
 
@@ -668,7 +707,7 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                 // ProtocolError can indicate auth/encryption issues
                 if (result.ProtocolError != null)
                 {
-                    Log($"Protocol error may indicate pairing/authentication required");
+                    Log("Protocol error may indicate pairing/authentication required");
                 }
 
                 await Task.Delay(500, ct);
@@ -690,7 +729,7 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
         _notificationsReceived++;
         var length = (int)args.CharacteristicValue.Length;
         _bytesReceived += length;
-        
+
         // Use ArrayPool to reduce allocation churn for high-frequency notifications
         var rentedArray = _arrayPool.Rent(length);
 
@@ -777,8 +816,8 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
 
     private void Log(string message)
     {
-        System.Diagnostics.Debug.WriteLine($"[BLE] {message}");
-        
+        Debug.WriteLine($"[BLE] {message}");
+
         if (EnableDebugLogging)
         {
             // Escape markup characters for Spectre.Console
@@ -787,7 +826,7 @@ public sealed class WindowsBleTransport : BleTransportBase, IAsyncDisposable
                 .Replace("]", "]]")
                 .Replace("{", "{{")
                 .Replace("}", "}}");
-            Spectre.Console.AnsiConsole.MarkupLine($"[grey][[BLE]] {escaped}[/]");
+            AnsiConsole.MarkupLine($"[grey][[BLE]] {escaped}[/]");
         }
     }
 

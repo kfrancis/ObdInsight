@@ -4,7 +4,7 @@ using ObdInsight.Core.Protocols;
 
 namespace ObdInsight.Core.Communication.Elm327;
 
-/// <summary>Per-request retry behavior for <see cref="RetryingElmSession"/>.</summary>
+/// <summary>Per-request retry behavior for <see cref="RetryingElmSession" />.</summary>
 public sealed record QueryRetryOptions
 {
     /// <summary>Total attempts per query, including the first (default 3).</summary>
@@ -15,19 +15,19 @@ public sealed record QueryRetryOptions
 }
 
 /// <summary>
-/// <see cref="IElmSession"/> decorator adding per-request retry to <c>QueryAsync</c>
-/// (roadmap B10): each attempt already includes the inner session's
-/// recover-then-retry-once ladder, so 3 attempts = up to 3 recovery cycles. Only
-/// <see cref="IOException"/> is retried — cancellation and protocol-level errors
-/// propagate untouched. Compose <em>inside</em> the monitor-suspension decorator so a
-/// suspension spans all attempts (the Leaf command set does this when handed a
-/// retrying session).
+///     <see cref="IElmSession" /> decorator adding per-request retry to <c>QueryAsync</c>
+///     (roadmap B10): each attempt already includes the inner session's
+///     recover-then-retry-once ladder, so 3 attempts = up to 3 recovery cycles. Only
+///     <see cref="IOException" /> is retried — cancellation and protocol-level errors
+///     propagate untouched. Compose <em>inside</em> the monitor-suspension decorator so a
+///     suspension spans all attempts (the Leaf command set does this when handed a
+///     retrying session).
 /// </summary>
 public sealed class RetryingElmSession : IElmSession
 {
     private readonly IElmSession _inner;
-    private readonly QueryRetryOptions _options;
     private readonly ILogger<RetryingElmSession> _logger;
+    private readonly QueryRetryOptions _options;
 
     public RetryingElmSession(
         IElmSession inner,
@@ -97,7 +97,7 @@ public sealed class RetryingElmSession : IElmSession
     private async ValueTask<string[]> RetryAsync(
         Func<ValueTask<string[]>> query, string command, CancellationToken ct)
     {
-        for (var attempt = 1; ; attempt++)
+        for (var attempt = 1;; attempt++)
         {
             try
             {

@@ -3,8 +3,8 @@ using ObdInsight.Core.Protocols;
 namespace OdbTestApp.Tests.Protocols;
 
 /// <summary>
-/// ATMA monitor-mode line parsing: 11-bit/29-bit CAN IDs, spaced ("AT S1") and contiguous
-/// ("AT S0") byte formats. Pure parser — no transport/session involved.
+///     ATMA monitor-mode line parsing: 11-bit/29-bit CAN IDs, spaced ("AT S1") and contiguous
+///     ("AT S0") byte formats. Pure parser — no transport/session involved.
 /// </summary>
 [Timeout(30_000)]
 public class RawCanFrameParserTests
@@ -16,7 +16,8 @@ public class RawCanFrameParserTests
 
         await Assert.That(ok).IsTrue();
         await Assert.That(frame.CanId).IsEqualTo(0x1DB);
-        await Assert.That(frame.Data.ToArray()).IsEquivalentTo(new byte[] { 0x10, 0x14, 0x61, 0x01, 0x00, 0x00, 0x00, 0x08 });
+        await Assert.That(frame.Data.ToArray())
+            .IsEquivalentTo(new byte[] { 0x10, 0x14, 0x61, 0x01, 0x00, 0x00, 0x00, 0x08 });
     }
 
     [Test]
@@ -83,7 +84,7 @@ public class RawCanFrameParserTests
             "1DB 01 ZZ", // non-hex data byte
             "1DB 01 02 03 04 05 06 07 08 09", // 9 data bytes - exceeds max
             "12 01 02", // wrong ID width (not 3 or 8)
-            "1DB0", // contiguous, even length but too short for an 8-digit (29-bit) ID
+            "1DB0" // contiguous, even length but too short for an 8-digit (29-bit) ID
         ];
 
         foreach (var line in invalidLines)

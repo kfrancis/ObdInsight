@@ -1,6 +1,5 @@
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
-using ObdInsight.Core.Vehicles;
 
 namespace ObdInsight.Core.Vehicles.Implementations
 {
@@ -40,43 +39,37 @@ namespace ObdInsight.Core.Vehicles.Implementations
         private const string Gen6Key = "CRV-Gen6-2023+";
 
         private static readonly VehicleVariant s_gen1 = new(
-        new(Gen1Key),
-        "1st Gen (1997–2001)",
-        1997, 2001,
-        "Gen1",
-        new Dictionary<string, object?>
-        {
-            [VariantAttr.Engine] = "2.0L I4",
-            [VariantAttr.DisplacementL] = 2.0,
-            [VariantAttr.Induction] = "NA"
-        });
+            new VehicleVariantId(Gen1Key),
+            "1st Gen (1997–2001)",
+            1997, 2001,
+            "Gen1",
+            new Dictionary<string, object?>
+            {
+                [VariantAttr.Engine] = "2.0L I4", [VariantAttr.DisplacementL] = 2.0, [VariantAttr.Induction] = "NA"
+            });
 
         private static readonly VehicleVariant s_gen2 = new(
-            new(Gen2Key),
+            new VehicleVariantId(Gen2Key),
             "2nd Gen (2002–2006)",
             2002, 2006,
             "Gen2",
             new Dictionary<string, object?>
             {
-                [VariantAttr.Engine] = "2.4L I4",
-                [VariantAttr.DisplacementL] = 2.4,
-                [VariantAttr.Induction] = "NA"
+                [VariantAttr.Engine] = "2.4L I4", [VariantAttr.DisplacementL] = 2.4, [VariantAttr.Induction] = "NA"
             });
 
         private static readonly VehicleVariant s_gen3 = new(
-            new(Gen3Key),
+            new VehicleVariantId(Gen3Key),
             "3rd Gen (2007–2011)",
             2007, 2011,
             "Gen3",
             new Dictionary<string, object?>
             {
-                [VariantAttr.Engine] = "2.4L I4",
-                [VariantAttr.DisplacementL] = 2.4,
-                [VariantAttr.Induction] = "NA"
+                [VariantAttr.Engine] = "2.4L I4", [VariantAttr.DisplacementL] = 2.4, [VariantAttr.Induction] = "NA"
             });
 
         private static readonly VehicleVariant s_gen4 = new(
-            new(Gen4Key),
+            new VehicleVariantId(Gen4Key),
             "4th Gen (2012–2016)",
             2012, 2016,
             "Gen4",
@@ -89,7 +82,7 @@ namespace ObdInsight.Core.Vehicles.Implementations
             });
 
         private static readonly VehicleVariant s_gen5 = new(
-            new(Gen5Key),
+            new VehicleVariantId(Gen5Key),
             "5th Gen (2017–2022)",
             2017, 2022,
             "Gen5",
@@ -98,18 +91,16 @@ namespace ObdInsight.Core.Vehicles.Implementations
                 [VariantAttr.Engine] = "1.5L Turbo",
                 [VariantAttr.DisplacementL] = 1.5,
                 [VariantAttr.Induction] = "Turbo",
-                [VariantAttr.Hybrid] = true // if you want this to represent the lineup; or split Hybrid as a separate variant
+                [VariantAttr.Hybrid] =
+                    true // if you want this to represent the lineup; or split Hybrid as a separate variant
             });
 
         private static readonly VehicleVariant s_gen6 = new(
-            new(Gen6Key),
+            new VehicleVariantId(Gen6Key),
             "6th Gen (2023–present)",
             2023, null,
             "Gen6",
-            new Dictionary<string, object?>
-            {
-                [VariantAttr.Hybrid] = true
-            });
+            new Dictionary<string, object?> { [VariantAttr.Hybrid] = true });
 
         public override string Make => "Honda";
 
@@ -130,7 +121,7 @@ namespace ObdInsight.Core.Vehicles.Implementations
                 _ => throw new NotSupportedException($"Unknown/unsupported CR-V variant: {variantId.Value}")
             };
 
-        /// <summary>Keep in sync with <see cref="GetCommands"/> (only Gen5 is wired).</summary>
+        /// <summary>Keep in sync with <see cref="GetCommands" /> (only Gen5 is wired).</summary>
         public override bool SupportsVariant(VehicleVariantId variantId) =>
             variantId.Value == Gen5Key;
     }
@@ -145,7 +136,7 @@ namespace ObdInsight.Core.Vehicles.Implementations
 
     internal class HondaCrvGen5Hvac : IHvac
     {
-        private EcuContext _context;
+        private readonly EcuContext _context;
         private IElmSession _session;
 
         public HondaCrvGen5Hvac(IElmSession session, EcuContext context)
@@ -155,8 +146,8 @@ namespace ObdInsight.Core.Vehicles.Implementations
         }
 
         /// <summary>
-        /// No broadcast frame source is wired for this stub, so the stream completes
-        /// immediately rather than hanging a consumer that awaits a first value.
+        ///     No broadcast frame source is wired for this stub, so the stream completes
+        ///     immediately rather than hanging a consumer that awaits a first value.
         /// </summary>
         public IAsyncEnumerable<HvacStatus> StreamStatusAsync(
             TimeSpan minInterval = default,

@@ -7,11 +7,12 @@ public static class DeviceRenderer
 {
     public static void RenderConnectionInfo(BleDeviceInfo device, DateTime start, TimeSpan timeout)
     {
-        var panel = new Panel($"[grey]Device:[/] [cyan]{device.Name}[/] ([grey]{device.Address}[/])\n[grey]Start:[/] {start:HH:mm:ss} UTC\n[grey]Timeout:[/] {timeout.TotalSeconds:F0}s")
-        {
-            Header = new PanelHeader("[green]Connection Info[/]"),
-            Border = BoxBorder.Rounded
-        };
+        var panel =
+            new Panel(
+                $"[grey]Device:[/] [cyan]{device.Name}[/] ([grey]{device.Address}[/])\n[grey]Start:[/] {start:HH:mm:ss} UTC\n[grey]Timeout:[/] {timeout.TotalSeconds:F0}s")
+            {
+                Header = new PanelHeader("[green]Connection Info[/]"), Border = BoxBorder.Rounded
+            };
         AnsiConsole.Write(panel);
     }
 
@@ -52,7 +53,8 @@ public static class DeviceRenderer
         table.AddRow("Monitor Frames", monitorFrames.ToString());
         table.AddRow("Unique CAN IDs", uniqueCanIds.ToString());
         table.AddRow("Monitor Duration", monitorDuration.ToString());
-        table.AddRow("Queries (Success/Invalid/Failed)", $"{successfulQueries}/{invalidResponseQueries}/{failedQueries}");
+        table.AddRow("Queries (Success/Invalid/Failed)",
+            $"{successfulQueries}/{invalidResponseQueries}/{failedQueries}");
         table.AddRow("Success Rate", totalQueries > 0 ? $"{(double)successfulQueries / totalQueries:P0}" : "N/A");
 
         AnsiConsole.Write(table);

@@ -1,8 +1,8 @@
 using System.Runtime.CompilerServices;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
-using Microsoft.Extensions.Logging;
 
 namespace ObdInsight.Core.Communication.Slcan;
 
@@ -27,15 +27,16 @@ namespace ObdInsight.Core.Communication.Slcan;
 /// </remarks>
 public sealed class SlcanFrameSource : ICanFrameSource
 {
-    private readonly ILogger<SlcanFrameSource>? _logger;
     private readonly string _bitrateCommand;
-    private readonly bool _listenOnly;
-    private readonly IElmTransport _transport;
-
-    private bool _started;
 
     /// <summary>Carries a partial line between reads, so a frame split across two reads survives.</summary>
     private readonly StringBuilder _carryOver = new();
+
+    private readonly bool _listenOnly;
+    private readonly ILogger<SlcanFrameSource>? _logger;
+    private readonly IElmTransport _transport;
+
+    private bool _started;
 
     public SlcanFrameSource(
         IElmTransport transport,

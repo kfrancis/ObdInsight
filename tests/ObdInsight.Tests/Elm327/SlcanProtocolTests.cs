@@ -3,11 +3,10 @@ using ObdInsight.Core.Communication.Slcan;
 namespace OdbTestApp.Tests.Elm327;
 
 /// <summary>
-/// Tests for the SLCAN line protocol used by CANable-class USB-CAN adapters.
-///
-/// Written before the hardware arrived: the protocol layer is pure text, so it can be pinned
-/// against the specification now and the only thing left to discover on the device is the serial
-/// plumbing.
+///     Tests for the SLCAN line protocol used by CANable-class USB-CAN adapters.
+///     Written before the hardware arrived: the protocol layer is pure text, so it can be pinned
+///     against the specification now and the only thing left to discover on the device is the serial
+///     plumbing.
 /// </summary>
 [Timeout(30_000)]
 public class SlcanProtocolTests
@@ -20,7 +19,8 @@ public class SlcanProtocolTests
         await Assert.That(ok).IsTrue();
         await Assert.That(frame.CanId).IsEqualTo(0x1DB);
         await Assert.That(frame.Data.Length).IsEqualTo(8);
-        await Assert.That(frame.Data.ToArray()).IsEquivalentTo(new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77 });
+        await Assert.That(frame.Data.ToArray())
+            .IsEquivalentTo(new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77 });
         await Assert.That(isFd).IsFalse();
     }
 
@@ -47,8 +47,8 @@ public class SlcanProtocolTests
     }
 
     /// <summary>
-    /// The DLC nibble is a code, not a length. Code 15 means 64 bytes; reading it literally would
-    /// silently truncate an FD frame to 15 bytes.
+    ///     The DLC nibble is a code, not a length. Code 15 means 64 bytes; reading it literally would
+    ///     silently truncate an FD frame to 15 bytes.
     /// </summary>
     [Test]
     [Arguments(0, 0)]
@@ -78,19 +78,19 @@ public class SlcanProtocolTests
     }
 
     /// <summary>
-    /// Adapter chatter must be skipped, not thrown on: a capture loop that dies on a version
-    /// banner or a bell is useless.
+    ///     Adapter chatter must be skipped, not thrown on: a capture loop that dies on a version
+    ///     banner or a bell is useless.
     /// </summary>
     [Test]
     [Arguments("")]
     [Arguments("\r")]
-    [Arguments("V1013")]        // version banner
-    [Arguments("z")]            // transmit ack
+    [Arguments("V1013")] // version banner
+    [Arguments("z")] // transmit ack
     [Arguments("Z")]
-    [Arguments("\a")]           // BEL - error response
+    [Arguments("\a")] // BEL - error response
     [Arguments("garbage")]
-    [Arguments("t1D")]          // truncated mid-id
-    [Arguments("t1DB8")]        // header only, no payload
+    [Arguments("t1D")] // truncated mid-id
+    [Arguments("t1DB8")] // header only, no payload
     [Arguments("t1DB800112233")] // DLC says 8, only 5 bytes present
     public async Task Ignores_NonFrameLines(string line, CancellationToken token)
     {

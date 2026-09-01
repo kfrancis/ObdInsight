@@ -1,13 +1,13 @@
-using Spectre.Console;
-using Serilog;
 using ObdInsight.Core.Communication.Bluetooth;
 using ObdInsight.Transports.WindowsBle;
 using ObdInsight.UI;
+using Serilog;
+using Spectre.Console;
 
 namespace ObdInsight.Application;
 
 /// <summary>
-/// Manages BLE device scanning and selection
+///     Manages BLE device scanning and selection
 /// </summary>
 public class DeviceScanService
 {
@@ -19,7 +19,7 @@ public class DeviceScanService
     }
 
     /// <summary>
-    /// Scans for and selects a BLE device
+    ///     Scans for and selects a BLE device
     /// </summary>
     public async Task<BleDeviceInfo?> ScanAndSelectDeviceAsync(
         DevicePreferences preferences,
@@ -34,7 +34,7 @@ public class DeviceScanService
             if (devices.Count == 0)
             {
                 Log.Warning("No BLE devices found during scan");
-                if (await AnsiConsole.ConfirmAsync("No BLE devices found. Rescan?", defaultValue: true, cancellationToken: ct))
+                if (await AnsiConsole.ConfirmAsync("No BLE devices found. Rescan?", true, ct))
                 {
                     Log.Information("User requested rescan");
                     continue;
@@ -68,8 +68,9 @@ public class DeviceScanService
 
             if (action.StartsWith("Connect to favorite", StringComparison.OrdinalIgnoreCase) && favorite != null)
             {
-                Log.Information("User selected favorite device: {DeviceName} ({Address})", favorite.Name, favorite.Address);
-                preferences.RememberDevice(favorite, markAsFavorite: true);
+                Log.Information("User selected favorite device: {DeviceName} ({Address})", favorite.Name,
+                    favorite.Address);
+                preferences.RememberDevice(favorite, true);
                 AnsiConsole.MarkupLine($"[green]✓[/] Selected: [cyan]{favorite.Name}[/] ({favorite.Address})");
                 return favorite;
             }
@@ -100,7 +101,8 @@ public class DeviceScanService
             var selectedDevice = orderedDevices[selection - 1];
 
             var shouldFavorite = preferences.IsFavorite(selectedDevice) ||
-                await AnsiConsole.ConfirmAsync($"Mark {selectedDevice.Name} as a favorite?", defaultValue: false, cancellationToken: ct);
+                                 await AnsiConsole.ConfirmAsync($"Mark {selectedDevice.Name} as a favorite?", false,
+                                     ct);
 
             Log.Information("User selected device #{Number}: {DeviceName} ({Address}), Favorite={IsFavorite}",
                 selection, selectedDevice.Name, selectedDevice.Address, shouldFavorite);

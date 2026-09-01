@@ -1,22 +1,21 @@
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
-using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities;
 using ObdInsight.Simulation;
 
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
-/// Streaming members on the broadcast capability interfaces (docs/STREAMING_MONITOR_DESIGN.md
-/// P4): coalesce-on-any-contributing-frame over the shared monitor's cache, eager registration,
-/// optional throttle, and survival across UDS arbitration windows. Driven through
-/// <see cref="ReplayElmTransport"/> — no hardware.
+///     Streaming members on the broadcast capability interfaces (docs/STREAMING_MONITOR_DESIGN.md
+///     P4): coalesce-on-any-contributing-frame over the shared monitor's cache, eager registration,
+///     optional throttle, and survival across UDS arbitration windows. Driven through
+///     <see cref="ReplayElmTransport" /> — no hardware.
 /// </summary>
 /// <remarks>
-/// Every test here creates the stream first, then starts the monitor, enqueues frames, stops,
-/// and only then drains the stream. That ordering is the point: registration happens when the
-/// stream is created, so nothing enqueued in between is lost — and it keeps the tests free of
-/// reader-thread timing.
+///     Every test here creates the stream first, then starts the monitor, enqueues frames, stops,
+///     and only then drains the stream. That ordering is the point: registration happens when the
+///     stream is created, so nothing enqueued in between is lost — and it keeps the tests free of
+///     reader-thread timing.
 /// </remarks>
 [Timeout(30_000)]
 public class CapabilityStreamTests
@@ -35,10 +34,7 @@ public class CapabilityStreamTests
     {
         var transport = new ReplayElmTransport();
         var session = new ElmSession(new ElmFramer(transport));
-        var monitor = new CanMonitor(session, EcuContext.NissanLeafHvbatMonitor)
-        {
-            RestartDelay = TimeSpan.Zero,
-        };
+        var monitor = new CanMonitor(session, EcuContext.NissanLeafHvbatMonitor) { RestartDelay = TimeSpan.Zero };
         // "ATMA" must stay silent — monitoring streams instead of prompting.
         transport.Expect("ATMA", "");
         return (transport, session, monitor);
@@ -55,9 +51,9 @@ public class CapabilityStreamTests
     }
 
     /// <summary>
-    /// Pulls exactly one emission, asserting the stream had one to give. Emissions are built
-    /// when the consumer pulls, so stepping the enumerator between frames is what makes the
-    /// coalescing observable (drain-at-the-end would only ever show the final cache state).
+    ///     Pulls exactly one emission, asserting the stream had one to give. Emissions are built
+    ///     when the consumer pulls, so stepping the enumerator between frames is what makes the
+    ///     coalescing observable (drain-at-the-end would only ever show the final cache state).
     /// </summary>
     private static async Task<T> NextAsync<T>(IAsyncEnumerator<T> enumerator)
     {

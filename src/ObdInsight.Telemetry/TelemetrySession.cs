@@ -8,25 +8,24 @@ using ObdInsight.Core.Vehicles;
 namespace ObdInsight.Telemetry;
 
 /// <summary>
-/// Default <see cref="ITelemetrySession"/>: single background loop with per-tier due
-/// times; ticks run sequentially (the underlying ELM session is single-writer).
-/// Cache-only provider reads are bounded by <see cref="TelemetrySessionOptions.CacheReadTimeout"/>;
-/// UDS providers ride the existing monitor-suspension arbitration inside capabilities.
+///     Default <see cref="ITelemetrySession" />: single background loop with per-tier due
+///     times; ticks run sequentially (the underlying ELM session is single-writer).
+///     Cache-only provider reads are bounded by <see cref="TelemetrySessionOptions.CacheReadTimeout" />;
+///     UDS providers ride the existing monitor-suspension arbitration inside capabilities.
 /// </summary>
 public sealed class TelemetrySession : ITelemetrySession
 {
-    private readonly IReadOnlyList<ITelemetryProvider> _providers;
-    private readonly IVehicleIdentification? _identification;
-    private readonly IDiagnosticTroubleCodes? _dtc;
-    private readonly IConnectionStateSource? _connectionState;
-    private readonly TelemetrySubscription _subscription;
-    private readonly TelemetrySessionOptions _options;
-    private readonly ILogger<TelemetrySession> _logger;
-
     private readonly Dictionary<TelemetrySignal, SignalAvailability> _availability = new();
-    private readonly List<Channel<TelemetrySampleBatch>> _subscribers = [];
     private readonly SemaphoreSlim _busGate = new(1, 1);
+    private readonly IConnectionStateSource? _connectionState;
+    private readonly IDiagnosticTroubleCodes? _dtc;
+    private readonly IVehicleIdentification? _identification;
+    private readonly ILogger<TelemetrySession> _logger;
+    private readonly TelemetrySessionOptions _options;
+    private readonly IReadOnlyList<ITelemetryProvider> _providers;
     private readonly object _stateLock = new();
+    private readonly List<Channel<TelemetrySampleBatch>> _subscribers = [];
+    private readonly TelemetrySubscription _subscription;
 
     private CancellationTokenSource? _loopCts;
     private Task? _loopTask;
@@ -61,28 +60,6 @@ public sealed class TelemetrySession : ITelemetrySession
         }
     }
 
-    /// <summary>
-    /// Convenience factory over a connected vehicle's command set.
-    /// </summary>
-    public static TelemetrySession Create(
-        IVehicleCommandSet commands,
-        TelemetrySubscription? subscription = null,
-        TelemetrySessionOptions? options = null,
-        IConnectionStateSource? connectionState = null,
-        ILogger<TelemetrySession>? logger = null)
-    {
-        commands.TryGet<IVehicleIdentification>(out var identification);
-        commands.TryGet<IDiagnosticTroubleCodes>(out var dtc);
-        return new TelemetrySession(
-            TelemetryProviderCatalog.FromVehicle(commands),
-            subscription,
-            options,
-            identification,
-            dtc,
-            connectionState,
-            logger);
-    }
-
     public IReadOnlyDictionary<TelemetrySignal, SignalAvailability> Availability
     {
         get
@@ -99,9 +76,6 @@ public sealed class TelemetrySession : ITelemetrySession
     public event EventHandler<ConnectionStateChangedEventArgs>? ConnectionStateChanged;
 
     public ConnectionState? ConnectionState => _connectionState?.State;
-
-    private void OnConnectionStateChanged(object? sender, ConnectionStateChangedEventArgs e) =>
-        ConnectionStateChanged?.Invoke(this, e);
 
     public async ValueTask StartAsync(CancellationToken ct = default)
     {
@@ -125,7 +99,7 @@ public sealed class TelemetrySession : ITelemetrySession
             }
 
             var values = await ReadProviderAsync(provider, wanted, ct);
-            UpdateAvailability(values, probe: true, provider.IsCacheOnly);
+            UpdateAvailability(values, true, provider.IsCacheOnly);
         }
 
         var cts = new CancellationTokenSource();
@@ -172,11 +146,11 @@ public sealed class TelemetrySession : ITelemetrySession
 
     public IAsyncEnumerable<TelemetrySampleBatch> Batches(CancellationToken ct = default)
     {
-        var channel = Channel.CreateBounded<TelemetrySampleBatch>(new BoundedChannelOptions(_options.SubscriberBufferSize)
-        {
-            FullMode = BoundedChannelFullMode.DropOldest,
-            SingleReader = true,
-        });
+        var channel = Channel.CreateBounded<TelemetrySampleBatch>(
+            new BoundedChannelOptions(_options.SubscriberBufferSize)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true
+            });
 
         // Register here rather than inside the iterator: an async iterator would defer this to
         // the first MoveNext, and every batch produced in between would be lost.
@@ -196,43 +170,6 @@ public sealed class TelemetrySession : ITelemetrySession
 
         // Batches registers eagerly, so the projection inherits that guarantee.
         return ProjectAsync(Batches(ct), signal, ct);
-    }
-
-    private static async IAsyncEnumerable<TelemetrySample<T>> ProjectAsync<T>(
-        IAsyncEnumerable<TelemetrySampleBatch> batches,
-        TelemetrySignal<T> signal,
-        [EnumeratorCancellation] CancellationToken ct)
-    {
-        await foreach (var batch in batches.WithCancellation(ct))
-        {
-            foreach (var sample in batch.Samples)
-            {
-                if (sample.Signal == signal.Signal && signal.TryRead(sample.Value, out var value))
-                {
-                    yield return new TelemetrySample<T>(sample.Signal, value, sample.TimestampUtc, sample.Tier);
-                }
-            }
-        }
-    }
-
-    private async IAsyncEnumerable<TelemetrySampleBatch> ReadBatchesAsync(
-        Channel<TelemetrySampleBatch> channel,
-        [EnumeratorCancellation] CancellationToken ct)
-    {
-        try
-        {
-            await foreach (var batch in channel.Reader.ReadAllAsync(ct))
-            {
-                yield return batch;
-            }
-        }
-        finally
-        {
-            lock (_stateLock)
-            {
-                _subscribers.Remove(channel);
-            }
-        }
     }
 
     public async ValueTask<TelemetrySnapshot> GetSnapshotAsync(CancellationToken ct = default)
@@ -308,7 +245,7 @@ public sealed class TelemetrySession : ITelemetrySession
                 OdometerKm = Scalar(all, TelemetrySignal.Odometer),
                 ChargeCycleCount = Scalar(all, TelemetrySignal.ChargeCycleCount),
                 StoredDtcCodes = dtcs?.StoredCodes,
-                PendingDtcCodes = dtcs?.PendingCodes,
+                PendingDtcCodes = dtcs?.PendingCodes
             };
         }
         finally
@@ -328,13 +265,73 @@ public sealed class TelemetrySession : ITelemetrySession
         _busGate.Dispose();
     }
 
+    /// <summary>
+    ///     Convenience factory over a connected vehicle's command set.
+    /// </summary>
+    public static TelemetrySession Create(
+        IVehicleCommandSet commands,
+        TelemetrySubscription? subscription = null,
+        TelemetrySessionOptions? options = null,
+        IConnectionStateSource? connectionState = null,
+        ILogger<TelemetrySession>? logger = null)
+    {
+        commands.TryGet<IVehicleIdentification>(out var identification);
+        commands.TryGet<IDiagnosticTroubleCodes>(out var dtc);
+        return new TelemetrySession(
+            TelemetryProviderCatalog.FromVehicle(commands),
+            subscription,
+            options,
+            identification,
+            dtc,
+            connectionState,
+            logger);
+    }
+
+    private void OnConnectionStateChanged(object? sender, ConnectionStateChangedEventArgs e) =>
+        ConnectionStateChanged?.Invoke(this, e);
+
+    private static async IAsyncEnumerable<TelemetrySample<T>> ProjectAsync<T>(
+        IAsyncEnumerable<TelemetrySampleBatch> batches,
+        TelemetrySignal<T> signal,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        await foreach (var batch in batches.WithCancellation(ct))
+        {
+            foreach (var sample in batch.Samples)
+            {
+                if (sample.Signal == signal.Signal && signal.TryRead(sample.Value, out var value))
+                {
+                    yield return new TelemetrySample<T>(sample.Signal, value, sample.TimestampUtc, sample.Tier);
+                }
+            }
+        }
+    }
+
+    private async IAsyncEnumerable<TelemetrySampleBatch> ReadBatchesAsync(
+        Channel<TelemetrySampleBatch> channel,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var batch in channel.Reader.ReadAllAsync(ct))
+            {
+                yield return batch;
+            }
+        }
+        finally
+        {
+            lock (_stateLock)
+            {
+                _subscribers.Remove(channel);
+            }
+        }
+    }
+
     private async Task RunLoopAsync(CancellationToken ct)
     {
         var due = new Dictionary<CadenceTier, long>
         {
-            [CadenceTier.High] = 0,
-            [CadenceTier.Medium] = 0,
-            [CadenceTier.Low] = 0,
+            [CadenceTier.High] = 0, [CadenceTier.Medium] = 0, [CadenceTier.Low] = 0
         };
 
         try
@@ -392,7 +389,7 @@ public sealed class TelemetrySession : ITelemetrySession
                 }
 
                 var values = await ReadProviderAsync(provider, wanted, ct);
-                UpdateAvailability(values, probe: false, provider.IsCacheOnly);
+                UpdateAvailability(values, false, provider.IsCacheOnly);
                 foreach (var (signal, rawValue) in values)
                 {
                     var value = _options.ValidateRanges

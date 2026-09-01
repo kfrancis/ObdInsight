@@ -3,8 +3,8 @@ using Spectre.Console;
 namespace ObdInsight.DevTools.Commands;
 
 /// <summary>
-/// Recording commands - STUB implementation.
-/// TODO: Refactor recording/replay functionality for new architecture.
+///     Recording commands - STUB implementation.
+///     TODO: Refactor recording/replay functionality for new architecture.
 /// </summary>
 public static class RecordingCommands
 {

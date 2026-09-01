@@ -14,13 +14,13 @@ public enum VehicleDetectionStatus
     UnsupportedVehicle,
 
     /// <summary>VIN matched a known variant that has no command set yet.</summary>
-    VariantUnsupported,
+    VariantUnsupported
 }
 
 /// <summary>
-/// Outcome of VIN-driven vehicle detection. Never signals failure by exception —
-/// inspect <see cref="Status"/>; <see cref="Commands"/> is non-null only for
-/// <see cref="VehicleDetectionStatus.Detected"/>.
+///     Outcome of VIN-driven vehicle detection. Never signals failure by exception —
+///     inspect <see cref="Status" />; <see cref="Commands" /> is non-null only for
+///     <see cref="VehicleDetectionStatus.Detected" />.
 /// </summary>
 public sealed record VehicleDetectionResult
 {
@@ -32,20 +32,20 @@ public sealed record VehicleDetectionResult
 }
 
 /// <summary>
-/// VIN-driven vehicle selection (roadmap B6): read the VIN via each profile's own
-/// mechanism, match it against profile variant detection, and build the command set —
-/// no hardcoded vehicle anywhere in the flow.
+///     VIN-driven vehicle selection (roadmap B6): read the VIN via each profile's own
+///     mechanism, match it against profile variant detection, and build the command set —
+///     no hardcoded vehicle anywhere in the flow.
 /// </summary>
 public static class VehicleResolver
 {
     /// <summary>
-    /// Resolves the connected vehicle over an initialized session.
+    ///     Resolves the connected vehicle over an initialized session.
     /// </summary>
     /// <param name="session">An initialized, protocol-locked ELM session.</param>
     /// <param name="profiles">
-    /// Profiles to consider; defaults to <see cref="VehicleProfileRegistry.AllProfiles"/>.
-    /// Pass explicitly in DI/AOT scenarios (the registry's reflection scan is
-    /// trim-hostile — roadmap B12).
+    ///     Profiles to consider; defaults to <see cref="VehicleProfileRegistry.AllProfiles" />.
+    ///     Pass explicitly in DI/AOT scenarios (the registry's reflection scan is
+    ///     trim-hostile — roadmap B12).
     /// </param>
     public static async ValueTask<VehicleDetectionResult> ResolveAsync(
         IElmSession session,
@@ -99,7 +99,7 @@ public static class VehicleResolver
                     Status = VehicleDetectionStatus.VariantUnsupported,
                     Vin = vin,
                     Profile = profile,
-                    VariantId = variantId,
+                    VariantId = variantId
                 };
             }
 
@@ -111,7 +111,7 @@ public static class VehicleResolver
                     Vin = vin,
                     Profile = profile,
                     VariantId = variantId,
-                    Commands = profile.GetCommands(variantId.Value, session),
+                    Commands = profile.GetCommands(variantId.Value, session)
                 };
             }
             catch (NotSupportedException)
@@ -122,15 +122,11 @@ public static class VehicleResolver
                     Status = VehicleDetectionStatus.VariantUnsupported,
                     Vin = vin,
                     Profile = profile,
-                    VariantId = variantId,
+                    VariantId = variantId
                 };
             }
         }
 
-        return new VehicleDetectionResult
-        {
-            Status = VehicleDetectionStatus.UnsupportedVehicle,
-            Vin = vin,
-        };
+        return new VehicleDetectionResult { Status = VehicleDetectionStatus.UnsupportedVehicle, Vin = vin };
     }
 }

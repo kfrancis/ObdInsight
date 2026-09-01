@@ -15,7 +15,7 @@ public sealed class BleProbeReportTests
     [Test]
     public async Task OpenAsync_KnownProfile_ReportsSuccessfulProbe(CancellationToken ct)
     {
-        var characteristic = CreateCharacteristic(Ffe1, canWrite: true, canNotify: true);
+        var characteristic = CreateCharacteristic(Ffe1, true, true);
         var transport = CreateTransport([CreateService(Ffe0, [characteristic])]);
 
         await transport.OpenAsync(ct);
@@ -39,9 +39,9 @@ public sealed class BleProbeReportTests
         [
             CreateService(serviceId,
             [
-                CreateCharacteristic(writeId, canWrite: true, canNotify: false),
-                CreateCharacteristic(notifyId, canWrite: false, canNotify: true),
-            ]),
+                CreateCharacteristic(writeId, true, false),
+                CreateCharacteristic(notifyId, false, true)
+            ])
         ]);
 
         await transport.OpenAsync(ct);
@@ -61,7 +61,7 @@ public sealed class BleProbeReportTests
         var transport = CreateTransport(
         [
             CreateService(serviceId,
-                [CreateCharacteristic(characteristicId, canWrite: false, canNotify: false)]),
+                [CreateCharacteristic(characteristicId, false, false)])
         ]);
 
         await Assert.That(async () => await transport.OpenAsync(ct)).Throws<IOException>();
@@ -70,7 +70,7 @@ public sealed class BleProbeReportTests
             transport,
             BleProbeStage.ResolvingProfile,
             BleProbeFailureKind.NoCompatibleProfile,
-            expectedServiceCount: 1);
+            1);
     }
 
     [Test]
@@ -79,7 +79,7 @@ public sealed class BleProbeReportTests
         var failure = new IOException(
             $"Device {DeviceId} at AA:BB:CC:DD:EE:FF failed; manufacturer payload DEADBEEF.\n" +
             "at Platform.Bluetooth.Connect()");
-        var transport = CreateTransport([], connectionFailure: failure);
+        var transport = CreateTransport([], failure);
 
         await Assert.That(async () => await transport.OpenAsync(ct)).Throws<IOException>();
 
@@ -87,7 +87,7 @@ public sealed class BleProbeReportTests
             transport,
             BleProbeStage.Connecting,
             BleProbeFailureKind.ConnectionFailed,
-            expectedServiceCount: 0);
+            0);
     }
 
     [Test]
@@ -101,18 +101,18 @@ public sealed class BleProbeReportTests
             transport,
             BleProbeStage.DiscoveringServices,
             BleProbeFailureKind.ServiceDiscoveryFailed,
-            expectedServiceCount: 0);
+            0);
     }
 
     [Test]
     public async Task OpenAsync_CharacteristicBindingFailure_RetainsSelectedProfile(CancellationToken ct)
     {
-        var characteristic = CreateCharacteristic(Ffe1, canWrite: true, canNotify: true);
+        var characteristic = CreateCharacteristic(Ffe1, true, true);
         var service = CreateService(
             Ffe0,
             [characteristic],
-            failureAfterCall: 1,
-            failure: new IOException("Binding failed."));
+            1,
+            new IOException("Binding failed."));
         var transport = CreateTransport([service]);
 
         await Assert.That(async () => await transport.OpenAsync(ct)).Throws<IOException>();
@@ -121,7 +121,7 @@ public sealed class BleProbeReportTests
             transport,
             BleProbeStage.BindingCharacteristics,
             BleProbeFailureKind.CharacteristicBindingFailed,
-            expectedServiceCount: 1);
+            1);
         await Assert.That(transport.LastProbeReport!.ResolvedProfile).IsNotNull();
     }
 
@@ -130,9 +130,9 @@ public sealed class BleProbeReportTests
     {
         var characteristic = CreateCharacteristic(
             Ffe1,
-            canWrite: true,
-            canNotify: true,
-            subscriptionFailure: new IOException("Subscription failed."));
+            true,
+            true,
+            new IOException("Subscription failed."));
         var transport = CreateTransport([CreateService(Ffe0, [characteristic])]);
 
         await Assert.That(async () => await transport.OpenAsync(ct)).Throws<IOException>();
@@ -141,7 +141,7 @@ public sealed class BleProbeReportTests
             transport,
             BleProbeStage.SubscribingNotifications,
             BleProbeFailureKind.NotificationSubscriptionFailed,
-            expectedServiceCount: 1);
+            1);
         await Assert.That(transport.LastProbeReport!.ResolvedProfile).IsNotNull();
     }
 
@@ -149,7 +149,7 @@ public sealed class BleProbeReportTests
     public async Task OpenAsync_Throw_PopulatesReportBeforeOriginalExceptionEscapes(CancellationToken ct)
     {
         var original = new IOException("Original connection failure.");
-        var transport = CreateTransport([], connectionFailure: original);
+        var transport = CreateTransport([], original);
         BleProbeReport? observedReport = null;
         var eventCount = 0;
         transport.ProbeCompleted += report =>
@@ -178,7 +178,7 @@ public sealed class BleProbeReportTests
     [Test]
     public async Task OpenAsync_ProbeCompletedFiresExactlyOncePerAttempt(CancellationToken ct)
     {
-        var characteristic = CreateCharacteristic(Ffe1, canWrite: true, canNotify: true);
+        var characteristic = CreateCharacteristic(Ffe1, true, true);
         var transport = CreateTransport([CreateService(Ffe0, [characteristic])]);
         var eventCount = 0;
         transport.ProbeCompleted += _ => eventCount++;
@@ -198,7 +198,7 @@ public sealed class BleProbeReportTests
         var failure = new IOException(
             $"Device {DeviceId} at {macAddress}; manufacturer payload {manufacturerPayload}.\n" +
             $"at {stackFrame}()");
-        var transport = CreateTransport([], connectionFailure: failure);
+        var transport = CreateTransport([], failure);
 
         await Assert.That(async () => await transport.OpenAsync(ct)).Throws<IOException>();
 
@@ -214,7 +214,7 @@ public sealed class BleProbeReportTests
     public async Task OpenAsync_Cancellation_ReportsAndRethrowsCancellation(CancellationToken ct)
     {
         var original = new OperationCanceledException(ct);
-        var transport = CreateTransport([], connectionFailure: original);
+        var transport = CreateTransport([], original);
         var eventCount = 0;
         transport.ProbeCompleted += _ => eventCount++;
 
@@ -224,7 +224,7 @@ public sealed class BleProbeReportTests
             transport,
             BleProbeStage.Connecting,
             BleProbeFailureKind.Cancelled,
-            expectedServiceCount: 0);
+            0);
         await Assert.That(eventCount).IsEqualTo(1);
     }
 
@@ -255,7 +255,7 @@ public sealed class BleProbeReportTests
                 "GetServicesAsync" when serviceDiscoveryFailure is not null =>
                     Task.FromException<IReadOnlyList<IService>>(serviceDiscoveryFailure),
                 "GetServicesAsync" => Task.FromResult(services),
-                _ => throw Unexpected(method),
+                _ => throw Unexpected(method)
             });
 
         var adapter = CreateProxy<IAdapter>((method, _) =>
@@ -266,7 +266,7 @@ public sealed class BleProbeReportTests
                 "ConnectToKnownDeviceAsync" => Task.FromResult(device),
                 "add_DeviceDisconnected" or "remove_DeviceDisconnected" or
                     "add_DeviceConnectionLost" or "remove_DeviceConnectionLost" => null,
-                _ => throw Unexpected(method),
+                _ => throw Unexpected(method)
             });
 
         return new PluginBleElmTransport(adapter, DeviceId);
@@ -288,7 +288,7 @@ public sealed class BleProbeReportTests
                     Task.FromException<IReadOnlyList<ICharacteristic>>(
                         failure ?? new IOException("Characteristic discovery failed.")),
                 "GetCharacteristicsAsync" => Task.FromResult(characteristics),
-                _ => throw Unexpected(method),
+                _ => throw Unexpected(method)
             });
     }
 
@@ -307,7 +307,7 @@ public sealed class BleProbeReportTests
                 "StartUpdatesAsync" when subscriptionFailure is not null =>
                     Task.FromException(subscriptionFailure),
                 "StartUpdatesAsync" or "StopUpdatesAsync" => Task.CompletedTask,
-                _ => throw Unexpected(method),
+                _ => throw Unexpected(method)
             });
 
     private static T CreateProxy<T>(Func<MethodInfo, object?[]?, object?> handler)

@@ -1,13 +1,14 @@
-using OdbTestApp.Tests.Fixtures;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
+using ObdInsight.IntegrationTests;
+using OdbTestApp.Tests.Fixtures;
 using static ObdInsight.IntegrationTests.BmsParsingHelpers;
 
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
 
 /// <summary>
-/// Integration tests for Nissan Leaf Charger using a real BLE connection.
+///     Integration tests for Nissan Leaf Charger using a real BLE connection.
 /// </summary>
-[ObdInsight.IntegrationTests.RequiresLeafHardware]
+[RequiresLeafHardware]
 [ClassDataSource<BleSessionFixture>(Shared = SharedType.Keyed)]
 public class LeafChargerIntegrationTests(BleSessionFixture bleFixture)
 {
@@ -29,7 +30,7 @@ public class LeafChargerIntegrationTests(BleSessionFixture bleFixture)
         foreach (var c in vin!)
         {
             var isValid = (c >= '0' && c <= '9') ||
-                         (c >= 'A' && c <= 'Z' && c != 'I' && c != 'O' && c != 'Q');
+                          (c >= 'A' && c <= 'Z' && c != 'I' && c != 'O' && c != 'Q');
             await Assert.That(isValid).IsTrue();
         }
     }
@@ -93,7 +94,7 @@ public class LeafChargerIntegrationTests(BleSessionFixture bleFixture)
     }
 
     /// <summary>
-    /// Parses VIN from reassembled ISO-TP payload.
+    ///     Parses VIN from reassembled ISO-TP payload.
     /// </summary>
     private static string? ParseVinFromPayload(byte[] payload)
     {

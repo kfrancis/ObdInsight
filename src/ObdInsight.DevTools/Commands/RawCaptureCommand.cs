@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using ObdInsight.Core.Communication.Elm327;
@@ -7,25 +8,21 @@ using Spectre.Console;
 namespace ObdInsight.DevTools.Commands;
 
 /// <summary>
-/// Unfiltered raw CAN capture.
-///
-/// Purpose: discovery. Unlike the capability-driven broadcast paths (which configure
-/// <c>AT CRA</c> hardware filters for a known ID set), this command explicitly *resets* the
-/// receive filter and runs <c>AT MA</c> wide open, so IDs nobody has documented still show up.
-/// That is the difference between validating a decoder and finding a signal.
-///
-/// Output is a timestamped line log plus a JSON summary, both replayable offline. The live
-/// display shows a per-ID histogram and, per ID, which bits have ever changed during the
-/// capture - the cheapest useful form of the bit-flip analysis the discovery harness formalises.
-///
-/// Runs two ways over the same body: interactively (prompts, live table, SPACE for markers) and
-/// headlessly (arguments, plain stdout, markers appended to a watched file). The headless path
-/// exists so the tool can be driven over SSH from a development machine while the laptop sits in
-/// the car.
-///
-/// This command never transmits a CAN frame. It sends AT configuration commands through
-/// <see cref="ListenOnlyElmTransport"/>, which throws on anything outside the listen-only
-/// whitelist, and then listens.
+///     Unfiltered raw CAN capture.
+///     Purpose: discovery. Unlike the capability-driven broadcast paths (which configure
+///     <c>AT CRA</c> hardware filters for a known ID set), this command explicitly *resets* the
+///     receive filter and runs <c>AT MA</c> wide open, so IDs nobody has documented still show up.
+///     That is the difference between validating a decoder and finding a signal.
+///     Output is a timestamped line log plus a JSON summary, both replayable offline. The live
+///     display shows a per-ID histogram and, per ID, which bits have ever changed during the
+///     capture - the cheapest useful form of the bit-flip analysis the discovery harness formalises.
+///     Runs two ways over the same body: interactively (prompts, live table, SPACE for markers) and
+///     headlessly (arguments, plain stdout, markers appended to a watched file). The headless path
+///     exists so the tool can be driven over SSH from a development machine while the laptop sits in
+///     the car.
+///     This command never transmits a CAN frame. It sends AT configuration commands through
+///     <see cref="ListenOnlyElmTransport" />, which throws on anything outside the listen-only
+///     whitelist, and then listens.
 /// </summary>
 public static class RawCaptureCommand
 {
@@ -48,26 +45,26 @@ public static class RawCaptureCommand
         AnsiConsole.WriteLine();
 
         AnsiConsole.Write(new Panel(
-            """
-            Captures every CAN frame the adapter can see, with no receive filter.
+                """
+                Captures every CAN frame the adapter can see, with no receive filter.
 
-            [yellow]Before starting, confirm:[/]
-              1. You know which bus the adapter is physically connected to.
-              2. The vehicle is parked with the wheels chocked (first capture on a
-                 new bus should not be done in READY).
-              3. The adapter is in silent/listen-only mode. This command issues
-                 AT CSM1 and reports the response, but older firmware may not
-                 support it - check the reported result before trusting it.
+                [yellow]Before starting, confirm:[/]
+                  1. You know which bus the adapter is physically connected to.
+                  2. The vehicle is parked with the wheels chocked (first capture on a
+                     new bus should not be done in READY).
+                  3. The adapter is in silent/listen-only mode. This command issues
+                     AT CSM1 and reports the response, but older firmware may not
+                     support it - check the reported result before trusting it.
 
-            [grey]Writes are whitelisted at the transport: anything that could transmit
-            is refused, not merely avoided.[/]
-            """)
+                [grey]Writes are whitelisted at the transport: anything that could transmit
+                is refused, not merely avoided.[/]
+                """)
             .Header("[cyan]Raw capture[/]")
             .Border(BoxBorder.Rounded));
 
         AnsiConsole.WriteLine();
 
-        if (!AnsiConsole.Confirm("Continue?", defaultValue: false))
+        if (!AnsiConsole.Confirm("Continue?", false))
         {
             return;
         }
@@ -84,17 +81,17 @@ public static class RawCaptureCommand
             OutputRoot = AnsiConsole.Prompt(
                 new TextPrompt<string>("[cyan]Output directory[/]:")
                     .DefaultValue(DefaultOutputRoot())),
-            Headless = false,
+            Headless = false
         };
 
         await ExecuteAsync(session, options, ct);
     }
 
     /// <summary>
-    /// Guided stimulus probes: pick a script, then follow prompts while a capture runs behind
-    /// them. Produces the same artefacts as a plain capture, but with markers that are already
-    /// labelled and a sequence that actually follows the discovery protocol - baseline first,
-    /// three alternations per stimulus, confounders included.
+    ///     Guided stimulus probes: pick a script, then follow prompts while a capture runs behind
+    ///     them. Produces the same artefacts as a plain capture, but with markers that are already
+    ///     labelled and a sequence that actually follows the discovery protocol - baseline first,
+    ///     three alternations per stimulus, confounders included.
     /// </summary>
     public static async Task RunGuidedAsync(DevToolsSession session, CancellationToken ct = default)
     {
@@ -127,7 +124,7 @@ public static class RawCaptureCommand
 
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine($"[yellow]Confirm the vehicle is: {script.SafeWhen.EscapeMarkup()}[/]");
-        if (!AnsiConsole.Confirm("Ready?", defaultValue: false))
+        if (!AnsiConsole.Confirm("Ready?", false))
         {
             return;
         }
@@ -141,15 +138,15 @@ public static class RawCaptureCommand
             OutputRoot = AnsiConsole.Prompt(
                 new TextPrompt<string>("[cyan]Output directory[/]:").DefaultValue(DefaultOutputRoot())),
             Headless = false,
-            Script = script,
+            Script = script
         };
 
         await ExecuteAsync(session, options, ct);
     }
 
     /// <summary>
-    /// Headless entry point. Returns a process exit code: 0 on success, non-zero on failure, so
-    /// a remote caller can branch on it without parsing output.
+    ///     Headless entry point. Returns a process exit code: 0 on success, non-zero on failure, so
+    ///     a remote caller can branch on it without parsing output.
     /// </summary>
     public static async Task<int> RunHeadlessAsync(
         DevToolsSession session,
@@ -158,7 +155,8 @@ public static class RawCaptureCommand
     {
         if (options.DurationSeconds <= 0)
         {
-            Console.Error.WriteLine("error: --seconds must be greater than 0 in headless mode (no keyboard to stop it).");
+            Console.Error.WriteLine(
+                "error: --seconds must be greater than 0 in headless mode (no keyboard to stop it).");
             return 2;
         }
 
@@ -213,7 +211,7 @@ public static class RawCaptureCommand
             else
             {
                 AnsiConsole.MarkupLine($"[yellow]{warning.EscapeMarkup()}[/]");
-                if (!AnsiConsole.Confirm("Reconnect transport-only now?", defaultValue: true))
+                if (!AnsiConsole.Confirm("Reconnect transport-only now?", true))
                 {
                     return null;
                 }
@@ -228,14 +226,14 @@ public static class RawCaptureCommand
 
         if (!session.IsConnected && !await session.ConnectAsync(ct))
         {
-            Report(options, "error: failed to connect to the adapter.", isError: true);
+            Report(options, "error: failed to connect to the adapter.", true);
             return null;
         }
 
         var transport = session.Transport;
         if (transport is null)
         {
-            Report(options, "error: no transport available.", isError: true);
+            Report(options, "error: no transport available.", true);
             return null;
         }
 
@@ -265,7 +263,7 @@ public static class RawCaptureCommand
             else
             {
                 RenderSetupTable(setup);
-                if (!AnsiConsole.Confirm("Start capture?", defaultValue: true))
+                if (!AnsiConsole.Confirm("Start capture?", true))
                 {
                     return null;
                 }
@@ -314,7 +312,7 @@ public static class RawCaptureCommand
                     options,
                     $"listen-only guard blocked {guarded.BlockedAttempts.Count} write(s): " +
                     string.Join(", ", guarded.BlockedAttempts),
-                    isError: true);
+                    true);
             }
 
             session.DisarmListenOnly();
@@ -325,8 +323,8 @@ public static class RawCaptureCommand
     // ---------------------------------------------------------------- setup
 
     /// <summary>
-    /// Puts the adapter into wide-open monitoring configuration and records what each command
-    /// answered, so the capture metadata says exactly how the data was collected.
+    ///     Puts the adapter into wide-open monitoring configuration and records what each command
+    ///     answered, so the capture metadata says exactly how the data was collected.
     /// </summary>
     private static async Task<List<SetupStep>> ConfigureForMonitoringAsync(
         ElmFramer framer,
@@ -339,15 +337,14 @@ public static class RawCaptureCommand
         // that makes the capture unfiltered.
         var commands = new (string Command, string Why, TimeSpan Timeout)[]
         {
-            ("ATZ",    "reset adapter",                     TimeSpan.FromSeconds(6)),
-            ("ATE0",   "echo off",                          TimeSpan.FromSeconds(3)),
-            ("ATL0",   "linefeeds off",                     TimeSpan.FromSeconds(3)),
-            ("ATS0",   "spaces off (compact frames)",       TimeSpan.FromSeconds(3)),
-            ("ATH1",   "headers ON (need the CAN ID)",      TimeSpan.FromSeconds(3)),
-            ("ATCAF0", "auto-formatting off (raw frames)",  TimeSpan.FromSeconds(3)),
-            ("ATSP6",  "ISO 15765-4 CAN 11-bit/500k",       TimeSpan.FromSeconds(4)),
-            ("ATCSM1", "silent monitoring ON",              TimeSpan.FromSeconds(3)),
-            ("ATCRA",  "RESET receive filter (unfiltered)", TimeSpan.FromSeconds(3)),
+            ("ATZ", "reset adapter", TimeSpan.FromSeconds(6)), ("ATE0", "echo off", TimeSpan.FromSeconds(3)),
+            ("ATL0", "linefeeds off", TimeSpan.FromSeconds(3)),
+            ("ATS0", "spaces off (compact frames)", TimeSpan.FromSeconds(3)),
+            ("ATH1", "headers ON (need the CAN ID)", TimeSpan.FromSeconds(3)),
+            ("ATCAF0", "auto-formatting off (raw frames)", TimeSpan.FromSeconds(3)),
+            ("ATSP6", "ISO 15765-4 CAN 11-bit/500k", TimeSpan.FromSeconds(4)),
+            ("ATCSM1", "silent monitoring ON", TimeSpan.FromSeconds(3)),
+            ("ATCRA", "RESET receive filter (unfiltered)", TimeSpan.FromSeconds(3))
         };
 
         var steps = new List<SetupStep>(commands.Length);
@@ -417,7 +414,8 @@ public static class RawCaptureCommand
 
         AnsiConsole.WriteLine();
         AnsiConsole.Write(table);
-        WarnIfSilentMonitoringUnconfirmed(steps, s => AnsiConsole.MarkupLine($"[yellow]Warning:[/] {s.EscapeMarkup()}"));
+        WarnIfSilentMonitoringUnconfirmed(steps,
+            s => AnsiConsole.MarkupLine($"[yellow]Warning:[/] {s.EscapeMarkup()}"));
     }
 
     private static void ReportSetupPlain(List<SetupStep> steps)
@@ -466,7 +464,7 @@ public static class RawCaptureCommand
             // The read loop must keep draining while the operator is being prompted - a blocked
             // reader means BUFFER FULL and a dead capture. So the loop runs in the background and
             // the script drives the foreground, both writing into the same result.
-            var reader = CaptureLoopAsync(framer, result, clock, markers, window, onTick: null);
+            var reader = CaptureLoopAsync(framer, result, clock, markers, window, null);
             try
             {
                 await RunScriptAsync(options.Script, result, clock, window.Token);
@@ -474,12 +472,13 @@ public static class RawCaptureCommand
             finally
             {
                 window.Cancel();
-                try { await reader; } catch (OperationCanceledException) { }
+                try { await reader; }
+                catch (OperationCanceledException) { }
             }
         }
         else if (options.Headless)
         {
-            await CaptureLoopAsync(framer, result, clock, markers, window, onTick: null);
+            await CaptureLoopAsync(framer, result, clock, markers, window, null);
         }
         else
         {
@@ -488,7 +487,7 @@ public static class RawCaptureCommand
                 .AutoClear(false)
                 .StartAsync(async ctx =>
                 {
-                    await CaptureLoopAsync(framer, result, clock, markers, window, onTick: refreshNow =>
+                    await CaptureLoopAsync(framer, result, clock, markers, window, refreshNow =>
                     {
                         if (!refreshNow && clock.Elapsed - lastRender <= TimeSpan.FromMilliseconds(400))
                         {
@@ -506,8 +505,8 @@ public static class RawCaptureCommand
     }
 
     /// <summary>
-    /// The read loop, shared by both modes. <paramref name="onTick"/> is null headlessly; when
-    /// present it is called to refresh the live display (true = refresh immediately).
+    ///     The read loop, shared by both modes. <paramref name="onTick" /> is null headlessly; when
+    ///     present it is called to refresh the live display (true = refresh immediately).
     /// </summary>
     private static async Task CaptureLoopAsync(
         ElmFramer framer,
@@ -583,14 +582,13 @@ public static class RawCaptureCommand
     }
 
     /// <summary>
-    /// Walks the operator through a stimulus script, recording a labelled marker at the moment
-    /// each action is confirmed.
-    ///
-    /// Confirmation is explicit rather than timed: the harness must not assume the stimulus
-    /// happened because it printed a prompt. The operator presses ENTER once the action is done
-    /// AND held, then a settle delay discards the transient before the hold window is measured.
-    /// The marker is stamped at confirmation, so the analysis knows where the boundary is even
-    /// though the exact actuation moment is a little earlier.
+    ///     Walks the operator through a stimulus script, recording a labelled marker at the moment
+    ///     each action is confirmed.
+    ///     Confirmation is explicit rather than timed: the harness must not assume the stimulus
+    ///     happened because it printed a prompt. The operator presses ENTER once the action is done
+    ///     AND held, then a settle delay discards the transient before the hold window is measured.
+    ///     The marker is stamped at confirmation, so the analysis knows where the boundary is even
+    ///     though the exact actuation moment is a little earlier.
     /// </summary>
     private static async Task RunScriptAsync(
         ProbeScript script,
@@ -630,7 +628,6 @@ public static class RawCaptureCommand
                 AnsiConsole.MarkupLine("\r      [green]done[/]                                   ");
                 result.AddMarker(clock.Elapsed.TotalMilliseconds, step.Label + "-end");
                 continue;
-
             }
 
             AnsiConsole.MarkupLine($"{n} [white]{step.Instruction.EscapeMarkup()}[/]");
@@ -663,10 +660,10 @@ public static class RawCaptureCommand
     }
 
     /// <summary>
-    /// ASCII BEL. During a guided run the operator is looking at the vehicle, not the screen, so
-    /// a prompt that only appears visually is a prompt that gets missed. Written straight to the
-    /// console rather than through AnsiConsole, which treats it as markup-free text and may
-    /// buffer it, and it survives an SSH session so a remotely-driven run signals too.
+    ///     ASCII BEL. During a guided run the operator is looking at the vehicle, not the screen, so
+    ///     a prompt that only appears visually is a prompt that gets missed. Written straight to the
+    ///     console rather than through AnsiConsole, which treats it as markup-free text and may
+    ///     buffer it, and it survives an SSH session so a remotely-driven run signals too.
     /// </summary>
     private static void Bell(int times = 1)
     {
@@ -697,11 +694,11 @@ public static class RawCaptureCommand
 
         while (Console.KeyAvailable)
         {
-            var key = Console.ReadKey(intercept: true).Key;
+            var key = Console.ReadKey(true).Key;
             switch (key)
             {
                 case ConsoleKey.Spacebar:
-                    result.AddMarker(clock.Elapsed.TotalMilliseconds, label: null);
+                    result.AddMarker(clock.Elapsed.TotalMilliseconds, null);
                     changed = true;
                     break;
                 case ConsoleKey.Q:
@@ -715,9 +712,9 @@ public static class RawCaptureCommand
     }
 
     /// <summary>
-    /// Parses one line of ELM327 monitoring output into a frame or a status event.
-    /// With ATH1 + ATS0 + ATCAF0 a frame arrives as contiguous hex: 3 ID nibbles (11-bit) or
-    /// 8 (29-bit) followed by payload bytes. The two are distinguishable by length parity.
+    ///     Parses one line of ELM327 monitoring output into a frame or a status event.
+    ///     With ATH1 + ATS0 + ATCAF0 a frame arrives as contiguous hex: 3 ID nibbles (11-bit) or
+    ///     8 (29-bit) followed by payload bytes. The two are distinguishable by length parity.
     /// </summary>
     private static void Ingest(CaptureResult result, TimeSpan at, string rawLine)
     {
@@ -752,11 +749,11 @@ public static class RawCaptureCommand
         int idLength;
         if (upper.Length >= 5 && upper.Length % 2 == 1)
         {
-            idLength = 3;   // 11-bit ID + whole payload bytes => odd total
+            idLength = 3; // 11-bit ID + whole payload bytes => odd total
         }
         else if (upper.Length >= 10 && upper.Length % 2 == 0)
         {
-            idLength = 8;   // 29-bit ID + whole payload bytes => even total
+            idLength = 8; // 29-bit ID + whole payload bytes => even total
         }
         else
         {
@@ -810,8 +807,8 @@ public static class RawCaptureCommand
     }
 
     /// <summary>
-    /// Renders the per-bit change mask, dimming bytes that never moved. Static bytes are
-    /// constants or unused padding; moving bytes are where signals (and counters) live.
+    ///     Renders the per-bit change mask, dimming bytes that never moved. Static bytes are
+    ///     constants or unused padding; moving bytes are where signals (and counters) live.
     /// </summary>
     private static string FormatChangedMask(byte[] mask)
     {
@@ -1024,13 +1021,13 @@ public static class RawCaptureCommand
     }
 
     /// <summary>
-    /// Informational version of the running build (MinVer-computed), recorded in every capture
-    /// so a session can be traced back to the exact tool that produced it.
+    ///     Informational version of the running build (MinVer-computed), recorded in every capture
+    ///     so a session can be traced back to the exact tool that produced it.
     /// </summary>
     private static string ToolVersion() =>
         typeof(RawCaptureCommand).Assembly
-            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
-            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute), false)
+            .OfType<AssemblyInformationalVersionAttribute>()
             .FirstOrDefault()?.InformationalVersion
         ?? typeof(RawCaptureCommand).Assembly.GetName().Version?.ToString()
         ?? "unknown";
@@ -1059,9 +1056,9 @@ public static class RawCaptureCommand
     // ---------------------------------------------------------------- model
 
     /// <summary>
-    /// Tails a text file, turning each appended line into a labelled marker. Opened shared so an
-    /// external appender (<c>echo ... &gt;&gt; markers.txt</c>, over SSH or from a phone) is never
-    /// blocked by this reader.
+    ///     Tails a text file, turning each appended line into a labelled marker. Opened shared so an
+    ///     external appender (<c>echo ... &gt;&gt; markers.txt</c>, over SSH or from a phone) is never
+    ///     blocked by this reader.
     /// </summary>
     private sealed class MarkerFileWatcher
     {
@@ -1149,8 +1146,8 @@ public static class RawCaptureCommand
         public List<BusEvent> Events { get; } = [];
 
         /// <summary>
-        /// Guarded because guided probe mode adds markers from the prompt thread while the read
-        /// loop runs on another. Contention is negligible - a marker per operator action.
+        ///     Guarded because guided probe mode adds markers from the prompt thread while the read
+        ///     loop runs on another. Contention is negligible - a marker per operator action.
         /// </summary>
         public void AddMarker(double atMs, string? label)
         {

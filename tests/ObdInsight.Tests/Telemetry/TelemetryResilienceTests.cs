@@ -7,10 +7,10 @@ using ConnectionState = ObdInsight.Core.Communication.Elm327.ConnectionState;
 namespace OdbTestApp.Tests.Telemetry;
 
 /// <summary>
-/// Roadmap B10 acceptance: transport death mid-drive over the fully composed stack
-/// (ReconnectingElmTransport → ElmSession → RetryingElmSession → LeafAze0CommandSet →
-/// TelemetrySession). The telemetry stream pauses and resumes on the SAME subscription,
-/// and connection-state transitions surface through ITelemetrySession.
+///     Roadmap B10 acceptance: transport death mid-drive over the fully composed stack
+///     (ReconnectingElmTransport → ElmSession → RetryingElmSession → LeafAze0CommandSet →
+///     TelemetrySession). The telemetry stream pauses and resumes on the SAME subscription,
+///     and connection-state transitions surface through ITelemetrySession.
 /// </summary>
 [Timeout(60_000)]
 public class TelemetryResilienceTests
@@ -19,6 +19,7 @@ public class TelemetryResilienceTests
     public async Task TransportDeathMidDrive_TelemetryResumes_StatesSurface(CancellationToken token)
     {
         var transports = new List<ReplayElmTransport>();
+
         ReplayElmTransport Factory()
         {
             var t = new ReplayElmTransport();
@@ -33,35 +34,31 @@ public class TelemetryResilienceTests
             return t;
         }
 
-        var resilient = new ReconnectingElmTransport(Factory, new ReconnectOptions
-        {
-            MaxAttempts = 5,
-            InitialDelay = TimeSpan.FromMilliseconds(1),
-            MaxDelay = TimeSpan.FromMilliseconds(10),
-        });
+        var resilient = new ReconnectingElmTransport(Factory,
+            new ReconnectOptions
+            {
+                MaxAttempts = 5,
+                InitialDelay = TimeSpan.FromMilliseconds(1),
+                MaxDelay = TimeSpan.FromMilliseconds(10)
+            });
         await resilient.OpenAsync(token);
 
         var session = new ElmSession(new ElmFramer(resilient));
-        var retrying = new RetryingElmSession(session, new QueryRetryOptions
-        {
-            MaxAttempts = 3,
-            RetryDelay = TimeSpan.FromMilliseconds(10),
-        });
+        var retrying = new RetryingElmSession(session,
+            new QueryRetryOptions { MaxAttempts = 3, RetryDelay = TimeSpan.FromMilliseconds(10) });
         var commands = new LeafAze0CommandSet(retrying);
         commands.Monitor.RestartDelay = TimeSpan.Zero;
 
         var subscription = new TelemetrySubscription(new Dictionary<TelemetrySignal, CadenceTier>
         {
-            [TelemetrySignal.StateOfCharge] = CadenceTier.High,
-            [TelemetrySignal.VehicleSpeed] = CadenceTier.High,
+            [TelemetrySignal.StateOfCharge] = CadenceTier.High, [TelemetrySignal.VehicleSpeed] = CadenceTier.High
         });
         var options = new TelemetrySessionOptions
         {
-            HighPeriod = TimeSpan.FromMilliseconds(150),
-            CacheReadTimeout = TimeSpan.FromMilliseconds(300),
+            HighPeriod = TimeSpan.FromMilliseconds(150), CacheReadTimeout = TimeSpan.FromMilliseconds(300)
         };
         await using var telemetry = TelemetrySession.Create(
-            commands, subscription, options, connectionState: resilient);
+            commands, subscription, options, resilient);
 
         var observedStates = new List<ConnectionState>();
         telemetry.ConnectionStateChanged += (_, e) =>
@@ -120,7 +117,8 @@ public class TelemetryResilienceTests
         await WaitForSocSampleAsync(batches);
 
         pumpCts.Cancel();
-        try { await pump; } catch (OperationCanceledException) { }
+        try { await pump; }
+        catch (OperationCanceledException) { }
 
         // Reconnected onto a replacement transport, and the UDS path really used it.
         List<ReplayElmTransport> snapshotTransports;

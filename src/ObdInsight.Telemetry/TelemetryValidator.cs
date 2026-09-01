@@ -1,10 +1,10 @@
 namespace ObdInsight.Telemetry;
 
 /// <summary>
-/// Static plausibility ranges per signal; out-of-range values become
-/// <see cref="TelemetryValue.Empty"/> so implausible data can never reach a report.
-/// Lives here (not Core) by design: <c>[CanSignal]</c> Min/Max metadata is
-/// documentation-only and not reachable at runtime without reflection (iOS AOT hostile).
+///     Static plausibility ranges per signal; out-of-range values become
+///     <see cref="TelemetryValue.Empty" /> so implausible data can never reach a report.
+///     Lives here (not Core) by design: <c>[CanSignal]</c> Min/Max metadata is
+///     documentation-only and not reachable at runtime without reflection (iOS AOT hostile).
 /// </summary>
 internal static class TelemetryValidator
 {
@@ -24,13 +24,13 @@ internal static class TelemetryValidator
         [TelemetrySignal.RemainingRange] = (0m, 800m),
         [TelemetrySignal.CabinTemperature] = (-40m, 85m),
         [TelemetrySignal.Odometer] = (0m, 1_500_000m),
-        [TelemetrySignal.ChargeCycleCount] = (0m, 100_000m),
+        [TelemetrySignal.ChargeCycleCount] = (0m, 100_000m)
     };
 
     /// <summary>
-    /// Returns the value unchanged when plausible; <see cref="TelemetryValue.Empty"/>
-    /// otherwise. Vectors null wholesale when any element is implausible (a report
-    /// must not silently mix trusted and untrusted cells).
+    ///     Returns the value unchanged when plausible; <see cref="TelemetryValue.Empty" />
+    ///     otherwise. Vectors null wholesale when any element is implausible (a report
+    ///     must not silently mix trusted and untrusted cells).
     /// </summary>
     public static TelemetryValue Validate(TelemetrySignal signal, TelemetryValue value)
     {

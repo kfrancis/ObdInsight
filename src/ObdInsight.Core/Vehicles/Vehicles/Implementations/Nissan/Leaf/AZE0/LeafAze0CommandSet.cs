@@ -14,7 +14,7 @@ public sealed class LeafAze0CommandSet : VehicleCommandSet
         Monitor = new CanMonitor(session, LeafAze0Contexts.SharedBroadcastMonitor)
         {
             // Cheap BLE adapters can't drink accept-all ATMA — rotate hardware filters instead.
-            FilterRotation = LeafAze0Contexts.SharedBroadcastRotation,
+            FilterRotation = LeafAze0Contexts.SharedBroadcastRotation
         };
         var arbitrated = new MonitorSuspendingElmSession(session, Monitor);
 
@@ -32,9 +32,9 @@ public sealed class LeafAze0CommandSet : VehicleCommandSet
     }
 
     /// <summary>
-    /// The shared broadcast monitor. Owned by this command set's creator: stop/dispose it when
-    /// the session ends. Also usable directly for typed streams
-    /// (<c>Monitor.Subscribe&lt;BatteryFrame_1DB_AZE0&gt;()</c> etc.).
+    ///     The shared broadcast monitor. Owned by this command set's creator: stop/dispose it when
+    ///     the session ends. Also usable directly for typed streams
+    ///     (<c>Monitor.Subscribe&lt;BatteryFrame_1DB_AZE0&gt;()</c> etc.).
     /// </summary>
     public CanMonitor Monitor { get; }
 }

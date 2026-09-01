@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
 using ObdInsight.Simulation;
@@ -5,23 +6,22 @@ using ObdInsight.Simulation;
 namespace OdbTestApp.Tests.Elm327;
 
 /// <summary>
-/// Roadmap B10 (docs/RESILIENCE_DESIGN.md): reconnecting transport decorator +
-/// per-request retry policy.
+///     Roadmap B10 (docs/RESILIENCE_DESIGN.md): reconnecting transport decorator +
+///     per-request retry policy.
 /// </summary>
 [Timeout(30_000)]
 public class ResilienceTests
 {
     private static readonly ReconnectOptions FastReconnect = new()
     {
-        MaxAttempts = 3,
-        InitialDelay = TimeSpan.FromMilliseconds(1),
-        MaxDelay = TimeSpan.FromMilliseconds(5),
+        MaxAttempts = 3, InitialDelay = TimeSpan.FromMilliseconds(1), MaxDelay = TimeSpan.FromMilliseconds(5)
     };
 
     [Test]
     public async Task Reconnect_TransportDies_IoResumesOnReplacement(CancellationToken token)
     {
         var transports = new List<ReplayElmTransport>();
+
         ReplayElmTransport Factory()
         {
             var t = new ReplayElmTransport();
@@ -73,6 +73,7 @@ public class ResilienceTests
     {
         var first = new ReplayElmTransport();
         var callCount = 0;
+
         IElmTransport Factory()
         {
             callCount++;
@@ -112,12 +113,9 @@ public class ResilienceTests
     [Test]
     public async Task RetryPolicy_TransientIoException_RetriesThenSucceeds(CancellationToken token)
     {
-        var inner = new FlakySession(failuresBeforeSuccess: 2);
-        var session = new RetryingElmSession(inner, new QueryRetryOptions
-        {
-            MaxAttempts = 3,
-            RetryDelay = TimeSpan.FromMilliseconds(1),
-        });
+        var inner = new FlakySession(2);
+        var session = new RetryingElmSession(inner,
+            new QueryRetryOptions { MaxAttempts = 3, RetryDelay = TimeSpan.FromMilliseconds(1) });
 
         var lines = await session.QueryAsync("2101", token);
 
@@ -128,12 +126,9 @@ public class ResilienceTests
     [Test]
     public async Task RetryPolicy_AttemptsExhausted_Throws(CancellationToken token)
     {
-        var inner = new FlakySession(failuresBeforeSuccess: 99);
-        var session = new RetryingElmSession(inner, new QueryRetryOptions
-        {
-            MaxAttempts = 3,
-            RetryDelay = TimeSpan.FromMilliseconds(1),
-        });
+        var inner = new FlakySession(99);
+        var session = new RetryingElmSession(inner,
+            new QueryRetryOptions { MaxAttempts = 3, RetryDelay = TimeSpan.FromMilliseconds(1) });
 
         await Assert.That(async () => await session.QueryAsync("2101", token))
             .Throws<IOException>();
@@ -143,12 +138,9 @@ public class ResilienceTests
     [Test]
     public async Task RetryPolicy_Cancellation_NeverRetried(CancellationToken token)
     {
-        var inner = new FlakySession(failuresBeforeSuccess: 0) { ThrowOce = true };
-        var session = new RetryingElmSession(inner, new QueryRetryOptions
-        {
-            MaxAttempts = 3,
-            RetryDelay = TimeSpan.FromMilliseconds(1),
-        });
+        var inner = new FlakySession(0) { ThrowOce = true };
+        var session = new RetryingElmSession(inner,
+            new QueryRetryOptions { MaxAttempts = 3, RetryDelay = TimeSpan.FromMilliseconds(1) });
 
         await Assert.That(async () => await session.QueryAsync("2101", token))
             .Throws<OperationCanceledException>();
@@ -206,7 +198,7 @@ public class ResilienceTests
         public ValueTask InitializeAndLockAsync(CancellationToken ct) => ValueTask.CompletedTask;
 
         public async IAsyncEnumerable<RawCanFrame> MonitorFramesAsync(
-            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+            [EnumeratorCancellation] CancellationToken ct)
         {
             await Task.CompletedTask;
             yield break;

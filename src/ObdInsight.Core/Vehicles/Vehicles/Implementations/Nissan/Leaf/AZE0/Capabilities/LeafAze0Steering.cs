@@ -6,8 +6,8 @@ using CanFrameRouter = ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities;
 
 /// <summary>
-/// Steering capability implementation for Nissan Leaf AZE0 platform.
-/// Monitors steering angle sensor and steering wheel force broadcast frames.
+///     Steering capability implementation for Nissan Leaf AZE0 platform.
+///     Monitors steering angle sensor and steering wheel force broadcast frames.
 /// </summary>
 internal sealed class LeafAze0Steering : ISteering
 {
@@ -21,13 +21,14 @@ internal sealed class LeafAze0Steering : ISteering
         if (_context.CommunicationMode != EcuCommunicationMode.PassiveMonitoring &&
             _context.CommunicationMode != EcuCommunicationMode.ActiveMonitoring &&
             _context.CommunicationMode != EcuCommunicationMode.FilteredMonitoring)
-            throw new ArgumentException("Steering status requires monitoring mode context for broadcast frames.", nameof(context));
+            throw new ArgumentException("Steering status requires monitoring mode context for broadcast frames.",
+                nameof(context));
     }
 
     /// <summary>
-    /// Reads steering status by monitoring Leaf AZE0 Steering broadcast frames:
-    /// - 0x002: Steering angle sensor (10ms) - provides steering angle in decidegrees
-    /// - 0x300: Steering wheel force (20ms) - provides force/torque applied to wheel
+    ///     Reads steering status by monitoring Leaf AZE0 Steering broadcast frames:
+    ///     - 0x002: Steering angle sensor (10ms) - provides steering angle in decidegrees
+    ///     - 0x300: Steering wheel force (20ms) - provides force/torque applied to wheel
     /// </summary>
     public async ValueTask<SteeringStatus> GetStatusAsync(CancellationToken ct = default)
     {
@@ -55,11 +56,13 @@ internal sealed class LeafAze0Steering : ISteering
             await foreach (var frame in _session.MonitorFramesAsync(timeoutCts.Token))
             {
                 // Use generated router for type-safe frame parsing
-                if (frame.Data.Length >= 5 && CanFrameRouter.TryParseSteeringFrame_002_AZE0(frame.CanId, frame.Data.Span, out var parsed002))
+                if (frame.Data.Length >= 5 &&
+                    CanFrameRouter.TryParseSteeringFrame_002_AZE0(frame.CanId, frame.Data.Span, out var parsed002))
                 {
                     frame002 = parsed002;
                 }
-                else if (frame.Data.Length >= 1 && CanFrameRouter.TryParseSteeringFrame_300_AZE0(frame.CanId, frame.Data.Span, out var parsed300))
+                else if (frame.Data.Length >= 1 &&
+                         CanFrameRouter.TryParseSteeringFrame_300_AZE0(frame.CanId, frame.Data.Span, out var parsed300))
                 {
                     frame300 = parsed300;
                 }
@@ -97,8 +100,8 @@ internal sealed class LeafAze0Steering : ISteering
         var torqueNm = (frame300?.SteeringWheelForce ?? 0) * 0.04;
 
         return new SteeringStatus(
-            AngleDegrees: angleDegrees,
-            TorqueNm: torqueNm
+            angleDegrees,
+            torqueNm
         );
     }
 }

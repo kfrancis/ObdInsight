@@ -7,7 +7,7 @@ public enum ProbeStepKind
     Idle,
 
     /// <summary>Prompt, wait for confirmation, then hold the state for a capture window.</summary>
-    Action,
+    Action
 }
 
 /// <summary>One instruction in a probe script.</summary>
@@ -21,24 +21,21 @@ public sealed record ProbeStep(ProbeStepKind Kind, string Instruction, string La
 public sealed record ProbeScript(string Name, string Description, string SafeWhen, IReadOnlyList<ProbeStep> Steps);
 
 /// <summary>
-/// Declarative stimulus scripts implementing the discovery protocol in
-/// <c>.local/CAN_TOOLING_PLAN.md</c> section 7.2.
-///
-/// The scripts are vehicle-independent; only the results are vehicle-specific. Running
-/// `lighting` + `body` + `driver-input` on an undocumented car yields a usable body-signal map
-/// in one parked session with no prior documentation - which is the point.
-///
-/// Three properties matter and are easy to lose if a human improvises the sequence:
-///
-///   1. An idle baseline comes FIRST. Every bit that moves with no stimulus is a counter, CRC,
-///      or drifting sensor, and must be masked out of every later comparison. Skipping this is
-///      why a naive before/after diff drowns in false positives - 0x284's free-running counter
-///      being the local example.
-///   2. Each probe ALTERNATES at least three times. A bit that happens to flip once has a
-///      1-in-2^(N-1) chance of tracking the full A,B,A,B pattern; three alternations already
-///      filters hard, and it is the only thing that separates a real signal from coincidence.
-///   3. Confounder probes run in the same session. Without operating the RIGHT indicator you
-///      cannot tell a LeftSignal bit from a shared AnySignalActive bit.
+///     Declarative stimulus scripts implementing the discovery protocol in
+///     <c>.local/CAN_TOOLING_PLAN.md</c> section 7.2.
+///     The scripts are vehicle-independent; only the results are vehicle-specific. Running
+///     `lighting` + `body` + `driver-input` on an undocumented car yields a usable body-signal map
+///     in one parked session with no prior documentation - which is the point.
+///     Three properties matter and are easy to lose if a human improvises the sequence:
+///     1. An idle baseline comes FIRST. Every bit that moves with no stimulus is a counter, CRC,
+///     or drifting sensor, and must be masked out of every later comparison. Skipping this is
+///     why a naive before/after diff drowns in false positives - 0x284's free-running counter
+///     being the local example.
+///     2. Each probe ALTERNATES at least three times. A bit that happens to flip once has a
+///     1-in-2^(N-1) chance of tracking the full A,B,A,B pattern; three alternations already
+///     filters hard, and it is the only thing that separates a real signal from coincidence.
+///     3. Confounder probes run in the same session. Without operating the RIGHT indicator you
+///     cannot tell a LeftSignal bit from a shared AnySignalActive bit.
 /// </summary>
 public static class ProbeScripts
 {
@@ -50,26 +47,21 @@ public static class ProbeScripts
         Gaps, Lighting, Body, DriverInput, Hvac, DrivetrainStatic, Charging
     ];
 
-    public static ProbeScript? Find(string name) =>
-        All.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
-
     /// <summary>
-    /// The 2026-08-31 gaps, and nothing else. Re-running a full script to recover five probes
-    /// wastes the scarce resource, which is time with the vehicle - everything else from that
-    /// session stands.
-    ///
-    /// Covers: parking-brake (never actually operated - no control was found), driver-door (the
-    /// operator was seated in it), the four gear selections that did not engage, and the whole
-    /// HVAC group (that session captured ~25 frames/s against ~1000 elsewhere, so the bus was
-    /// near-idle and the run proves nothing).
-    ///
-    /// Hazards are deliberately absent: blink detection now finds them in the data already
-    /// recorded, so that gap closed offline.
+    ///     The 2026-08-31 gaps, and nothing else. Re-running a full script to recover five probes
+    ///     wastes the scarce resource, which is time with the vehicle - everything else from that
+    ///     session stands.
+    ///     Covers: parking-brake (never actually operated - no control was found), driver-door (the
+    ///     operator was seated in it), the four gear selections that did not engage, and the whole
+    ///     HVAC group (that session captured ~25 frames/s against ~1000 elsewhere, so the bus was
+    ///     near-idle and the run proves nothing).
+    ///     Hazards are deliberately absent: blink detection now finds them in the data already
+    ///     recorded, so that gap closed offline.
     /// </summary>
     /// <remarks>
-    /// Computed on access, not a static initializer. Static field initializers run in textual
-    /// order, and this one composes scripts declared below it - as an initializer it would bind
-    /// them before they exist and yield an empty script that still compiles cleanly.
+    ///     Computed on access, not a static initializer. Static field initializers run in textual
+    ///     order, and this one composes scripts declared below it - as an initializer it would bind
+    ///     them before they exist and yield an empty script that still compiles cleanly.
     /// </remarks>
     public static ProbeScript Gaps => Build(
         "gaps",
@@ -82,7 +74,7 @@ public static class ProbeScripts
             DrivetrainStatic.Steps.Where(s => s.Label.StartsWith("gear-drive", StringComparison.Ordinal)),
             DrivetrainStatic.Steps.Where(s => s.Label.StartsWith("gear-b", StringComparison.Ordinal)),
             DrivetrainStatic.Steps.Where(s => s.Label.StartsWith("eco-mode", StringComparison.Ordinal)),
-            Hvac.Steps.Where(s => s.Kind == ProbeStepKind.Action),
+            Hvac.Steps.Where(s => s.Kind == ProbeStepKind.Action)
         ]);
 
     public static ProbeScript Lighting { get; } = Build(
@@ -91,11 +83,11 @@ public static class ProbeScripts
         "parked",
         [
             Toggle("LEFT turn signal", "left-signal"),
-            Toggle("RIGHT turn signal", "right-signal"),   // confounder for left-signal
+            Toggle("RIGHT turn signal", "right-signal"), // confounder for left-signal
             Toggle("HAZARD lights", "hazards"),
             Toggle("HEADLIGHTS (low beam)", "headlights-low"),
             Toggle("HIGH BEAM", "headlights-high"),
-            Toggle("FOG lights (skip if not fitted)", "fog"),
+            Toggle("FOG lights (skip if not fitted)", "fog")
         ]);
 
     public static ProbeScript Body { get; } = Build(
@@ -113,7 +105,7 @@ public static class ProbeScripts
             Toggle("REAR RIGHT door: open, then close", "rear-right-door"),
             Toggle("HATCH/BOOT: open, then close", "hatch"),
             Toggle("HOOD: open, then close (skip if awkward)", "hood"),
-            Toggle("LOCK the car, then UNLOCK", "central-lock"),
+            Toggle("LOCK the car, then UNLOCK", "central-lock")
         ]);
 
     public static ProbeScript DriverInput { get; } = Build(
@@ -138,7 +130,7 @@ public static class ProbeScripts
             Toggle("WIPERS: intermittent on, then off", "wipers-int"),
             Toggle("WIPERS: fast on, then off", "wipers-fast"),
             Toggle("STEERING: full LEFT, then back to centre", "steering-left"),
-            Toggle("STEERING: full RIGHT, then back to centre", "steering-right"),
+            Toggle("STEERING: full RIGHT, then back to centre", "steering-right")
         ]);
 
     public static ProbeScript Hvac { get; } = Build(
@@ -151,7 +143,7 @@ public static class ProbeScripts
             Toggle("TEMPERATURE: maximum heat, then back to minimum", "temp-max"),
             Toggle("RECIRCULATION: on, then off", "recirc"),
             Toggle("FRONT DEFROST: on, then off", "defrost-front"),
-            Toggle("REAR DEFROST: on, then off", "defrost-rear"),
+            Toggle("REAR DEFROST: on, then off", "defrost-rear")
         ]);
 
     public static ProbeScript DrivetrainStatic { get; } = Build(
@@ -185,7 +177,7 @@ public static class ProbeScripts
 
             Toggle("ECO mode", "eco-mode",
                 "Press the ECO button. Confirm the ECO indicator is lit",
-                "Press the ECO button again. Confirm the ECO indicator is off"),
+                "Press the ECO button again. Confirm the ECO indicator is off")
         ]);
 
     public static ProbeScript Charging { get; } = Build(
@@ -194,19 +186,22 @@ public static class ProbeScripts
         "parked, charging cable available",
         [
             Toggle("PLUG IN the charge cable, then UNPLUG it", "charge-plug"),
-            Toggle("START charging, then STOP it", "charge-start"),
+            Toggle("START charging, then STOP it", "charge-start")
         ]);
 
+    public static ProbeScript? Find(string name) =>
+        All.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>
-    /// Expands one stimulus into the alternating sequence the scoring depends on:
-    /// ON/OFF repeated <see cref="Alternations"/> times, each state held for a capture window.
-    ///
-    /// Supply <paramref name="onText"/> and <paramref name="offText"/> wherever "do the first
-    /// action / now reverse it" leaves any doubt about which control is meant. Ambiguity here is
-    /// not cosmetic: on 2026-08-31 a vaguely-worded parking-brake probe was performed on the
-    /// regular brake pedal in reverse phase, producing an entire session of misattributed data.
+    ///     Expands one stimulus into the alternating sequence the scoring depends on:
+    ///     ON/OFF repeated <see cref="Alternations" /> times, each state held for a capture window.
+    ///     Supply <paramref name="onText" /> and <paramref name="offText" /> wherever "do the first
+    ///     action / now reverse it" leaves any doubt about which control is meant. Ambiguity here is
+    ///     not cosmetic: on 2026-08-31 a vaguely-worded parking-brake probe was performed on the
+    ///     regular brake pedal in reverse phase, producing an entire session of misattributed data.
     /// </summary>
-    private static IEnumerable<ProbeStep> Toggle(string what, string label, string? onText = null, string? offText = null)
+    private static IEnumerable<ProbeStep> Toggle(string what, string label, string? onText = null,
+        string? offText = null)
     {
         for (var i = 1; i <= Alternations; i++)
         {
@@ -225,9 +220,9 @@ public static class ProbeScripts
     }
 
     /// <summary>
-    /// Wraps the probes in the baseline phases. The leading idle window builds the noise mask;
-    /// the trailing one detects drift and warm-up effects between the start and end of a session,
-    /// so a bit that merely wandered is not mistaken for one that responded.
+    ///     Wraps the probes in the baseline phases. The leading idle window builds the noise mask;
+    ///     the trailing one detects drift and warm-up effects between the start and end of a session,
+    ///     so a bit that merely wandered is not mistaken for one that responded.
     /// </summary>
     private static ProbeScript Build(
         string name,
@@ -237,7 +232,7 @@ public static class ProbeScripts
     {
         var steps = new List<ProbeStep>
         {
-            new(ProbeStepKind.Idle, "Sit still. Touch nothing at all.", "idle-baseline", 30),
+            new(ProbeStepKind.Idle, "Sit still. Touch nothing at all.", "idle-baseline", 30)
         };
 
         steps.AddRange(probes.SelectMany(p => p));

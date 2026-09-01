@@ -4,14 +4,12 @@ using ObdInsight.Core.Protocols;
 namespace OdbTestApp.Tests.Protocols;
 
 /// <summary>
-/// Property-based tests (CsCheck) for <see cref="IsoTpParser"/>: any payload encoded to the
-/// ELM327 wire format must come back byte-identical, whatever the line layout.
-///
-/// The parser splits run-together frames by scanning for a CAN-ID-shaped prefix (0x700–0x7FF)
-/// followed by a frame-type nibble — a heuristic that payload data can imitate. Example tests
-/// use real captures, which by luck contain no such sequence; generated payloads do.
-///
-/// On failure CsCheck prints the shrunk counterexample plus a seed to replay it.
+///     Property-based tests (CsCheck) for <see cref="IsoTpParser" />: any payload encoded to the
+///     ELM327 wire format must come back byte-identical, whatever the line layout.
+///     The parser splits run-together frames by scanning for a CAN-ID-shaped prefix (0x700–0x7FF)
+///     followed by a frame-type nibble — a heuristic that payload data can imitate. Example tests
+///     use real captures, which by luck contain no such sequence; generated payloads do.
+///     On failure CsCheck prints the shrunk counterexample plus a seed to replay it.
 /// </summary>
 [Timeout(120_000)]
 public class IsoTpParserPropertyTests
@@ -33,9 +31,7 @@ public class IsoTpParserPropertyTests
     [Test]
     public async Task SingleFrame_RoundTrips(CancellationToken _)
     {
-        Check.Sample(
-            Gen.Select(SingleFramePayloadGen, CanIdGen, PaddingGen),
-            t =>
+        SingleFramePayloadGen.Select(CanIdGen, PaddingGen).Sample(t =>
             {
                 var (payload, canId, padding) = t;
                 var lines = IsoTpWireFormat.Encode(payload, canId, padding);
@@ -49,9 +45,7 @@ public class IsoTpParserPropertyTests
     [Test]
     public async Task MultiFrame_OneFramePerLine_RoundTrips(CancellationToken _)
     {
-        Check.Sample(
-            Gen.Select(MultiFramePayloadGen, CanIdGen, PaddingGen),
-            t =>
+        MultiFramePayloadGen.Select(CanIdGen, PaddingGen).Sample(t =>
             {
                 var (payload, canId, padding) = t;
                 var lines = IsoTpWireFormat.Encode(payload, canId, padding);
@@ -66,9 +60,7 @@ public class IsoTpParserPropertyTests
     public async Task MultiFrame_AllFramesOnOneLine_RoundTrips(CancellationToken _)
     {
         // Some adapters run every frame together with no separator; the parser has to split them.
-        Check.Sample(
-            Gen.Select(MultiFramePayloadGen, CanIdGen, PaddingGen),
-            t =>
+        MultiFramePayloadGen.Select(CanIdGen, PaddingGen).Sample(t =>
             {
                 var (payload, canId, padding) = t;
                 var lines = IsoTpWireFormat.Encode(payload, canId, padding);
@@ -84,9 +76,7 @@ public class IsoTpParserPropertyTests
     {
         // Adapters emit junk (partial lines, "NO DATA", "BUFFER FULL", noise). Parsing is best-effort
         // but must not throw — callers treat an empty list as "no payload".
-        Check.Sample(
-            Gen.Char[' ', 'z'].Array[0, 200].Select(c => new string(c)),
-            s =>
+        Gen.Char[' ', 'z'].Array[0, 200].Select(c => new string(c)).Sample(s =>
             {
                 IsoTpParser.ParseIsoTpResponse(s);
                 return true;

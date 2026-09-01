@@ -1,25 +1,21 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ObdInsight.Core.Communication.Bluetooth;
 
 /// <summary>
-/// Simple persistence helper for favorite and recently used BLE devices.
+///     Simple persistence helper for favorite and recently used BLE devices.
 /// </summary>
 public sealed class DevicePreferences
 {
     private const string PreferencesFileName = "ble-device-preferences.json";
     private const int MaxSavedDevices = 8;
     private static readonly string[] BuiltInFavoriteNames = new[] { "VEEPEAK" };
-
-    private readonly string _storagePath;
     private readonly HashSet<string> _favoriteAddresses;
     private readonly HashSet<string> _savedAddresses = new(StringComparer.OrdinalIgnoreCase);
     private readonly LinkedList<string> _savedOrder = new();
+
+    private readonly string _storagePath;
 
     private DevicePreferences(string storagePath, HashSet<string> favoriteAddresses, IEnumerable<string> saved)
     {
@@ -86,22 +82,22 @@ public sealed class DevicePreferences
 
     public BleDeviceInfo? GetPreferredDevice(IEnumerable<BleDeviceInfo> devices) =>
         devices.Where(IsFavorite)
-               .OrderByDescending(d => d.Rssi)
-               .FirstOrDefault();
+            .OrderByDescending(d => d.Rssi)
+            .FirstOrDefault();
 
     /// <summary>
-    /// Gets the most recently used favorite device without requiring a scan.
-    /// Returns null if no favorite exists.
+    ///     Gets the most recently used favorite device without requiring a scan.
+    ///     Returns null if no favorite exists.
     /// </summary>
     public BleDeviceInfo? GetFavoriteDevice()
     {
         // Check if there's a favorite address saved
-        var favoriteAddress = _favoriteAddresses.FirstOrDefault() ?? 
-                             _savedOrder.FirstOrDefault(addr => _favoriteAddresses.Contains(addr));
-        
+        var favoriteAddress = _favoriteAddresses.FirstOrDefault() ??
+                              _savedOrder.FirstOrDefault(addr => _favoriteAddresses.Contains(addr));
+
         if (string.IsNullOrEmpty(favoriteAddress))
             return null;
-        
+
         // Return a minimal device info with just the address
         // RSSI will be 0 since we haven't scanned, but that's OK for auto-connect
         return new BleDeviceInfo(
@@ -174,8 +170,8 @@ public sealed class DevicePreferences
 }
 
 /// <summary>
-/// Source-generated JSON metadata — keeps preference persistence trim/AOT safe
-/// (reflection-based System.Text.Json is IL2026 under trimming; roadmap B12).
+///     Source-generated JSON metadata — keeps preference persistence trim/AOT safe
+///     (reflection-based System.Text.Json is IL2026 under trimming; roadmap B12).
 /// </summary>
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(DevicePreferences.DevicePreferencesModel))]

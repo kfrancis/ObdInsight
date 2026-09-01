@@ -1,4 +1,4 @@
-
+using ObdInsight.Core.Communication.Bluetooth;
 using ObdInsight.DevTools.Commands;
 using Spectre.Console;
 
@@ -68,10 +68,9 @@ internal class Program
     }
 
     /// <summary>
-    /// <c>ObdInsight.DevTools.exe analyze &lt;capture-dir&gt; [&lt;capture-dir&gt; ...]</c>
-    ///
-    /// Correlates guided-probe captures offline and prints the bits that tracked each stimulus.
-    /// Needs no vehicle and no adapter, so the scoring can be iterated on at a desk.
+    ///     <c>ObdInsight.DevTools.exe analyze &lt;capture-dir&gt; [&lt;capture-dir&gt; ...]</c>
+    ///     Correlates guided-probe captures offline and prints the bits that tracked each stimulus.
+    ///     Needs no vehicle and no adapter, so the scoring can be iterated on at a desk.
     /// </summary>
     private static int RunAnalyze(string[] args)
     {
@@ -103,11 +102,10 @@ internal class Program
     }
 
     /// <summary>
-    /// <c>ObdInsight.DevTools.exe scan [--seconds 10]</c>
-    ///
-    /// Lists nearby BLE devices as tab-separated <c>address name rssi</c> on stdout, strongest
-    /// first, so the adapter's MAC can be discovered remotely instead of by driving the
-    /// interactive menu on a laptop that is sitting in a car.
+    ///     <c>ObdInsight.DevTools.exe scan [--seconds 10]</c>
+    ///     Lists nearby BLE devices as tab-separated <c>address name rssi</c> on stdout, strongest
+    ///     first, so the adapter's MAC can be discovered remotely instead of by driving the
+    ///     interactive menu on a laptop that is sitting in a car.
     /// </summary>
     private static async Task<int> RunHeadlessScanAsync(string[] args)
     {
@@ -130,7 +128,7 @@ internal class Program
             }
         }
 
-        var devices = new Dictionary<string, Core.Communication.Bluetooth.BleDeviceInfo>(StringComparer.OrdinalIgnoreCase);
+        var devices = new Dictionary<string, BleDeviceInfo>(StringComparer.OrdinalIgnoreCase);
 
         try
         {
@@ -169,12 +167,13 @@ internal class Program
     }
 
     /// <summary>
-    /// <c>ObdInsight.DevTools.exe capture --device &lt;mac&gt; --bus EV-CAN --seconds 60
-    /// [--out DIR] [--markers FILE]</c>
-    ///
-    /// No prompts, no live table, no keyboard. Progress and diagnostics go to stderr; on success
-    /// the summary JSON path is the only thing written to stdout, so a caller can consume it
-    /// directly. Exit code: 0 success, 2 bad arguments, 1 failure, 130 cancelled.
+    ///     <c>
+    ///         ObdInsight.DevTools.exe capture --device &lt;mac&gt; --bus EV-CAN --seconds 60
+    ///         [--out DIR] [--markers FILE]
+    ///     </c>
+    ///     No prompts, no live table, no keyboard. Progress and diagnostics go to stderr; on success
+    ///     the summary JSON path is the only thing written to stdout, so a caller can consume it
+    ///     directly. Exit code: 0 success, 2 bad arguments, 1 failure, 130 cancelled.
     /// </summary>
     private static async Task<int> RunHeadlessCaptureAsync(string[] args)
     {
@@ -219,7 +218,8 @@ internal class Program
 
         if (string.IsNullOrWhiteSpace(bus))
         {
-            Console.Error.WriteLine("error: --bus <label> is required (it records which bus the adapter was wired to).");
+            Console.Error.WriteLine(
+                "error: --bus <label> is required (it records which bus the adapter was wired to).");
             return 2;
         }
 
@@ -228,7 +228,7 @@ internal class Program
             // Per-chunk BLE traffic logging would swamp an SSH pipe.
             EnableTrafficLogging = false,
             // Keeps status chatter off stdout, which carries only the summary JSON path.
-            SuppressTrafficLogging = true,
+            SuppressTrafficLogging = true
         };
         session.SetDevice(device);
 
@@ -241,7 +241,7 @@ internal class Program
                 OutputRoot = output ?? RawCaptureCommand.DefaultOutputRoot(),
                 Headless = true,
                 MarkerFilePath = markers,
-                Verbose = verbose,
+                Verbose = verbose
             });
     }
 
@@ -275,6 +275,7 @@ internal class Program
             {
                 choices.Add("Discover device services");
             }
+
             if (recentDevices.Count > 0)
             {
                 choices.Add("Manage saved devices");
@@ -314,6 +315,7 @@ internal class Program
                 choices.Add("Record OBD session");
                 choices.Add("Generate vehicle support report");
             }
+
             choices.Add("List supported vehicles");
             choices.Add("Show BLE profiles");
 
@@ -342,19 +344,20 @@ internal class Program
                 if (choice.StartsWith("Connect to "))
                 {
                     var deviceName = choice["Connect to ".Length..].TrimStart('?', ' ');
-                    var device = recentDevices.FirstOrDefault(d => 
+                    var device = recentDevices.FirstOrDefault(d =>
                         d.Name == deviceName || choice.Contains(d.Name));
-                    
+
                     if (device != null)
                     {
                         // Determine profile from saved profile name
                         var profile = BleDeviceProfile.AllProfiles
-                            .FirstOrDefault(p => p.Name == device.ProfileName) 
-                            ?? BleDeviceProfile.VeepeakBle;
-                        
+                                          .FirstOrDefault(p => p.Name == device.ProfileName)
+                                      ?? BleDeviceProfile.VeepeakBle;
+
                         session.SetDevice(device.Address, device.Name, profile);
                         await session.ConnectAndInitializeAdapterAsync();
                     }
+
                     continue;
                 }
 
@@ -453,7 +456,7 @@ internal class Program
         while (true)
         {
             var devices = session.DeviceHistory.GetOrderedDevices().ToList();
-            
+
             if (devices.Count == 0)
             {
                 AnsiConsole.MarkupLine("[yellow]No saved devices.[/]");
@@ -505,8 +508,8 @@ internal class Program
                                 : ValidationResult.Error($"Enter 1-{devices.Count}")));
                     var favDevice = devices[favNum - 1];
                     session.DeviceHistory.SetFavorite(favDevice.Address, !favDevice.IsFavorite);
-                    AnsiConsole.MarkupLine(favDevice.IsFavorite 
-                        ? $"[grey]Removed {favDevice.Name} from favorites[/]" 
+                    AnsiConsole.MarkupLine(favDevice.IsFavorite
+                        ? $"[grey]Removed {favDevice.Name} from favorites[/]"
                         : $"[yellow]?[/] Added {favDevice.Name} to favorites");
                     break;
 
@@ -522,16 +525,18 @@ internal class Program
                         session.DeviceHistory.Remove(delDevice.Address);
                         AnsiConsole.MarkupLine($"[grey]Removed {delDevice.Name}[/]");
                     }
+
                     break;
 
                 case "Clear all":
-                    if (AnsiConsole.Confirm("[red]Remove ALL saved devices?[/]", defaultValue: false))
+                    if (AnsiConsole.Confirm("[red]Remove ALL saved devices?[/]", false))
                     {
                         foreach (var d in devices)
                             session.DeviceHistory.Remove(d.Address);
                         AnsiConsole.MarkupLine("[grey]All devices cleared[/]");
                         return;
                     }
+
                     break;
 
                 case "Back":

@@ -3,15 +3,15 @@ using ObdInsight.SourceGeneration.Attributes;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
 
 /// <summary>
-/// Battery status broadcast frame for Nissan Leaf AZE0 platform (0x1DB)
+///     Battery status broadcast frame for Nissan Leaf AZE0 platform (0x1DB)
 /// </summary>
 /// <remarks>
-/// Current/Voltage layouts fixed 2026-07-18 against OVMS vehicle_nissanleaf.cpp
-/// (case 0x1db) — the previous Intel transcriptions of Motorola DBC start bits read the
-/// wrong bytes. Both fields cross byte boundaries, so they're raw-part signals recombined
-/// in computed properties. No hardware capture exists (EV-CAN, not visible on stock ELM327
-/// adapters); OVMS is the reference. The remaining flag/status signals in this frame are
-/// unverified transcriptions — treat with suspicion until checked against a reference.
+///     Current/Voltage layouts fixed 2026-07-18 against OVMS vehicle_nissanleaf.cpp
+///     (case 0x1db) — the previous Intel transcriptions of Motorola DBC start bits read the
+///     wrong bytes. Both fields cross byte boundaries, so they're raw-part signals recombined
+///     in computed properties. No hardware capture exists (EV-CAN, not visible on stock ELM327
+///     adapters); OVMS is the reference. The remaining flag/status signals in this frame are
+///     unverified transcriptions — treat with suspicion until checked against a reference.
 /// </remarks>
 [CanFrame(0x1DB, Description = "Real-time battery voltage, current, and SOC")]
 public partial class BatteryFrame_1DB_AZE0
@@ -32,10 +32,10 @@ public partial class BatteryFrame_1DB_AZE0
     public partial int CurrentRawLow { get; init; }
 
     /// <summary>
-    /// Battery current in A. 11-bit two's complement (byte0 + byte1[7..5]), 0.5 A/bit,
-    /// per OVMS. Wire sign convention is unverified on hardware: OVMS negates this raw
-    /// value to report discharge as positive — cross-check against the BMS UDS current
-    /// (known-good: negative while charging) before relying on the sign.
+    ///     Battery current in A. 11-bit two's complement (byte0 + byte1[7..5]), 0.5 A/bit,
+    ///     per OVMS. Wire sign convention is unverified on hardware: OVMS negates this raw
+    ///     value to report discharge as positive — cross-check against the BMS UDS current
+    ///     (known-good: negative while charging) before relying on the sign.
     /// </summary>
     public double Current
     {
@@ -53,7 +53,7 @@ public partial class BatteryFrame_1DB_AZE0
     public partial int DischargePowerStatus { get; init; }
 
     [CanSignal(8, 3,
-                    Description = "Failsafe status indicator",
+        Description = "Failsafe status indicator",
         MinValue = 0, MaxValue = 7)]
     public partial int FailsafeStatus { get; init; }
 
@@ -78,15 +78,16 @@ public partial class BatteryFrame_1DB_AZE0
     public partial int Prun { get; init; }
 
     [CanSignal(11, 2,
-                        Description = "Relay cut request (00=No-Request, 01=Main Relay OFF request)",
+        Description = "Relay cut request (00=No-Request, 01=Main Relay OFF request)",
         MinValue = 0, MaxValue = 3)]
     public partial int RelayCutRequest { get; init; }
+
     [CanSignal(32, 7,
         Description = "Usable SOC for dash display (byte 4 bits 6-0; 0x7F = invalid; confirmed vs OVMS)",
         MinValue = 0, MaxValue = 100)]
     public partial int UsableSoc { get; init; }
 
-    /// <summary>False while <see cref="UsableSoc"/> holds the 0x7F invalid sentinel (always the case on ZE1).</summary>
+    /// <summary>False while <see cref="UsableSoc" /> holds the 0x7F invalid sentinel (always the case on ZE1).</summary>
     public bool UsableSocValid => UsableSoc != 0x7F;
 
     [CanSignal(16, 8,
@@ -100,28 +101,28 @@ public partial class BatteryFrame_1DB_AZE0
     public partial int VoltageRawLow { get; init; }
 
     /// <summary>
-    /// Battery pack total voltage in V. 10-bit unsigned (byte2 + byte3[7..6]), 0.5 V/bit,
-    /// per OVMS.
+    ///     Battery pack total voltage in V. 10-bit unsigned (byte2 + byte3[7..6]), 0.5 V/bit,
+    ///     per OVMS.
     /// </summary>
     public double Voltage => ((VoltageRawHigh << 2) | VoltageRawLow) * 0.5;
 
     [CanSignal(24, 1,
-                Description = "Cell voltage latch flag (0->1: Cell Voltage Latch1->0: Cell Voltage)",
+        Description = "Cell voltage latch flag (0->1: Cell Voltage Latch1->0: Cell Voltage)",
         MinValue = 0, MaxValue = 1)]
     public partial bool VoltageLatchFlag { get; init; }
 }
 
 /// <summary>
-/// Battery power limits frame for Nissan Leaf AZE0 platform (0x1DC)
+///     Battery power limits frame for Nissan Leaf AZE0 platform (0x1DC)
 /// </summary>
 /// <remarks>
-/// Power-limit layouts fixed 2026-07-18 against OVMS vehicle_nissanleaf.cpp (case 0x1dc):
-/// discharge = (byte0&lt;&lt;2 | byte1&gt;&gt;6)/4, charge = ((byte1&amp;0x3F)&lt;&lt;2 | byte2&gt;&gt;4)/4,
-/// charger max = ((byte2&amp;0x0F)&lt;&lt;6 | byte3&gt;&gt;2)/10. All cross byte boundaries →
-/// raw-part signals + computed properties. No hardware capture (EV-CAN). The −10 kW offset
-/// on MaxPowerForCharger comes from the original DBC source; OVMS applies no offset —
-/// unresolved, verify on hardware before trusting absolute values.
-/// The remaining status signals are unverified transcriptions.
+///     Power-limit layouts fixed 2026-07-18 against OVMS vehicle_nissanleaf.cpp (case 0x1dc):
+///     discharge = (byte0&lt;&lt;2 | byte1&gt;&gt;6)/4, charge = ((byte1&amp;0x3F)&lt;&lt;2 | byte2&gt;&gt;4)/4,
+///     charger max = ((byte2&amp;0x0F)&lt;&lt;6 | byte3&gt;&gt;2)/10. All cross byte boundaries →
+///     raw-part signals + computed properties. No hardware capture (EV-CAN). The −10 kW offset
+///     on MaxPowerForCharger comes from the original DBC source; OVMS applies no offset —
+///     unresolved, verify on hardware before trusting absolute values.
+///     The remaining status signals are unverified transcriptions.
 /// </remarks>
 [CanFrame(0x1DC, Description = "Battery charge/discharge power limits and status codes")]
 public partial class BatteryFrame_1DC_AZE0
@@ -141,13 +142,16 @@ public partial class BatteryFrame_1DC_AZE0
         MinValue = 0, MaxValue = 15)]
     public partial int ChargePowerLimitRawLow { get; init; }
 
-    /// <summary>Max power the battery can be charged with, in kW
-    /// (byte1[5..0]+byte2[7..4], 0.25 kW/bit, per OVMS).</summary>
+    /// <summary>
+    ///     Max power the battery can be charged with, in kW
+    ///     (byte1[5..0]+byte2[7..4], 0.25 kW/bit, per OVMS).
+    /// </summary>
     public double ChargePowerLimit =>
         ((ChargePowerLimitRawHigh << 4) | ChargePowerLimitRawLow) * 0.25;
 
     [CanSignal(24, 2,
-        Description = "Charge power status (00b=Reserved, 01b=Normal limit PIN, 10b=High rate limit PIN, 11b=Immediate limit PIN)",
+        Description =
+            "Charge power status (00b=Reserved, 01b=Normal limit PIN, 10b=High rate limit PIN, 11b=Immediate limit PIN)",
         MinValue = 0, MaxValue = 3)]
     public partial int ChargePowerStatus { get; init; }
 
@@ -176,8 +180,10 @@ public partial class BatteryFrame_1DC_AZE0
         MinValue = 0, MaxValue = 3)]
     public partial int DischargePowerLimitRawLow { get; init; }
 
-    /// <summary>Max available power that can be pulled from the battery, in kW
-    /// (byte0+byte1[7..6], 0.25 kW/bit, per OVMS).</summary>
+    /// <summary>
+    ///     Max available power that can be pulled from the battery, in kW
+    ///     (byte0+byte1[7..6], 0.25 kW/bit, per OVMS).
+    /// </summary>
     public double DischargePowerLimit =>
         ((DischargePowerLimitRawHigh << 2) | DischargePowerLimitRawLow) * 0.25;
 
@@ -191,11 +197,14 @@ public partial class BatteryFrame_1DC_AZE0
         MinValue = 0, MaxValue = 63)]
     public partial int MaxPowerForChargerRawLow { get; init; }
 
-    /// <summary>Maximum power for charger (LB_BPCMAX) in kW
-    /// (byte2[3..0]+byte3[7..2], 0.1 kW/bit, offset −10 per the DBC source; OVMS applies
-    /// no offset — see class remarks).</summary>
+    /// <summary>
+    ///     Maximum power for charger (LB_BPCMAX) in kW
+    ///     (byte2[3..0]+byte3[7..2], 0.1 kW/bit, offset −10 per the DBC source; OVMS applies
+    ///     no offset — see class remarks).
+    /// </summary>
     public double MaxPowerForCharger =>
         ((MaxPowerForChargerRawHigh << 6) | MaxPowerForChargerRawLow) * 0.1 - 10.0;
+
     [CanSignal(48, 2,
         Description = "Detection of frozen data (Message-PRUN-Diag)",
         MinValue = 0, MaxValue = 3)]
@@ -203,7 +212,7 @@ public partial class BatteryFrame_1DC_AZE0
 }
 
 /// <summary>
-/// Battery SOC and sensor data frame for Nissan Leaf AZE0 platform (0x55B)
+///     Battery SOC and sensor data frame for Nissan Leaf AZE0 platform (0x55B)
 /// </summary>
 [CanFrame(0x55B, Description = "Battery state of charge and internal resistance sensor data")]
 public partial class BatteryFrame_55B_AZE0
@@ -249,14 +258,14 @@ public partial class BatteryFrame_55B_AZE0
     public partial int SleepEnabled { get; init; }
 
     /// <summary>
-    /// State of charge in 0.1% units (e.g. 928 = 92.8%).
+    ///     State of charge in 0.1% units (e.g. 928 = 92.8%).
     /// </summary>
     /// <remarks>
-    /// EV-can_AZE0.dbc: <c>LB_SOC : 7|10@0+</c>. This was previously split into two Intel
-    /// signals (byte 0, plus byte 1 bits 7-6) and recombined by hand, because a Motorola field
-    /// could not be expressed directly. It now maps straight onto the DBC position.
-    /// Hardware-verified: raw E8 00 -> 928 (pack ~96% full, 2026-07-18) and F3 00 -> 972
-    /// (2026-08-31). Reading the same bits as Intel returns 1.
+    ///     EV-can_AZE0.dbc: <c>LB_SOC : 7|10@0+</c>. This was previously split into two Intel
+    ///     signals (byte 0, plus byte 1 bits 7-6) and recombined by hand, because a Motorola field
+    ///     could not be expressed directly. It now maps straight onto the DBC position.
+    ///     Hardware-verified: raw E8 00 -> 928 (pack ~96% full, 2026-07-18) and F3 00 -> 972
+    ///     (2026-08-31). Reading the same bits as Intel returns 1.
     /// </remarks>
     [CanSignal(7, 10, ByteOrder = CanByteOrder.Motorola, Unit = "0.1%",
         Description = "Battery state of charge",
@@ -265,7 +274,7 @@ public partial class BatteryFrame_55B_AZE0
 }
 
 /// <summary>
-/// Battery quick charge capacity frame for Nissan Leaf AZE0 platform (0x59E)
+///     Battery quick charge capacity frame for Nissan Leaf AZE0 platform (0x59E)
 /// </summary>
 [CanFrame(0x59E, Description = "Battery full and remaining capacity for quick charge")]
 public partial class BatteryFrame_59E_AZE0
@@ -282,23 +291,29 @@ public partial class BatteryFrame_59E_AZE0
 }
 
 /// <summary>
-/// Battery capacity and charge status frame for Nissan Leaf AZE0 platform (0x5BC)
+///     Battery capacity and charge status frame for Nissan Leaf AZE0 platform (0x5BC)
 /// </summary>
 /// <remarks>
-/// Partially multiplexed on 30 kWh AZE0. Reviewed in the 2026-07-18 frame-layout audit
-/// (single capture 5D C0 F0 64 82 12 BF FF, parked, charging, ~96%):
-/// <list type="bullet">
-/// <item>GIDS fixed from a Motorola transcription error (decoded 384; now 375). Mux
-/// semantics confirmed against OVMS vehicle_nissanleaf.cpp: <see cref="MaxGids"/> (byte 5
-/// bit 4) selects the gids content — 0 = remaining gids, 1 = maximum gids / pack capacity
-/// (30 kWh+ only). The capture had it set, so 375 = full capacity (375 × 80 Wh = 30.0 kWh).
-/// 1023 (0x3FF) = invalid-during-startup sentinel.</item>
-/// <item>RemainChargeTime fixed from a 12-bit misread (decoded 4091; now the documented
-/// 13-bit field whose 0x1FFF sentinel = unavailable, matching this capture).</item>
-/// <item>CapacityDeteriorationRate decoded 65% — plausible for an aged 30 kWh pack, but
-/// unconfirmed (dash bars are not SOH%). Note it overlaps Mux/RemainCapSegmentSwitchFlag
-/// in byte 4; which bits are valid may depend on mux state.</item>
-/// </list>
+///     Partially multiplexed on 30 kWh AZE0. Reviewed in the 2026-07-18 frame-layout audit
+///     (single capture 5D C0 F0 64 82 12 BF FF, parked, charging, ~96%):
+///     <list type="bullet">
+///         <item>
+///             GIDS fixed from a Motorola transcription error (decoded 384; now 375). Mux
+///             semantics confirmed against OVMS vehicle_nissanleaf.cpp: <see cref="MaxGids" /> (byte 5
+///             bit 4) selects the gids content — 0 = remaining gids, 1 = maximum gids / pack capacity
+///             (30 kWh+ only). The capture had it set, so 375 = full capacity (375 × 80 Wh = 30.0 kWh).
+///             1023 (0x3FF) = invalid-during-startup sentinel.
+///         </item>
+///         <item>
+///             RemainChargeTime fixed from a 12-bit misread (decoded 4091; now the documented
+///             13-bit field whose 0x1FFF sentinel = unavailable, matching this capture).
+///         </item>
+///         <item>
+///             CapacityDeteriorationRate decoded 65% — plausible for an aged 30 kWh pack, but
+///             unconfirmed (dash bars are not SOH%). Note it overlaps Mux/RemainCapSegmentSwitchFlag
+///             in byte 4; which bits are valid may depend on mux state.
+///         </item>
+///     </list>
 /// </remarks>
 [CanFrame(0x5BC, Description = "Battery remaining capacity in GIDS, charge bars, and temperature")]
 public partial class BatteryFrame_5BC_AZE0
@@ -345,15 +360,15 @@ public partial class BatteryFrame_5BC_AZE0
     public partial int RemainCapacityGidsRawLow { get; init; }
 
     /// <summary>
-    /// Capacity in GIDS (80Wh per GID). Motorola-order 10-bit field
-    /// (byte0[7..0] + byte1[7..6]) recombined from the raw parts.
-    /// Muxed by <see cref="MaxGids"/>: false = remaining gids, true = maximum gids
-    /// (pack capacity, 30kWh+ only). 1023 (0x3FF) = invalid (startup) — check
-    /// <see cref="GidsValid"/>.
+    ///     Capacity in GIDS (80Wh per GID). Motorola-order 10-bit field
+    ///     (byte0[7..0] + byte1[7..6]) recombined from the raw parts.
+    ///     Muxed by <see cref="MaxGids" />: false = remaining gids, true = maximum gids
+    ///     (pack capacity, 30kWh+ only). 1023 (0x3FF) = invalid (startup) — check
+    ///     <see cref="GidsValid" />.
     /// </summary>
     public int RemainCapacityGids => (RemainCapacityGidsRawHigh << 2) | RemainCapacityGidsRawLow;
 
-    /// <summary>False while <see cref="RemainCapacityGids"/> holds the 0x3FF startup-invalid sentinel.</summary>
+    /// <summary>False while <see cref="RemainCapacityGids" /> holds the 0x3FF startup-invalid sentinel.</summary>
     public bool GidsValid => RemainCapacityGids != 0x3FF;
 
     [CanSignal(32, 1,
@@ -372,13 +387,13 @@ public partial class BatteryFrame_5BC_AZE0
     public partial int RemainChargeTimeRawLow { get; init; }
 
     /// <summary>
-    /// Remaining charge time in minutes. Motorola-order 13-bit field
-    /// (byte6[4..0] + byte7[7..0]) recombined from the raw parts.
-    /// 0x1FFF (8191) = unavailable sentinel — check <see cref="RemainChargeTimeAvailable"/>.
+    ///     Remaining charge time in minutes. Motorola-order 13-bit field
+    ///     (byte6[4..0] + byte7[7..0]) recombined from the raw parts.
+    ///     0x1FFF (8191) = unavailable sentinel — check <see cref="RemainChargeTimeAvailable" />.
     /// </summary>
     public int RemainChargeTime => (RemainChargeTimeRawHigh << 8) | RemainChargeTimeRawLow;
 
-    /// <summary>False when <see cref="RemainChargeTime"/> holds the 0x1FFF unavailable sentinel.</summary>
+    /// <summary>False when <see cref="RemainChargeTime" /> holds the 0x1FFF unavailable sentinel.</summary>
     public bool RemainChargeTimeAvailable => RemainChargeTime != 0x1FFF;
 
     [CanSignal(41, 5,
@@ -387,7 +402,7 @@ public partial class BatteryFrame_5BC_AZE0
     public partial int RemainChargeTimeCondition { get; init; }
 
     [CanSignal(16, 8,
-                    Description = "Remaining capacity segments (contains charge bars and capacity bars, multiplexed)",
+        Description = "Remaining capacity segments (contains charge bars and capacity bars, multiplexed)",
         MinValue = 0, MaxValue = 240)]
     public partial int RemainingCapacitySegments { get; init; }
 
@@ -396,8 +411,9 @@ public partial class BatteryFrame_5BC_AZE0
         MinValue = 0, MaxValue = 100)]
     public partial double TemperatureSegmentForDash { get; init; }
 }
+
 /// <summary>
-/// Battery historical data and heating control frame for Nissan Leaf AZE0 platform (0x5C0)
+///     Battery historical data and heating control frame for Nissan Leaf AZE0 platform (0x5C0)
 /// </summary>
 [CanFrame(0x5C0, Description = "Battery historical data, heating control, and diagnostic trouble codes")]
 public partial class BatteryFrame_5C0_AZE0
@@ -534,6 +550,7 @@ public partial class BatteryFrame_5C0_AZE0
         Description = "Historical data switch flag (0=Not Calculated, 1=Maximum Data, 2=Average Data, 3=Minimum Data)",
         MinValue = 0, MaxValue = 3)]
     public partial int HistoricalDataSwitchFlag { get; init; }
+
     [CanSignal(48, 5, Unit = "minutes",
         Description = "Next wakeup time for battery heater",
         MinValue = 0, MaxValue = 1800)]

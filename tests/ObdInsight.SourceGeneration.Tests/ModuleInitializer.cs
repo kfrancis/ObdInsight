@@ -19,8 +19,8 @@ public static class ModuleInitializer
         {
             // Remove timestamps and paths that might vary between runs
             builder.Replace(
-                System.Environment.NewLine + System.Environment.NewLine,
-                System.Environment.NewLine);
+                Environment.NewLine + Environment.NewLine,
+                Environment.NewLine);
         });
     }
 }

@@ -3,7 +3,7 @@ using ObdInsight.SourceGeneration.Attributes;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 
 /// <summary>
-/// ABS status frame for Nissan Leaf AZE0 platform (0x130)
+///     ABS status frame for Nissan Leaf AZE0 platform (0x130)
 /// </summary>
 [CanFrame(0x130, Description = "ABS status and bitmask (20ms)")]
 public partial class AbsFrame_130_AZE0
@@ -25,16 +25,16 @@ public partial class AbsFrame_130_AZE0
 }
 
 /// <summary>
-/// ABS torque control frame for Nissan Leaf AZE0 platform (0x245)
+///     ABS torque control frame for Nissan Leaf AZE0 platform (0x245)
 /// </summary>
 /// <remarks>
-/// The torque fields are Motorola-order 12-bit values that straddle byte boundaries
-/// (DBC start bits 7/11/55), so they are declared as byte-aligned raw signals and
-/// recombined in computed properties (generator supports Intel bit order only).
-/// Raw values are center-offset: 0x800 (2048) = 0 Nm. Hardware capture 2026-07-18
-/// (parked, raw 7FE8021835007FE1): raw 0x7FE/0x802 → −1.0/+1.0 Nm ≈ neutral.
-/// The 0.5 Nm/bit factor is an estimate consistent with the neutral capture; only the
-/// near-zero point is hardware-verified.
+///     The torque fields are Motorola-order 12-bit values that straddle byte boundaries
+///     (DBC start bits 7/11/55), so they are declared as byte-aligned raw signals and
+///     recombined in computed properties (generator supports Intel bit order only).
+///     Raw values are center-offset: 0x800 (2048) = 0 Nm. Hardware capture 2026-07-18
+///     (parked, raw 7FE8021835007FE1): raw 0x7FE/0x802 → −1.0/+1.0 Nm ≈ neutral.
+///     The 0.5 Nm/bit factor is an estimate consistent with the neutral capture; only the
+///     near-zero point is hardware-verified.
 /// </remarks>
 [CanFrame(0x245, Description = "ABS VDC torque down request and motor torque (20ms)")]
 public partial class AbsFrame_245_AZE0
@@ -89,33 +89,39 @@ public partial class AbsFrame_245_AZE0
         MinValue = 0, MaxValue = 15)]
     public partial int Unknown7 { get; init; }
 
-    /// <summary>VDC torque down request 1 in Nm (byte0[7..0]+byte1[7..4], 0x800 = 0 Nm,
-    /// est. 0.5 Nm/bit). ≈0 when parked.</summary>
+    /// <summary>
+    ///     VDC torque down request 1 in Nm (byte0[7..0]+byte1[7..4], 0x800 = 0 Nm,
+    ///     est. 0.5 Nm/bit). ≈0 when parked.
+    /// </summary>
     public double VdcTorqueDownRequest1 =>
         (((VdcTorqueDownRequest1RawHigh << 4) | VdcTorqueDownRequest1RawLow) - 2048) * 0.5;
 
-    /// <summary>Motor torque request from ABS in Nm (byte1[3..0]+byte2[7..0], 0x800 = 0 Nm,
-    /// est. 0.5 Nm/bit). ≈0 when parked.</summary>
+    /// <summary>
+    ///     Motor torque request from ABS in Nm (byte1[3..0]+byte2[7..0], 0x800 = 0 Nm,
+    ///     est. 0.5 Nm/bit). ≈0 when parked.
+    /// </summary>
     public double MotorTorqueRequestAbs =>
         (((MotorTorqueRequestAbsRawHigh << 8) | MotorTorqueRequestAbsRawLow) - 2048) * 0.5;
 
-    /// <summary>VDC torque down request 2 in Nm (byte6[7..0]+byte7[7..4], 0x800 = 0 Nm,
-    /// est. 0.5 Nm/bit). ≈0 when parked.</summary>
+    /// <summary>
+    ///     VDC torque down request 2 in Nm (byte6[7..0]+byte7[7..4], 0x800 = 0 Nm,
+    ///     est. 0.5 Nm/bit). ≈0 when parked.
+    /// </summary>
     public double VdcTorqueDownRequest2 =>
         (((VdcTorqueDownRequest2RawHigh << 4) | VdcTorqueDownRequest2RawLow) - 2048) * 0.5;
 }
 
 /// <summary>
-/// ABS front wheel speed frame for Nissan Leaf AZE0 platform (0x284)
+///     ABS front wheel speed frame for Nissan Leaf AZE0 platform (0x284)
 /// </summary>
 /// <remarks>
-/// Canonical decoder for CAN 0x284 (the duplicate <c>VcmFrame_284_AZE0</c> definition was
-/// removed in the 2026-07-18 frame-layout audit). The multi-byte fields are big-endian on
-/// the wire (Motorola-order DBC source); the generator only supports Intel bit order, so
-/// each field is declared as byte-aligned raw signals recombined in computed properties.
-/// Hardware capture 2026-07-18 (parked): bytes 0-5 all zero (speeds 0), bytes 6-7 are
-/// free-running per-frame counters (0x34BA → 0x35BB), NOT speed or distance — the old
-/// definition decoded them as 61-496 km/h while stationary.
+///     Canonical decoder for CAN 0x284 (the duplicate <c>VcmFrame_284_AZE0</c> definition was
+///     removed in the 2026-07-18 frame-layout audit). The multi-byte fields are big-endian on
+///     the wire (Motorola-order DBC source); the generator only supports Intel bit order, so
+///     each field is declared as byte-aligned raw signals recombined in computed properties.
+///     Hardware capture 2026-07-18 (parked): bytes 0-5 all zero (speeds 0), bytes 6-7 are
+///     free-running per-frame counters (0x34BA → 0x35BB), NOT speed or distance — the old
+///     definition decoded them as 61-496 km/h while stationary.
 /// </remarks>
 [CanFrame(0x284, Description = "ABS front wheel speeds and vehicle speed (20ms)")]
 public partial class AbsFrame_284_AZE0
@@ -157,12 +163,12 @@ public partial class AbsFrame_284_AZE0
 }
 
 /// <summary>
-/// ABS rear wheel speed frame for Nissan Leaf AZE0 platform (0x285)
+///     ABS rear wheel speed frame for Nissan Leaf AZE0 platform (0x285)
 /// </summary>
 /// <remarks>
-/// Same big-endian layout as <see cref="AbsFrame_284_AZE0"/> (fixed together in the
-/// 2026-07-18 audit): wheel speeds are big-endian byte pairs, bytes 6-7 are free-running
-/// per-frame counters (capture: …34BA → …35BC while parked).
+///     Same big-endian layout as <see cref="AbsFrame_284_AZE0" /> (fixed together in the
+///     2026-07-18 audit): wheel speeds are big-endian byte pairs, bytes 6-7 are free-running
+///     per-frame counters (capture: …34BA → …35BC while parked).
 /// </remarks>
 [CanFrame(0x285, Description = "ABS rear wheel speeds (20ms)")]
 public partial class AbsFrame_285_AZE0
@@ -200,7 +206,7 @@ public partial class AbsFrame_285_AZE0
 }
 
 /// <summary>
-/// ABS battery voltage and brake pressure frame for Nissan Leaf AZE0 platform (0x292)
+///     ABS battery voltage and brake pressure frame for Nissan Leaf AZE0 platform (0x292)
 /// </summary>
 [CanFrame(0x292, Description = "ABS lead-acid battery voltage and friction brake pressure (20ms)")]
 public partial class AbsFrame_292_AZE0
@@ -247,7 +253,7 @@ public partial class AbsFrame_292_AZE0
 }
 
 /// <summary>
-/// ABS vehicle speed and ESP status frame for Nissan Leaf AZE0 platform (0x354)
+///     ABS vehicle speed and ESP status frame for Nissan Leaf AZE0 platform (0x354)
 /// </summary>
 [CanFrame(0x354, Description = "ABS vehicle speed pulses and ESP status (20ms)")]
 public partial class AbsFrame_354_AZE0
@@ -287,6 +293,3 @@ public partial class AbsFrame_354_AZE0
         MinValue = 0, MaxValue = 255)]
     public partial int Unknown7 { get; init; }
 }
-
-
-

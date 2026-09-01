@@ -1,21 +1,22 @@
+using System.Text;
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Vehicles;
-using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Simulation;
 
 namespace OdbTestApp.Tests.NissanLeaf;
 
 /// <summary>
-/// Roadmap B6: VIN-driven vehicle selection over replay — the session connects, reads
-/// the VIN via the profile's own mechanism (Leaf: 2181 on the charger ECU), resolves
-/// the AZE0-2 command set with no hardcoded vehicle, and degrades to clear statuses
-/// (never a crash) for unreadable VINs, unknown vehicles, and unsupported variants.
+///     Roadmap B6: VIN-driven vehicle selection over replay — the session connects, reads
+///     the VIN via the profile's own mechanism (Leaf: 2181 on the charger ECU), resolves
+///     the AZE0-2 command set with no hardcoded vehicle, and degrades to clear statuses
+///     (never a crash) for unreadable VINs, unknown vehicles, and unsupported variants.
 /// </summary>
 [Timeout(30_000)]
 public class VehicleResolverTests
 {
-    private static readonly IReadOnlyList<IVehicleProfile> Profiles = [new global::ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.NissanLeaf()];
+    private static readonly IReadOnlyList<IVehicleProfile> Profiles =
+        [new ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.NissanLeaf()];
 
     [Test]
     public async Task Resolve_GoldenVin_BuildsAze0CommandSet(CancellationToken token)
@@ -84,7 +85,7 @@ public class VehicleResolverTests
         var payload = new byte[2 + 19];
         payload[0] = 0x61;
         payload[1] = 0x81;
-        System.Text.Encoding.ASCII.GetBytes(vin, payload.AsSpan(2));
+        Encoding.ASCII.GetBytes(vin, payload.AsSpan(2));
 
         var lines = new List<string>();
         var first = 6;
@@ -104,7 +105,7 @@ public class VehicleResolverTests
 
     private static string Hex(ReadOnlySpan<byte> bytes)
     {
-        var sb = new System.Text.StringBuilder();
+        var sb = new StringBuilder();
         foreach (var b in bytes)
         {
             sb.Append(b.ToString("X2"));

@@ -1,22 +1,24 @@
+using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities;
+using ObdInsight.IntegrationTests;
 using OdbTestApp.Tests.Fixtures;
 
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Integration;
 
 /// <summary>
-/// Integration tests for Nissan Leaf AZE0 passive monitoring capabilities using source-generated frames.
-/// These tests require a physical Nissan Leaf AZE0 with OBD adapter connected via BLE.
-/// Validates: Steering, Brake, ABS, Body Control, and VCM capabilities using broadcast CAN frames.
+///     Integration tests for Nissan Leaf AZE0 passive monitoring capabilities using source-generated frames.
+///     These tests require a physical Nissan Leaf AZE0 with OBD adapter connected via BLE.
+///     Validates: Steering, Brake, ABS, Body Control, and VCM capabilities using broadcast CAN frames.
 /// </summary>
-[ObdInsight.IntegrationTests.RequiresLeafHardware]
+[RequiresLeafHardware]
 [ClassDataSource<BleSessionFixture>(Shared = SharedType.Keyed)]
 public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixture)
 {
-    private ObdInsight.Core.Communication.Elm327.CanMonitor? _monitor;
+    private CanMonitor? _monitor;
 
-    private ObdInsight.Core.Communication.Elm327.CanMonitor Monitor =>
-        _monitor ??= new ObdInsight.Core.Communication.Elm327.CanMonitor(
+    private CanMonitor Monitor =>
+        _monitor ??= new CanMonitor(
             bleFixture.Session, LeafAze0Contexts.SharedBroadcastMonitor);
 
     [After(Test)]
@@ -51,7 +53,8 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
             await Assert.That(absStatus.VehicleSpeedKmh!.Value).IsLessThan(5.0);
         }
 
-        Console.WriteLine($"[Consistency] Brake Pressed: {brakeStatus.BrakePressed}, Vehicle Speed: {absStatus.VehicleSpeedKmh:F2} km/h");
+        Console.WriteLine(
+            $"[Consistency] Brake Pressed: {brakeStatus.BrakePressed}, Vehicle Speed: {absStatus.VehicleSpeedKmh:F2} km/h");
     }
 
     [Test]
@@ -107,7 +110,8 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         await Assert.That(status.WheelSpeedRlKmh!.Value).IsGreaterThanOrEqualTo(0.0);
         await Assert.That(status.WheelSpeedRlKmh!.Value).IsLessThanOrEqualTo(200.0);
 
-        Console.WriteLine($"[ABS] Wheel Speeds - FR: {status.WheelSpeedFrKmh:F2}, FL: {status.WheelSpeedFlKmh:F2}, RR: {status.WheelSpeedRrKmh:F2}, RL: {status.WheelSpeedRlKmh:F2} km/h");
+        Console.WriteLine(
+            $"[ABS] Wheel Speeds - FR: {status.WheelSpeedFrKmh:F2}, FL: {status.WheelSpeedFlKmh:F2}, RR: {status.WheelSpeedRrKmh:F2}, RL: {status.WheelSpeedRlKmh:F2} km/h");
     }
 
     [Test]
@@ -153,7 +157,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         await Assert.That(status.WheelSpeedRlKmh!.Value).IsLessThan(1.0);
         await Assert.That(status.VehicleSpeedKmh!.Value).IsLessThan(1.0);
 
-        Console.WriteLine($"[ABS Parked] All speeds < 1 km/h");
+        Console.WriteLine("[ABS Parked] All speeds < 1 km/h");
     }
 
     [Test]
@@ -175,7 +179,8 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         await Assert.That(status.HeadlightsOn).IsTypeOf<bool>();
         await Assert.That(status.HazardLightsOn).IsTypeOf<bool>();
 
-        Console.WriteLine($"[Body Control] Doors Locked: {status.DoorsLocked}, Headlights: {status.HeadlightsOn}, Hazards: {status.HazardLightsOn}");
+        Console.WriteLine(
+            $"[Body Control] Doors Locked: {status.DoorsLocked}, Headlights: {status.HeadlightsOn}, Hazards: {status.HazardLightsOn}");
     }
 
     [Test]
@@ -285,7 +290,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         await Assert.That(absStatus).IsNotNull();
         await Assert.That(absStatus.VehicleSpeedKmh).IsNotNull();
 
-        Console.WriteLine($"[Multi-Query] Successfully queried Steering, Brake, and ABS sequentially");
+        Console.WriteLine("[Multi-Query] Successfully queried Steering, Brake, and ABS sequentially");
     }
 
     [Test]
@@ -355,7 +360,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         await Assert.That(async () => await steering.GetStatusAsync(cts.Token))
             .Throws<OperationCanceledException>();
 
-        Console.WriteLine($"[Steering Cancellation] Successfully handled cancellation");
+        Console.WriteLine("[Steering Cancellation] Successfully handled cancellation");
     }
 
     [Test]
@@ -433,7 +438,8 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
         await Assert.That(status.IntegratedAuxPowerConsumption!.Value).IsGreaterThanOrEqualTo(0);
         await Assert.That(status.IntegratedAuxPowerConsumption!.Value).IsLessThanOrEqualTo(15);
 
-        Console.WriteLine($"[VCM] Integrated Power - Motor: {status.IntegratedMotorPowerConsumption}, AC: {status.IntegratedAcPowerConsumption}, Aux: {status.IntegratedAuxPowerConsumption}");
+        Console.WriteLine(
+            $"[VCM] Integrated Power - Motor: {status.IntegratedMotorPowerConsumption}, AC: {status.IntegratedAcPowerConsumption}, Aux: {status.IntegratedAuxPowerConsumption}");
     }
 
     [Test]
@@ -460,6 +466,7 @@ public class LeafAze0PassiveMonitoringIntegrationTests(BleSessionFixture bleFixt
             await Assert.That(status.ClimateControlPowerKw.Value).IsLessThanOrEqualTo(10.0); // Max ~10kW for HVAC
         }
 
-        Console.WriteLine($"[VCM] Climate Active: {status.ClimateControlActive}, Power: {status.ClimateControlPowerKw:F2} kW");
+        Console.WriteLine(
+            $"[VCM] Climate Active: {status.ClimateControlActive}, Power: {status.ClimateControlPowerKw:F2} kW");
     }
 }

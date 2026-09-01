@@ -1,12 +1,13 @@
-using ObdInsight.SourceGeneration.Attributes;
+using System.Globalization;
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
+using ObdInsight.SourceGeneration.Attributes;
 
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
 {
     /// <summary>
-    /// UDS diagnostics service for Nissan Leaf BMS (Battery Management System).
-    /// Uses Mode 21 (ReadDataByIdentifier) for battery diagnostics.
+    ///     UDS diagnostics service for Nissan Leaf BMS (Battery Management System).
+    ///     Uses Mode 21 (ReadDataByIdentifier) for battery diagnostics.
     /// </summary>
     [UdsService(0x21, EcuType = "BMS", Description = "Nissan Leaf Battery Diagnostics")]
     internal sealed partial class LeafBmsDiagnostics
@@ -38,7 +39,7 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
                 if (trimmed.Length < 5) continue;
 
                 var canIdHex = trimmed[..3];
-                if (!int.TryParse(canIdHex, System.Globalization.NumberStyles.HexNumber, null, out var canId))
+                if (!int.TryParse(canIdHex, NumberStyles.HexNumber, null, out var canId))
                     continue;
                 if (canId < 0x700 || canId > 0x7FF)
                     continue;
@@ -51,7 +52,7 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
                 var frameBytes = new List<byte>();
                 for (var i = 0; i + 1 < frameHex.Length; i += 2)
                 {
-                    if (byte.TryParse(frameHex.AsSpan(i, 2), System.Globalization.NumberStyles.HexNumber, null, out var b))
+                    if (byte.TryParse(frameHex.AsSpan(i, 2), NumberStyles.HexNumber, null, out var b))
                         frameBytes.Add(b);
                     else
                         break;
@@ -75,6 +76,7 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
                             var totalLen = (frameInfo << 8) | frameBytes[1];
                             frames.Add((1, totalLen, frameBytes.Skip(2).ToArray()));
                         }
+
                         break;
 
                     case 2:
@@ -125,17 +127,17 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
         }
 
         /// <summary>
-        /// PID 0x01 - Battery status including current, voltage, SOC, capacity, and health.
-        /// Response length varies by battery model:
-        /// - 24kWh/30kWh: 39-41 bytes
-        /// - 40kWh+ (ZE1): 49+ bytes
+        ///     PID 0x01 - Battery status including current, voltage, SOC, capacity, and health.
+        ///     Response length varies by battery model:
+        ///     - 24kWh/30kWh: 39-41 bytes
+        ///     - 40kWh+ (ZE1): 49+ bytes
         /// </summary>
         [UdsPid(0x01, Name = "Group01")]
         [UdsResponse(MinLength = 39, MaxLength = 51)]
         [UdsResponseVariant(Length = 39, Model = "24kWh")]
         [UdsResponseVariant(Length = 41, Model = "30kWh")]
         [UdsResponseVariant(Length = 49, Model = "40kWh_ZE1")]
-        public partial class Group01Response
+        public class Group01Response
         {
             // Capacity (AHR): Different offsets by model, with validation
             [UdsField(Offset = 33, Length = 3, Type = UdsFieldType.UInt24BE, Scale = 0.0001,
@@ -150,7 +152,8 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
 
             // Health (Hx): Different offsets and scales by model
             [UdsField(Offset = 26, Length = 2, Type = UdsFieldType.UInt16BE, Scale = 0.01, AppliesTo = "24kWh,30kWh")]
-            [UdsField(Offset = 28, Length = 2, Type = UdsFieldType.UInt16BE, Scale = 1.0 / 102.4, AppliesTo = "40kWh_ZE1")]
+            [UdsField(Offset = 28, Length = 2, Type = UdsFieldType.UInt16BE, Scale = 1.0 / 102.4,
+                AppliesTo = "40kWh_ZE1")]
             public double HealthPercent { get; set; }
 
             // SOC (0.0001 %/bit, UInt24BE). ZE1 offset 31 is documented (OVMS
@@ -172,18 +175,18 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
         }
 
         /// <summary>
-        /// PID 0x04 - Battery pack temperatures.
-        /// AZE0/ZE0 payload is 14 bytes (ZE1 responds with 29 — those offsets are NOT
-        /// supported here). Layout per OVMS vehicle_nissanleaf.cpp PollReply_BMS_Temp:
-        /// four sensor slots of [2-byte thermistor ADC][1-byte integer °C]; slot 3 is
-        /// absent (0xFFFF) on AZE0/30kWh; byte 12 is a fifth integer-°C reading.
-        /// Precise temperature = −0.102 × (ADC − 710).
-        /// Hardware sample 2025-12-06 (this car, winter): ADC 691/686/—/697 →
-        /// 1.9/2.4/—/1.3 °C, integer bytes 2/3/—/2 — formula and bytes agree.
+        ///     PID 0x04 - Battery pack temperatures.
+        ///     AZE0/ZE0 payload is 14 bytes (ZE1 responds with 29 — those offsets are NOT
+        ///     supported here). Layout per OVMS vehicle_nissanleaf.cpp PollReply_BMS_Temp:
+        ///     four sensor slots of [2-byte thermistor ADC][1-byte integer °C]; slot 3 is
+        ///     absent (0xFFFF) on AZE0/30kWh; byte 12 is a fifth integer-°C reading.
+        ///     Precise temperature = −0.102 × (ADC − 710).
+        ///     Hardware sample 2025-12-06 (this car, winter): ADC 691/686/—/697 →
+        ///     1.9/2.4/—/1.3 °C, integer bytes 2/3/—/2 — formula and bytes agree.
         /// </summary>
         [UdsPid(0x04, Name = "Group04")]
         [UdsResponse(MinLength = 14, MaxLength = 29)]
-        public partial class Group04Response
+        public class Group04Response
         {
             [UdsField(Offset = 0, Length = 2, Type = UdsFieldType.UInt16BE)]
             public int Pack1ThermistorRaw { get; set; }
@@ -212,10 +215,6 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
             [UdsField(Offset = 12, Length = 1, Type = UdsFieldType.UInt8)]
             public int Pack5TempIntC { get; set; }
 
-            /// <summary>Precise °C from a thermistor ADC reading; null for the 0xFFFF absent-sensor sentinel.</summary>
-            public static double? TempFromThermistor(int adcRaw) =>
-                adcRaw is 0xFFFF or 0 ? null : -0.102 * (adcRaw - 710);
-
             public double? Pack1TempC => TempFromThermistor(Pack1ThermistorRaw);
             public double? Pack2TempC => TempFromThermistor(Pack2ThermistorRaw);
             public double? Pack3TempC => TempFromThermistor(Pack3ThermistorRaw);
@@ -228,19 +227,23 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
             public double? AverageTempC => ValidTemps.Any() ? ValidTemps.Average() : null;
             public double? MinTempC => ValidTemps.Any() ? ValidTemps.Min() : null;
             public double? MaxTempC => ValidTemps.Any() ? ValidTemps.Max() : null;
+
+            /// <summary>Precise °C from a thermistor ADC reading; null for the 0xFFFF absent-sensor sentinel.</summary>
+            public static double? TempFromThermistor(int adcRaw) =>
+                adcRaw is 0xFFFF or 0 ? null : -0.102 * (adcRaw - 710);
         }
 
         /// <summary>
-        /// PID 0x06 - Cell shunt (balancing) states: 24 bytes, 4 cells per byte in bit
-        /// order 0x08→cell N, 0x04→N+1, 0x02→N+2, 0x01→N+3 ("shunt order 8421", per OVMS
-        /// PollReply_BMS_Shunt). NOTE: OVMS inverts the bits to get "balancing" — i.e. a
-        /// SET bit means the shunt is NOT balancing that cell. That inversion is
-        /// field-tested in OVMS but not independently verified here; both the raw bytes
-        /// and the OVMS-convention view are exposed.
+        ///     PID 0x06 - Cell shunt (balancing) states: 24 bytes, 4 cells per byte in bit
+        ///     order 0x08→cell N, 0x04→N+1, 0x02→N+2, 0x01→N+3 ("shunt order 8421", per OVMS
+        ///     PollReply_BMS_Shunt). NOTE: OVMS inverts the bits to get "balancing" — i.e. a
+        ///     SET bit means the shunt is NOT balancing that cell. That inversion is
+        ///     field-tested in OVMS but not independently verified here; both the raw bytes
+        ///     and the OVMS-convention view are exposed.
         /// </summary>
         [UdsPid(0x06, Name = "Group06")]
         [UdsResponse(MinLength = 24)]
-        public partial class Group06Response
+        public class Group06Response
         {
             [UdsArrayField(Offset = 0, ElementCount = 24, ElementLength = 1,
                 Type = UdsFieldType.UInt8)]
@@ -264,25 +267,22 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
         }
 
         /// <summary>
-        /// PID 0x02 - Individual cell pair voltages.
-        /// Nissan Leaf has 96 cell pairs, each reported as 2 bytes in millivolts.
+        ///     PID 0x02 - Individual cell pair voltages.
+        ///     Nissan Leaf has 96 cell pairs, each reported as 2 bytes in millivolts.
         /// </summary>
         [UdsPid(0x02, Name = "Group02")]
         [UdsResponse(MinLength = 192)] // 96 cells × 2 bytes
-        public partial class Group02Response
+        public class Group02Response
         {
-            [UdsComputed]
-            public int AvgVoltageMv => CellVoltagesMv.Length > 0 ? (int)CellVoltagesMv.Average() : 0;
+            [UdsComputed] public int AvgVoltageMv => CellVoltagesMv.Length > 0 ? (int)CellVoltagesMv.Average() : 0;
 
             [UdsArrayField(Offset = 0, ElementCount = 96, ElementLength = 2,
-                            Type = UdsFieldType.UInt16BE, ValidRange = "2500..4500")]
+                Type = UdsFieldType.UInt16BE, ValidRange = "2500..4500")]
             public int[] CellVoltagesMv { get; set; } = [];
 
-            [UdsComputed]
-            public int MaxVoltageMv => CellVoltagesMv.Length > 0 ? CellVoltagesMv.Max() : 0;
+            [UdsComputed] public int MaxVoltageMv => CellVoltagesMv.Length > 0 ? CellVoltagesMv.Max() : 0;
 
-            [UdsComputed]
-            public int MinVoltageMv => CellVoltagesMv.Length > 0 ? CellVoltagesMv.Min() : 0;
+            [UdsComputed] public int MinVoltageMv => CellVoltagesMv.Length > 0 ? CellVoltagesMv.Min() : 0;
         }
     }
 }

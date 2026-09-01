@@ -4,59 +4,38 @@ using ObdInsight.Core.Communication.Elm327;
 namespace ObdInsight.Simulation;
 
 /// <summary>
-/// Deterministic in-memory <see cref="IElmTransport"/> for testing <c>ElmFramer</c>/<c>ElmSession</c>
-/// and everything above them without hardware.
-///
-/// Behavior model (mirrors a real ELM327 adapter):
-/// <list type="bullet">
-/// <item>Commands arrive CR-terminated; each complete command is dispatched exactly once.</item>
-/// <item>A scripted exchange (<see cref="Expect"/>) always wins: its response bytes (including any
-/// '&gt;' prompt) are queued for reading. An empty response means "adapter stays silent" — the
-/// framer's own timeout handling then applies.</item>
-/// <item>Unscripted AT commands are answered with <see cref="DefaultAtResponse"/> when
-/// <see cref="AutoRespondToAtCommands"/> is set (lenient mode), so session init scripts stay terse.</item>
-/// <item>An unscripted, non-AT command throws immediately — tests fail loudly instead of hanging.</item>
-/// <item><see cref="EnqueueIncoming"/> pushes unsolicited data (monitoring-mode CAN frames).</item>
-/// </list>
-///
-/// Reads block until data is available or the caller's <see cref="CancellationToken"/> fires —
-/// never returning 0 immediately, which would busy-spin the framer's read loop.
+///     Deterministic in-memory <see cref="IElmTransport" /> for testing <c>ElmFramer</c>/<c>ElmSession</c>
+///     and everything above them without hardware.
+///     Behavior model (mirrors a real ELM327 adapter):
+///     <list type="bullet">
+///         <item>Commands arrive CR-terminated; each complete command is dispatched exactly once.</item>
+///         <item>
+///             A scripted exchange (<see cref="Expect" />) always wins: its response bytes (including any
+///             '&gt;' prompt) are queued for reading. An empty response means "adapter stays silent" — the
+///             framer's own timeout handling then applies.
+///         </item>
+///         <item>
+///             Unscripted AT commands are answered with <see cref="DefaultAtResponse" /> when
+///             <see cref="AutoRespondToAtCommands" /> is set (lenient mode), so session init scripts stay terse.
+///         </item>
+///         <item>An unscripted, non-AT command throws immediately — tests fail loudly instead of hanging.</item>
+///         <item><see cref="EnqueueIncoming" /> pushes unsolicited data (monitoring-mode CAN frames).</item>
+///     </list>
+///     Reads block until data is available or the caller's <see cref="CancellationToken" /> fires —
+///     never returning 0 immediately, which would busy-spin the framer's read loop.
 /// </summary>
 public sealed class ReplayElmTransport : IConnectionAwareTransport
 {
+    private readonly Dictionary<string, string> _autoResponses = new();
+    private readonly SemaphoreSlim _dataSignal = new(0, int.MaxValue);
     private readonly object _gate = new();
     private readonly Queue<byte> _rx = new();
-    private readonly SemaphoreSlim _dataSignal = new(0, int.MaxValue);
     private readonly Queue<(string Command, string Response)> _script = new();
-    private readonly Dictionary<string, string> _autoResponses = new();
     private readonly List<string> _sent = [];
     private readonly StringBuilder _txBuffer = new();
     private volatile bool _connectionDead;
 
-    /// <summary>Raised by <see cref="SimulateConnectionLost"/> (resilience testing).</summary>
-    public event EventHandler? ConnectionLost;
-
-    /// <summary>
-    /// Failure injection (roadmap B10): marks the link dead — every subsequent read
-    /// and write throws <see cref="IOException"/>, blocked readers wake to observe the
-    /// failure, and <see cref="ConnectionLost"/> fires once. A
-    /// <c>ReconnectingElmTransport</c> reacts by disposing this instance and asking
-    /// its factory for a replacement.
-    /// </summary>
-    public void SimulateConnectionLost()
-    {
-        if (_connectionDead)
-        {
-            return;
-        }
-
-        _connectionDead = true;
-        IsOpen = false;
-        _dataSignal.Release();
-        ConnectionLost?.Invoke(this, EventArgs.Empty);
-    }
-
-    /// <summary>When true (default), unscripted AT commands get <see cref="DefaultAtResponse"/>.</summary>
+    /// <summary>When true (default), unscripted AT commands get <see cref="DefaultAtResponse" />.</summary>
     public bool AutoRespondToAtCommands { get; init; } = true;
 
     /// <summary>Response used for unscripted AT commands in lenient mode.</summary>
@@ -65,41 +44,16 @@ public sealed class ReplayElmTransport : IConnectionAwareTransport
     /// <summary>Every complete CR-terminated command received, in order.</summary>
     public IReadOnlyList<string> SentCommands
     {
-        get { lock (_gate) return [.. _sent]; }
+        get
+        {
+            lock (_gate) return [.. _sent];
+        }
     }
+
+    /// <summary>Raised by <see cref="SimulateConnectionLost" /> (resilience testing).</summary>
+    public event EventHandler? ConnectionLost;
 
     public bool IsOpen { get; private set; }
-
-    /// <summary>
-    /// Adds a scripted exchange: when <paramref name="command"/> is received (and is the oldest
-    /// unmatched script entry for that command), <paramref name="response"/> is queued for reading.
-    /// Include the trailing "\r\r&gt;" prompt in the response for request/response exchanges;
-    /// pass an empty response for "adapter stays silent".
-    /// </summary>
-    public void Expect(string command, string response)
-    {
-        lock (_gate) _script.Enqueue((command, response));
-    }
-
-    /// <summary>
-    /// Registers a canned response for every occurrence of <paramref name="command"/> that is
-    /// not consumed by the ordered script. Useful for unbounded repeating commands
-    /// (e.g. periodic keep-alive "3E80"). Script entries still take priority.
-    /// </summary>
-    public void AutoRespond(string command, string response)
-    {
-        lock (_gate) _autoResponses[command] = response;
-    }
-
-    /// <summary>Pushes unsolicited bytes (e.g. monitoring-mode CAN frame lines) to the read buffer.</summary>
-    public void EnqueueIncoming(string data)
-    {
-        lock (_gate)
-        {
-            foreach (var b in Encoding.ASCII.GetBytes(data)) _rx.Enqueue(b);
-        }
-        _dataSignal.Release();
-    }
 
     public ValueTask OpenAsync(CancellationToken ct)
     {
@@ -159,6 +113,7 @@ public sealed class ReplayElmTransport : IConnectionAwareTransport
                 }
             }
         }
+
         return ValueTask.CompletedTask;
     }
 
@@ -173,6 +128,58 @@ public sealed class ReplayElmTransport : IConnectionAwareTransport
     {
         IsOpen = false;
         return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    ///     Failure injection (roadmap B10): marks the link dead — every subsequent read
+    ///     and write throws <see cref="IOException" />, blocked readers wake to observe the
+    ///     failure, and <see cref="ConnectionLost" /> fires once. A
+    ///     <c>ReconnectingElmTransport</c> reacts by disposing this instance and asking
+    ///     its factory for a replacement.
+    /// </summary>
+    public void SimulateConnectionLost()
+    {
+        if (_connectionDead)
+        {
+            return;
+        }
+
+        _connectionDead = true;
+        IsOpen = false;
+        _dataSignal.Release();
+        ConnectionLost?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    ///     Adds a scripted exchange: when <paramref name="command" /> is received (and is the oldest
+    ///     unmatched script entry for that command), <paramref name="response" /> is queued for reading.
+    ///     Include the trailing "\r\r&gt;" prompt in the response for request/response exchanges;
+    ///     pass an empty response for "adapter stays silent".
+    /// </summary>
+    public void Expect(string command, string response)
+    {
+        lock (_gate) _script.Enqueue((command, response));
+    }
+
+    /// <summary>
+    ///     Registers a canned response for every occurrence of <paramref name="command" /> that is
+    ///     not consumed by the ordered script. Useful for unbounded repeating commands
+    ///     (e.g. periodic keep-alive "3E80"). Script entries still take priority.
+    /// </summary>
+    public void AutoRespond(string command, string response)
+    {
+        lock (_gate) _autoResponses[command] = response;
+    }
+
+    /// <summary>Pushes unsolicited bytes (e.g. monitoring-mode CAN frame lines) to the read buffer.</summary>
+    public void EnqueueIncoming(string data)
+    {
+        lock (_gate)
+        {
+            foreach (var b in Encoding.ASCII.GetBytes(data)) _rx.Enqueue(b);
+        }
+
+        _dataSignal.Release();
     }
 
     private void DispatchLocked(string command)

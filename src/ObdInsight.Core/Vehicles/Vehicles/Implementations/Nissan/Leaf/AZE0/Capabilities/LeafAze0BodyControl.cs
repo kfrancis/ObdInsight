@@ -4,13 +4,16 @@ using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities;
 
 /// <summary>
-/// Body Control Module capability as a view over the shared <see cref="CanMonitor"/>
-/// (streaming design P3). Reads BCM broadcast frames — 0x60D (doors, locks, lights) and
-/// 0x625 (headlights/foglights), 20ms cadence — from the monitor's latest-frame cache.
+///     Body Control Module capability as a view over the shared <see cref="CanMonitor" />
+///     (streaming design P3). Reads BCM broadcast frames — 0x60D (doors, locks, lights) and
+///     0x625 (headlights/foglights), 20ms cadence — from the monitor's latest-frame cache.
 /// </summary>
 internal sealed class LeafAze0BodyControl : IBodyControl
 {
     private static readonly TimeSpan WarmupTimeout = TimeSpan.FromSeconds(4);
+
+    /// <summary>The frames that feed <see cref="BodyControlStatus" />.</summary>
+    private static readonly int[] StatusFrameIds = [0x60D, 0x625];
 
     private readonly CanMonitor _monitor;
 
@@ -18,9 +21,6 @@ internal sealed class LeafAze0BodyControl : IBodyControl
     {
         _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
     }
-
-    /// <summary>The frames that feed <see cref="BodyControlStatus" />.</summary>
-    private static readonly int[] StatusFrameIds = [0x60D, 0x625];
 
     public async ValueTask<BodyControlStatus> GetStatusAsync(CancellationToken ct = default)
     {
@@ -54,8 +54,8 @@ internal sealed class LeafAze0BodyControl : IBodyControl
                              && frame60D?.RightTurnSignalFeedback == true;
 
         return new BodyControlStatus(
-            DoorsLocked: doorsLocked,
-            HeadlightsOn: headlightsOn,
-            HazardLightsOn: hazardLightsOn);
+            doorsLocked,
+            headlightsOn,
+            hazardLightsOn);
     }
 }

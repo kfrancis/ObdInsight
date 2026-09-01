@@ -1,15 +1,14 @@
-using System;
 using System.Buffers.Binary;
 
 namespace ObdInsight.SourceGeneration.Tests
 {
     /// <summary>
-    /// Low-level utilities for reading CAN signal values from 8-byte frames.
+    ///     Low-level utilities for reading CAN signal values from 8-byte frames.
     /// </summary>
     public static class CanBits
     {
         /// <summary>
-        /// Reads a single boolean bit from CAN frame data.
+        ///     Reads a single boolean bit from CAN frame data.
         /// </summary>
         /// <param name="data">8-byte CAN frame data (little-endian byte order)</param>
         /// <param name="bitPos">Bit position (0-63)</param>
@@ -20,7 +19,7 @@ namespace ObdInsight.SourceGeneration.Tests
         }
 
         /// <summary>
-        /// Reads a signed integer value from CAN frame data.
+        ///     Reads a signed integer value from CAN frame data.
         /// </summary>
         /// <param name="data">8-byte CAN frame data (little-endian byte order)</param>
         /// <param name="bitPos">Starting bit position (0-63)</param>
@@ -48,7 +47,7 @@ namespace ObdInsight.SourceGeneration.Tests
         }
 
         /// <summary>
-        /// Reads an unsigned integer value from CAN frame data.
+        ///     Reads an unsigned integer value from CAN frame data.
         /// </summary>
         /// <param name="data">8-byte CAN frame data (little-endian byte order)</param>
         /// <param name="bitPos">Starting bit position (0-63)</param>
@@ -67,7 +66,7 @@ namespace ObdInsight.SourceGeneration.Tests
             var raw = BinaryPrimitives.ReadUInt64LittleEndian(data);
 
             // Create mask for the bits we want
-            var mask = bitLen == 32 ? 0xFFFF_FFFFul : ((1ul << bitLen) - 1ul);
+            var mask = bitLen == 32 ? 0xFFFF_FFFFul : (1ul << bitLen) - 1ul;
 
             // Shift and mask
             return (uint)((raw >> bitPos) & mask);

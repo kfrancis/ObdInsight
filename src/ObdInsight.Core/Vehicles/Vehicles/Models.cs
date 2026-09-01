@@ -1,9 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 namespace ObdInsight.Core.Vehicles;
 
 public enum GearPosition : byte
@@ -23,7 +17,7 @@ public sealed record VehicleVariant(
     string DisplayName,
     int YearFrom,
     int? YearTo,
-    string PlatformCode,   // "ZE0", "AZE0-2", "ZE1", "RE4", "RM4", etc. Use whatever makes sense per OEM.
+    string PlatformCode, // "ZE0", "AZE0-2", "ZE1", "RE4", "RM4", etc. Use whatever makes sense per OEM.
     IReadOnlyDictionary<string, object?> Attributes
 )
 {
@@ -75,6 +69,7 @@ public sealed class HvacStatus
 
     public double? InteriorIntakeTempC { get; init; }
     public double? OutsideAmbientTempC { get; init; }
+
     public bool RearDefrostOn { get; init; }
     // 300 W / bit
 }

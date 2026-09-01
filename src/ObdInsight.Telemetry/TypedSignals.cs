@@ -1,13 +1,13 @@
 namespace ObdInsight.Telemetry;
 
 /// <summary>
-/// A typed handle on a <see cref="TelemetrySignal"/>: it carries the CLR type that signal's
-/// values actually have, so <see cref="ITelemetrySession.Stream{T}"/> can hand back real
-/// values instead of a <see cref="TelemetryValue"/> the caller has to pick apart.
+///     A typed handle on a <see cref="TelemetrySignal" />: it carries the CLR type that signal's
+///     values actually have, so <see cref="ITelemetrySession.Stream{T}" /> can hand back real
+///     values instead of a <see cref="TelemetryValue" /> the caller has to pick apart.
 /// </summary>
 /// <remarks>
-/// Obtain these from <see cref="Signals"/> — there is deliberately no public constructor, so a
-/// handle can never claim a type the underlying signal does not produce.
+///     Obtain these from <see cref="Signals" /> — there is deliberately no public constructor, so a
+///     handle can never claim a type the underlying signal does not produce.
 /// </remarks>
 /// <typeparam name="T">The value type this signal produces (decimal, bool, or a decimal list).</typeparam>
 public sealed class TelemetrySignal<T>
@@ -38,9 +38,9 @@ public sealed class TelemetrySignal<T>
 }
 
 /// <summary>
-/// Typed handles for every <see cref="TelemetrySignal"/>. Pass one to
-/// <see cref="ITelemetrySession.Stream{T}"/> to get a stream of that signal's values:
-/// <c>session.Stream(Signals.StateOfCharge)</c> yields <c>TelemetrySample&lt;decimal&gt;</c>.
+///     Typed handles for every <see cref="TelemetrySignal" />. Pass one to
+///     <see cref="ITelemetrySession.Stream{T}" /> to get a stream of that signal's values:
+///     <c>session.Stream(Signals.StateOfCharge)</c> yields <c>TelemetrySample&lt;decimal&gt;</c>.
 /// </summary>
 public static class Signals
 {
@@ -101,10 +101,10 @@ public static class Signals
 }
 
 /// <summary>
-/// One sampled value of a typed signal. The value is always present — samples where the
-/// signal was unavailable are skipped by <see cref="ITelemetrySession.Stream{T}"/> rather
-/// than emitted empty (consult <see cref="ITelemetrySession.Availability"/> for why a signal
-/// is quiet).
+///     One sampled value of a typed signal. The value is always present — samples where the
+///     signal was unavailable are skipped by <see cref="ITelemetrySession.Stream{T}" /> rather
+///     than emitted empty (consult <see cref="ITelemetrySession.Availability" /> for why a signal
+///     is quiet).
 /// </summary>
 public sealed record TelemetrySample<T>(
     TelemetrySignal Signal,

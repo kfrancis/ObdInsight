@@ -3,12 +3,13 @@ using System.Text.Json;
 namespace ObdInsight.DevTools;
 
 /// <summary>
-/// Manages a history of previously connected BLE devices for quick reconnection.
-/// Stores favorites in a JSON file in the user's app data folder.
+///     Manages a history of previously connected BLE devices for quick reconnection.
+///     Stores favorites in a JSON file in the user's app data folder.
 /// </summary>
 public class DeviceHistory
 {
     private const string FileName = "obd-devtools-devices.json";
+
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "ObdInsight",
@@ -17,12 +18,12 @@ public class DeviceHistory
     private List<SavedDevice> _devices = [];
 
     /// <summary>
-    /// All saved devices, ordered by most recently used.
+    ///     All saved devices, ordered by most recently used.
     /// </summary>
     public IReadOnlyList<SavedDevice> Devices => _devices.AsReadOnly();
 
     /// <summary>
-    /// Load device history from disk.
+    ///     Load device history from disk.
     /// </summary>
     public static DeviceHistory Load()
     {
@@ -51,7 +52,7 @@ public class DeviceHistory
     }
 
     /// <summary>
-    /// Save the current device history to disk.
+    ///     Save the current device history to disk.
     /// </summary>
     public void Save()
     {
@@ -63,10 +64,7 @@ public class DeviceHistory
                 Directory.CreateDirectory(dir);
             }
 
-            var json = JsonSerializer.Serialize(_devices, new JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
+            var json = JsonSerializer.Serialize(_devices, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(FilePath, json);
         }
         catch
@@ -76,12 +74,12 @@ public class DeviceHistory
     }
 
     /// <summary>
-    /// Add or update a device in the history.
+    ///     Add or update a device in the history.
     /// </summary>
     public void AddOrUpdate(string address, string? name, string? profileName = null)
     {
         var normalized = NormalizeAddress(address);
-        var existing = _devices.FirstOrDefault(d => 
+        var existing = _devices.FirstOrDefault(d =>
             NormalizeAddress(d.Address) == normalized);
 
         if (existing != null)
@@ -115,7 +113,7 @@ public class DeviceHistory
     }
 
     /// <summary>
-    /// Remove a device from history.
+    ///     Remove a device from history.
     /// </summary>
     public void Remove(string address)
     {
@@ -125,12 +123,12 @@ public class DeviceHistory
     }
 
     /// <summary>
-    /// Mark a device as favorite (moves it to top).
+    ///     Mark a device as favorite (moves it to top).
     /// </summary>
     public void SetFavorite(string address, bool isFavorite)
     {
         var normalized = NormalizeAddress(address);
-        var device = _devices.FirstOrDefault(d => 
+        var device = _devices.FirstOrDefault(d =>
             NormalizeAddress(d.Address) == normalized);
 
         if (device != null)
@@ -141,7 +139,7 @@ public class DeviceHistory
     }
 
     /// <summary>
-    /// Get favorite devices first, then recent devices.
+    ///     Get favorite devices first, then recent devices.
     /// </summary>
     public IEnumerable<SavedDevice> GetOrderedDevices()
     {
@@ -157,7 +155,7 @@ public class DeviceHistory
 }
 
 /// <summary>
-/// Represents a saved BLE device.
+///     Represents a saved BLE device.
 /// </summary>
 public class SavedDevice
 {
@@ -169,7 +167,7 @@ public class SavedDevice
     public bool IsFavorite { get; set; }
 
     /// <summary>
-    /// Get a display string for this device.
+    ///     Get a display string for this device.
     /// </summary>
     public string GetDisplayName()
     {

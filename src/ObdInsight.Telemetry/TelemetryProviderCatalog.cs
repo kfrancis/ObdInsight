@@ -4,9 +4,9 @@ using ObdInsight.Telemetry.Providers;
 namespace ObdInsight.Telemetry;
 
 /// <summary>
-/// Builds the provider set for a connected vehicle from whichever capabilities its
-/// command set registers. Vehicle-agnostic: any vehicle implementing the capability
-/// interfaces gets telemetry for free.
+///     Builds the provider set for a connected vehicle from whichever capabilities its
+///     command set registers. Vehicle-agnostic: any vehicle implementing the capability
+///     interfaces gets telemetry for free.
 /// </summary>
 public static class TelemetryProviderCatalog
 {

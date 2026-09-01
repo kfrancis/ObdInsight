@@ -6,6 +6,7 @@ public interface IVehicleCommandSet
 
     bool TryGet<T>(out T capability) where T : class, IVehicleCapability;
 }
+
 public abstract class VehicleCommandSet : IVehicleCommandSet
 {
     private readonly Dictionary<Type, IVehicleCapability> _caps = new();
@@ -14,7 +15,12 @@ public abstract class VehicleCommandSet : IVehicleCommandSet
 
     public bool TryGet<T>(out T capability) where T : class, IVehicleCapability
     {
-        if (_caps.TryGetValue(typeof(T), out var cap) && cap is T t) { capability = t; return true; }
+        if (_caps.TryGetValue(typeof(T), out var cap) && cap is T t)
+        {
+            capability = t;
+            return true;
+        }
+
         capability = default!;
         return false;
     }

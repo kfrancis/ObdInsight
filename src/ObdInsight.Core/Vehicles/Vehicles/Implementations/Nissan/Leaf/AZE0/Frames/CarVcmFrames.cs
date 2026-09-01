@@ -3,12 +3,12 @@ using ObdInsight.SourceGeneration.Attributes;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.AZE0;
 
 /// <summary>
-/// VCM power consumption and climate data frame for Nissan Leaf AZE0 platform (0x510)
-/// Transmitted on CAR-CAN bus
+///     VCM power consumption and climate data frame for Nissan Leaf AZE0 platform (0x510)
+///     Transmitted on CAR-CAN bus
 /// </summary>
 /// <remarks>
-/// This frame contains integrated power consumption, climate control status, and ambient temperature.
-/// VCM relays this data from A/C Auto Amp to eyebrow display and A/V unit.
+///     This frame contains integrated power consumption, climate control status, and ambient temperature.
+///     VCM relays this data from A/C Auto Amp to eyebrow display and A/V unit.
 /// </remarks>
 [CanFrame(0x510, Description = "VCM power consumption, climate, and eco data (CAR-CAN)")]
 public partial class VcmFrame_510_AZE0
@@ -73,12 +73,12 @@ public partial class VcmFrame_510_AZE0
 }
 
 /// <summary>
-/// VCM shifter relay frame for Nissan Leaf AZE0 platform (0x174)
-/// Transmitted on CAR-CAN bus
+///     VCM shifter relay frame for Nissan Leaf AZE0 platform (0x174)
+///     Transmitted on CAR-CAN bus
 /// </summary>
 /// <remarks>
-/// VCM relays shifter position data from E-Shift on EV-CAN to instrument panel and VSP.
-/// Most signals are unknown/undecoded.
+///     VCM relays shifter position data from E-Shift on EV-CAN to instrument panel and VSP.
+///     Most signals are unknown/undecoded.
 /// </remarks>
 [CanFrame(0x174, Description = "VCM shifter relay data (CAR-CAN)")]
 public partial class VcmFrame_174_AZE0
@@ -118,12 +118,12 @@ public partial class VcmFrame_174_AZE0
 }
 
 /// <summary>
-/// VCM motor RPM relay frame for Nissan Leaf AZE0 platform (0x176)
-/// Transmitted on CAR-CAN bus
+///     VCM motor RPM relay frame for Nissan Leaf AZE0 platform (0x176)
+///     Transmitted on CAR-CAN bus
 /// </summary>
 /// <remarks>
-/// VCM relays motor RPM data from inverter message on EV-CAN to instrument cluster.
-/// Contains transmission input/output revolutions and ASCD (cruise control) speed request.
+///     VCM relays motor RPM data from inverter message on EV-CAN to instrument cluster.
+///     Contains transmission input/output revolutions and ASCD (cruise control) speed request.
 /// </remarks>
 [CanFrame(0x176, Description = "VCM motor RPM relay (CAR-CAN, 7 bytes)")]
 public partial class VcmFrame_176_AZE0
@@ -159,12 +159,12 @@ public partial class VcmFrame_176_AZE0
 }
 
 /// <summary>
-/// VCM motor current and throttle frame for Nissan Leaf AZE0 platform (0x180)
-/// Transmitted on CAR-CAN bus
+///     VCM motor current and throttle frame for Nissan Leaf AZE0 platform (0x180)
+///     Transmitted on CAR-CAN bus
 /// </summary>
 /// <remarks>
-/// Contains motor current measurements and throttle position.
-/// Motor current signals appear to be signed 12-bit values.
+///     Contains motor current measurements and throttle position.
+///     Motor current signals appear to be signed 12-bit values.
 /// </remarks>
 [CanFrame(0x180, Description = "VCM motor current and throttle (CAR-CAN)")]
 public partial class VcmFrame_180_AZE0
@@ -202,16 +202,18 @@ public partial class VcmFrame_180_AZE0
 }
 
 /// <summary>
-/// VCM motor power data frame for Nissan Leaf AZE0 platform (0x260)
-/// Transmitted on CAR-CAN bus
+///     VCM motor power data frame for Nissan Leaf AZE0 platform (0x260)
+///     Transmitted on CAR-CAN bus
 /// </summary>
 /// <remarks>
-/// Contains motor power consumption and available power limits.
-/// Power values include both drive and regeneration modes.
-/// <para>UNRESOLVED: the description says 4 bytes on the wire, but PowerConsumptMotor is
-/// declared at bits 23-34, which reaches byte 4 — so MinimumLength is 5 and a genuinely
-/// 4-byte frame is still skipped. Either the width or that signal's placement is wrong;
-/// needs a capture to settle. No capability reads this frame today.</para>
+///     Contains motor power consumption and available power limits.
+///     Power values include both drive and regeneration modes.
+///     <para>
+///         UNRESOLVED: the description says 4 bytes on the wire, but PowerConsumptMotor is
+///         declared at bits 23-34, which reaches byte 4 — so MinimumLength is 5 and a genuinely
+///         4-byte frame is still skipped. Either the width or that signal's placement is wrong;
+///         needs a capture to settle. No capability reads this frame today.
+///     </para>
 /// </remarks>
 [CanFrame(0x260, Description = "VCM motor power data (CAR-CAN, 4 bytes)")]
 public partial class VcmFrame_260_AZE0
@@ -240,15 +242,15 @@ public partial class VcmFrame_260_AZE0
 }
 
 /// <summary>
-/// VCM dashboard shifter position frame for Nissan Leaf AZE0 platform (0x421)
-/// Transmitted on CAR-CAN bus
+///     VCM dashboard shifter position frame for Nissan Leaf AZE0 platform (0x421)
+///     Transmitted on CAR-CAN bus
 /// </summary>
 /// <remarks>
-/// VCM relays shifter position to instrument panel and VSP for dashboard display.
-/// Single-byte frame on the wire; the generated <c>Parse</c> handles it because the frame's
-/// only signal lives in byte 0 (<c>MinimumLength</c> = 1). Value map confirmed against OVMS
-/// vehicle_nissanleaf.cpp (case 0x421): 0/1=Park, 2=Reverse, 3=Neutral, 4=Drive,
-/// 7=Drive/B (Eco), 5/6=undefined.
+///     VCM relays shifter position to instrument panel and VSP for dashboard display.
+///     Single-byte frame on the wire; the generated <c>Parse</c> handles it because the frame's
+///     only signal lives in byte 0 (<c>MinimumLength</c> = 1). Value map confirmed against OVMS
+///     vehicle_nissanleaf.cpp (case 0x421): 0/1=Park, 2=Reverse, 3=Neutral, 4=Drive,
+///     7=Drive/B (Eco), 5/6=undefined.
 /// </remarks>
 [CanFrame(0x421, Description = "VCM dashboard shifter position (CAR-CAN, 1 byte)")]
 public partial class VcmFrame_421_AZE0
@@ -260,14 +262,14 @@ public partial class VcmFrame_421_AZE0
 }
 
 /// <summary>
-/// Battery state-of-health relay frame for Nissan Leaf AZE0 platform (0x5B3)
-/// Transmitted on CAR-CAN bus
+///     Battery state-of-health relay frame for Nissan Leaf AZE0 platform (0x5B3)
+///     Transmitted on CAR-CAN bus
 /// </summary>
 /// <remarks>
-/// Layout from OVMS vehicle_nissanleaf.cpp (case 0x5b3): SOH% = byte1 &gt;&gt; 1, 0 = invalid.
-/// OVMS treats this as the SOH source on non-ZE1 cars (it only trusts the 0x5BC byte-4 SOH
-/// on 24 kWh ZE0). Hardware sample 2025-12-06 (third-party app log, same 2017 30 kWh AZE0):
-/// 50 84 FF FB 20 B5 A1 8A → SOH 66%, consistent with the 0x5BC read of 65%.
+///     Layout from OVMS vehicle_nissanleaf.cpp (case 0x5b3): SOH% = byte1 &gt;&gt; 1, 0 = invalid.
+///     OVMS treats this as the SOH source on non-ZE1 cars (it only trusts the 0x5BC byte-4 SOH
+///     on 24 kWh ZE0). Hardware sample 2025-12-06 (third-party app log, same 2017 30 kWh AZE0):
+///     50 84 FF FB 20 B5 A1 8A → SOH 66%, consistent with the 0x5BC read of 65%.
 /// </remarks>
 [CanFrame(0x5B3, Description = "Battery SOH relay from LBC (CAR-CAN)")]
 public partial class VcmFrame_5B3_AZE0
@@ -277,17 +279,17 @@ public partial class VcmFrame_5B3_AZE0
         MinValue = 0, MaxValue = 100)]
     public partial int Soh { get; init; }
 
-    /// <summary>False while <see cref="Soh"/> is 0 (sender has no valid SOH yet).</summary>
+    /// <summary>False while <see cref="Soh" /> is 0 (sender has no valid SOH yet).</summary>
     public bool SohValid => Soh != 0;
 }
 
 /// <summary>
-/// VCM dashboard indicator lights frame for Nissan Leaf AZE0 platform (0x50D)
-/// Transmitted on CAR-CAN bus
+///     VCM dashboard indicator lights frame for Nissan Leaf AZE0 platform (0x50D)
+///     Transmitted on CAR-CAN bus
 /// </summary>
 /// <remarks>
-/// VCM relays indicator light status to eyebrow display and A/V unit.
-/// Contains READY lamp, charge lamp, and EV system warning light signals.
+///     VCM relays indicator light status to eyebrow display and A/V unit.
+///     Contains READY lamp, charge lamp, and EV system warning light signals.
 /// </remarks>
 [CanFrame(0x50D, Description = "VCM dashboard indicator lights (CAR-CAN)")]
 public partial class VcmFrame_50D_AZE0

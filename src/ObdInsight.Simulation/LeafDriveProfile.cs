@@ -1,8 +1,8 @@
 namespace ObdInsight.Simulation;
 
 /// <summary>
-/// Vehicle state at one instant of simulated time. Values are physical (V, A, °C, km/h,
-/// km, %); the transport encodes them onto simulated CAN frames / UDS responses.
+///     Vehicle state at one instant of simulated time. Values are physical (V, A, °C, km/h,
+///     km, %); the transport encodes them onto simulated CAN frames / UDS responses.
 /// </summary>
 public sealed record LeafSimulationState
 {
@@ -26,18 +26,16 @@ public sealed record LeafSimulationState
 }
 
 /// <summary>
-/// Time-driven drive profile: simulated elapsed time → vehicle state. The default is a
-/// deterministic 30-minute urban test drive with SOC drain, speed cycles, and pack
-/// warming — enough signal movement to exercise a full pre-check → drive → post-check
-/// consumer flow without hardware.
+///     Time-driven drive profile: simulated elapsed time → vehicle state. The default is a
+///     deterministic 30-minute urban test drive with SOC drain, speed cycles, and pack
+///     warming — enough signal movement to exercise a full pre-check → drive → post-check
+///     consumer flow without hardware.
 /// </summary>
 public sealed class LeafDriveProfile
 {
     private readonly Func<TimeSpan, LeafSimulationState> _stateAt;
 
     public LeafDriveProfile(Func<TimeSpan, LeafSimulationState> stateAt) => _stateAt = stateAt;
-
-    public LeafSimulationState StateAt(TimeSpan simulatedElapsed) => _stateAt(simulatedElapsed);
 
     /// <summary>30-minute urban drive: SOC 85 → ~70 %, speed 0–60 km/h cycles, pack 20 → 24.5 °C.</summary>
     public static LeafDriveProfile DefaultTestDrive { get; } = new(elapsed =>
@@ -52,7 +50,7 @@ public sealed class LeafDriveProfile
             : Math.Max(0.0, 60.0 * Math.Sin(Math.PI * ((minutes - 0.25) % 2.0) / 2.0));
 
         var packVoltage = 300.0 + soc; // crude linear OCV stand-in
-        var current = speed * 1.5;     // discharge grows with speed; 0 A at standstill
+        var current = speed * 1.5; // discharge grows with speed; 0 A at standstill
         var cellMv = (int)Math.Round(packVoltage / 96.0 * 1000.0);
         var cells = new int[96];
         for (var i = 0; i < cells.Length; i++)
@@ -73,7 +71,9 @@ public sealed class LeafDriveProfile
             AmbientTempC = 18.0,
             HvacOn = true,
             RangeKm = soc * 1.6,
-            CellVoltagesMv = cells,
+            CellVoltagesMv = cells
         };
     });
+
+    public LeafSimulationState StateAt(TimeSpan simulatedElapsed) => _stateAt(simulatedElapsed);
 }

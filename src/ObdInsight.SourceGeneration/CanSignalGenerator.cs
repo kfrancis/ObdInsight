@@ -7,6 +7,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
+using ObdInsight.SourceGeneration.Attributes;
 
 #if NETSTANDARD2_0
 namespace System.Runtime.CompilerServices
@@ -205,7 +206,7 @@ namespace ObdInsight.SourceGeneration
 
             if (multiplexors.Count == 0)
             {
-                foreach (var orphan in model.Signals.Where(s => s.MuxValue != Attributes.CanSignalAttribute.NotMultiplexed))
+                foreach (var orphan in model.Signals.Where(s => s.MuxValue != CanSignalAttribute.NotMultiplexed))
                 {
                     context.ReportDiagnostic(Diagnostic.Create(
                         MuxValueWithoutMultiplexor,
@@ -219,7 +220,7 @@ namespace ObdInsight.SourceGeneration
             {
                 // A multiplexed signal is absent from frames selecting another variant, so its
                 // property must be able to say so.
-                if (signal.MuxValue != Attributes.CanSignalAttribute.NotMultiplexed &&
+                if (signal.MuxValue != CanSignalAttribute.NotMultiplexed &&
                     !signal.PropertyType.EndsWith("?", StringComparison.Ordinal))
                 {
                     context.ReportDiagnostic(Diagnostic.Create(
@@ -373,7 +374,7 @@ namespace ObdInsight.SourceGeneration
                 var isMultiplexor = false;
 
 
-                var muxValue = Attributes.CanSignalAttribute.NotMultiplexed;
+                var muxValue = CanSignalAttribute.NotMultiplexed;
 
                 foreach (var namedArg in signalAttr.NamedArguments)
                 {
@@ -432,7 +433,7 @@ namespace ObdInsight.SourceGeneration
                             // which would default every signal to Intel while looking correct -
                             // the failure mode behind AUDIT.md C1 and the UDS FrameType bug.
                             // Converting the int is the only form that is safe here.
-                            isBigEndian = Convert.ToInt32(namedArg.Value.Value) == (int)Attributes.CanByteOrder.Motorola;
+                            isBigEndian = Convert.ToInt32(namedArg.Value.Value) == (int)CanByteOrder.Motorola;
                             break;
                     }
                 }
@@ -455,13 +456,8 @@ namespace ObdInsight.SourceGeneration
                     signalDescription,
                     minValue,
                     maxValue,
-
                     isBigEndian,
-
-
                     isMultiplexor,
-
-
                     muxValue,
                     SignalLocation.From(member)));
             }
@@ -596,7 +592,7 @@ namespace ObdInsight.SourceGeneration
             if (multiplexor is not null)
             {
                 sb.AppendLine(
-                    $"            // Multiplexor: signals tagged with a MuxValue exist only when this matches.");
+                    "            // Multiplexor: signals tagged with a MuxValue exist only when this matches.");
                 sb.AppendLine($"            var __mux = {GenerateReadExpression(multiplexor)};");
                 sb.AppendLine();
             }
@@ -696,7 +692,7 @@ namespace ObdInsight.SourceGeneration
                 }
             }
 
-            var bytes = (highestBit / 8) + 1;
+            var bytes = highestBit / 8 + 1;
             return bytes < 1 ? 1 : bytes > 8 ? 8 : bytes;
         }
 
@@ -721,7 +717,7 @@ namespace ObdInsight.SourceGeneration
         {
             var expression = GenerateReadExpression(signal);
 
-            if (signal.MuxValue == Attributes.CanSignalAttribute.NotMultiplexed)
+            if (signal.MuxValue == CanSignalAttribute.NotMultiplexed)
             {
                 return expression;
             }
@@ -918,7 +914,8 @@ namespace ObdInsight.SourceGeneration
             sb.AppendLine("        }");
             sb.AppendLine();
 
-            sb.AppendLine("        // DBC big-endian (@0): bitPos is the signal's MOST significant bit, and the signal");
+            sb.AppendLine(
+                "        // DBC big-endian (@0): bitPos is the signal's MOST significant bit, and the signal");
             sb.AppendLine("        // descends within the byte, continuing at bit 7 of the next. Read as a big-endian");
             sb.AppendLine("        // ulong it becomes one contiguous run, so it reduces to a shift and a mask.");
             sb.AppendLine("        public static uint ReadUnsignedBe(ReadOnlySpan<byte> data, int bitPos, int bitLen)");
@@ -930,7 +927,8 @@ namespace ObdInsight.SourceGeneration
             sb.AppendLine("        }");
             sb.AppendLine();
 
-            sb.AppendLine("        // Big-endian counterpart of ReadPayload: byte 0 is the MOST significant, so a short");
+            sb.AppendLine(
+                "        // Big-endian counterpart of ReadPayload: byte 0 is the MOST significant, so a short");
             sb.AppendLine("        // payload zero-extends on the right rather than the left.");
             sb.AppendLine("        private static ulong ReadPayloadBe(ReadOnlySpan<byte> data)");
             sb.AppendLine("        {");
@@ -1156,9 +1154,7 @@ namespace ObdInsight.SourceGeneration
         double? MinValue,
         double? MaxValue,
         bool IsBigEndian,
-
         bool IsMultiplexor,
-
         int MuxValue,
         SignalLocation? Location);
 

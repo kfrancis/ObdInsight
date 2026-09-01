@@ -5,31 +5,30 @@ using ObdInsight.Core.Communication.Elm327;
 namespace ObdInsight.Simulation;
 
 /// <summary>
-/// A simulated 30 kWh Leaf AZE0 behind a simulated ELM327 adapter (roadmap B2):
-/// answers the init/protocol sequence, BMS/VIN UDS queries (with state-accurate
-/// ISO-TP payloads — SOC at the AZE0 offset, cells, temps, shunts), and streams
-/// CAR-CAN broadcast frames (speed 0x284, HVAC 0x54x, VCM 0x510/0x5A9, gear 0x421,
-/// SOH 0x5B3) whose values evolve along a <see cref="LeafDriveProfile"/>.
-///
-/// Limitations (deliberate): AT CM/CF hardware filters are ignored — all broadcast
-/// frames stream in every monitoring window (the monitor's demux doesn't care);
-/// EV-CAN broadcast IDs are absent, exactly like a stock adapter on the real car.
+///     A simulated 30 kWh Leaf AZE0 behind a simulated ELM327 adapter (roadmap B2):
+///     answers the init/protocol sequence, BMS/VIN UDS queries (with state-accurate
+///     ISO-TP payloads — SOC at the AZE0 offset, cells, temps, shunts), and streams
+///     CAR-CAN broadcast frames (speed 0x284, HVAC 0x54x, VCM 0x510/0x5A9, gear 0x421,
+///     SOH 0x5B3) whose values evolve along a <see cref="LeafDriveProfile" />.
+///     Limitations (deliberate): AT CM/CF hardware filters are ignored — all broadcast
+///     frames stream in every monitoring window (the monitor's demux doesn't care);
+///     EV-CAN broadcast IDs are absent, exactly like a stock adapter on the real car.
 /// </summary>
 public sealed class SimulatedLeafAze0Transport : IElmTransport
 {
     public const string SimulatedVin = "1N4AZ0CP7HC000001";
+    private readonly Stopwatch _clock = new();
+    private readonly StringBuilder _commandBuffer = new();
+    private readonly SemaphoreSlim _dataSignal = new(0);
+    private readonly object _gate = new();
 
     private readonly LeafDriveProfile _profile;
-    private readonly object _gate = new();
     private readonly Queue<byte> _rx = new();
-    private readonly SemaphoreSlim _dataSignal = new(0);
-    private readonly StringBuilder _commandBuffer = new();
-    private readonly Stopwatch _clock = new();
-
-    private bool _monitoring;
+    private ushort _frameCounter;
     private string _header = "7DF";
     private long _lastBurstTicks;
-    private ushort _frameCounter;
+
+    private bool _monitoring;
 
     public SimulatedLeafAze0Transport(LeafDriveProfile? profile = null, double timeScale = 1.0)
     {
@@ -38,8 +37,8 @@ public sealed class SimulatedLeafAze0Transport : IElmTransport
     }
 
     /// <summary>
-    /// Simulated-seconds per wall-clock second (default 1). Raise to compress a
-    /// 30-minute drive into seconds for tests.
+    ///     Simulated-seconds per wall-clock second (default 1). Raise to compress a
+    ///     30-minute drive into seconds for tests.
     /// </summary>
     public double TimeScale { get; }
 
@@ -56,18 +55,6 @@ public sealed class SimulatedLeafAze0Transport : IElmTransport
         IsOpen = true;
         _clock.Start();
         return ValueTask.CompletedTask;
-    }
-
-    /// <summary>
-    /// The session stack doesn't reliably call <see cref="OpenAsync"/> — the drive
-    /// clock also starts on first adapter traffic so simulated time always advances.
-    /// </summary>
-    private void EnsureClockRunning()
-    {
-        if (!_clock.IsRunning)
-        {
-            _clock.Start();
-        }
     }
 
     public ValueTask FlushAsync(CancellationToken ct) => ValueTask.CompletedTask;
@@ -156,6 +143,18 @@ public sealed class SimulatedLeafAze0Transport : IElmTransport
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    ///     The session stack doesn't reliably call <see cref="OpenAsync" /> — the drive
+    ///     clock also starts on first adapter traffic so simulated time always advances.
+    /// </summary>
+    private void EnsureClockRunning()
+    {
+        if (!_clock.IsRunning)
+        {
+            _clock.Start();
+        }
+    }
+
     private void HandleCommand(string command)
     {
         var normalized = command.Replace(" ", "").ToUpperInvariant();
@@ -230,10 +229,10 @@ public sealed class SimulatedLeafAze0Transport : IElmTransport
                 "2102" => IsoTp("7BB", BuildGroup02Payload(state)),
                 "2104" => IsoTp("7BB", BuildGroup04Payload(state)),
                 "2106" => IsoTp("7BB", BuildGroup06Payload()),
-                _ => "NO DATA",
+                _ => "NO DATA"
             },
             "797" => request == "2181" ? IsoTp("79A", BuildVinPayload()) : "NO DATA",
-            _ => "NO DATA",
+            _ => "NO DATA"
         };
     }
 
@@ -279,7 +278,7 @@ public sealed class SimulatedLeafAze0Transport : IElmTransport
         data[5] = intC;
         WriteUInt16BE(data, 6, (ushort)(adc - 5)); // slight sensor spread
         data[8] = intC;
-        WriteUInt16BE(data, 9, 0xFFFF);            // absent slot, like the real car
+        WriteUInt16BE(data, 9, 0xFFFF); // absent slot, like the real car
         data[11] = 0;
         data[12] = intC;
         return Payload(0x04, data);
@@ -370,7 +369,7 @@ public sealed class SimulatedLeafAze0Transport : IElmTransport
             // 0x421: shifter D (byte 0 bits 3-5 = 4).
             Frame(0x421, 0x20),
             // 0x5B3: SOH % at byte1 >> 1.
-            Frame(0x5B3, 0, sohByte, 0, 0, 0, 0, 0, 0),
+            Frame(0x5B3, 0, sohByte, 0, 0, 0, 0, 0, 0)
         };
 
         lock (_gate)

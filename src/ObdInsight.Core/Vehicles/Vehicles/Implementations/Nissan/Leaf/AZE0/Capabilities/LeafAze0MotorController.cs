@@ -4,22 +4,25 @@ using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 {
     /// <summary>
-    /// Motor controller/inverter capability as a view over the shared <see cref="CanMonitor"/>
-    /// (streaming design P2). Reads INVmc broadcast frames — 0x1DA (10ms: voltage, torque, RPM,
-    /// error codes) and 0x55A (100ms: temperatures) — from the monitor's latest-frame cache.
+    ///     Motor controller/inverter capability as a view over the shared <see cref="CanMonitor" />
+    ///     (streaming design P2). Reads INVmc broadcast frames — 0x1DA (10ms: voltage, torque, RPM,
+    ///     error codes) and 0x55A (100ms: temperatures) — from the monitor's latest-frame cache.
     /// </summary>
     /// <remarks>
-    /// LIMITATION (hardware-confirmed 2026-07-18): 0x1DA and 0x55A are EV-CAN broadcast
-    /// frames. Stock ELM327 adapters wire OBD pins 6/14 (CAR-CAN); EV-CAN sits on pins
-    /// 12/13 and needs a rewired/modified adapter to monitor. On stock adapters this
-    /// capability's warmup times out and every field returns null. Inverter data would need
-    /// a UDS query alternative (works over CAR-CAN, like the BMS capability) or a modified
-    /// adapter; see docs/FRAME_LAYOUT_AUDIT.md.
+    ///     LIMITATION (hardware-confirmed 2026-07-18): 0x1DA and 0x55A are EV-CAN broadcast
+    ///     frames. Stock ELM327 adapters wire OBD pins 6/14 (CAR-CAN); EV-CAN sits on pins
+    ///     12/13 and needs a rewired/modified adapter to monitor. On stock adapters this
+    ///     capability's warmup times out and every field returns null. Inverter data would need
+    ///     a UDS query alternative (works over CAR-CAN, like the BMS capability) or a modified
+    ///     adapter; see docs/FRAME_LAYOUT_AUDIT.md.
     /// </remarks>
     internal sealed class LeafAze0MotorController : IMotorController
     {
         /// <summary>How long a cold cache is given for the first frames to arrive.</summary>
         private static readonly TimeSpan WarmupTimeout = TimeSpan.FromSeconds(4);
+
+        /// <summary>The frames that feed <see cref="MotorStatus" />.</summary>
+        private static readonly int[] StatusFrameIds = [0x1DA, 0x55A];
 
         private readonly CanMonitor _monitor;
 
@@ -27,9 +30,6 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         {
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
         }
-
-        /// <summary>The frames that feed <see cref="MotorStatus" />.</summary>
-        private static readonly int[] StatusFrameIds = [0x1DA, 0x55A];
 
         public async ValueTask<MotorStatus> GetStatusAsync(CancellationToken ct = default)
         {

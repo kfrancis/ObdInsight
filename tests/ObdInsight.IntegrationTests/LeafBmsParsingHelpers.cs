@@ -3,21 +3,20 @@ using System.Globalization;
 namespace ObdInsight.IntegrationTests;
 
 /// <summary>
-/// Test-side re-implementation of Leaf BMS/ISO-TP parsing, used by the hardware
-/// integration tests to sanity-check raw session lines independently of production code.
-///
-/// NOTE: this intentionally lives ONLY in the integration-test project. Deterministic unit
-/// tests must exercise the production parsers (LeafBmsDiagnostics, IsoTpParser, the
-/// capability classes) instead — see tests/ObdInsight.Tests/NissanLeaf/AZE0/Unit/.
-/// Retargeting the integration tests at production parsing (and deleting this file) needs
-/// a real vehicle to validate and is tracked in AUDIT.md (M2.1 follow-up).
-/// Known divergence from production: LeafBmsDiagnostics repairs the adapter's 'H' quirk
-/// as "H" → "48" (raw ASCII 0x48 leaking through); this copy replaces 'H' → '4'.
+///     Test-side re-implementation of Leaf BMS/ISO-TP parsing, used by the hardware
+///     integration tests to sanity-check raw session lines independently of production code.
+///     NOTE: this intentionally lives ONLY in the integration-test project. Deterministic unit
+///     tests must exercise the production parsers (LeafBmsDiagnostics, IsoTpParser, the
+///     capability classes) instead — see tests/ObdInsight.Tests/NissanLeaf/AZE0/Unit/.
+///     Retargeting the integration tests at production parsing (and deleting this file) needs
+///     a real vehicle to validate and is tracked in AUDIT.md (M2.1 follow-up).
+///     Known divergence from production: LeafBmsDiagnostics repairs the adapter's 'H' quirk
+///     as "H" → "48" (raw ASCII 0x48 leaking through); this copy replaces 'H' → '4'.
 /// </summary>
 public static class BmsParsingHelpers
 {
     /// <summary>
-    /// Parses Group 01 using OVMS-style offsets on reassembled payload.
+    ///     Parses Group 01 using OVMS-style offsets on reassembled payload.
     /// </summary>
     public static BmsGroup01Data ParseGroup01FromFrames(List<IsoTpFrame> frames)
     {
@@ -62,11 +61,13 @@ public static class BmsParsingHelpers
                 var hxRaw = (data[28] << 8) | data[29];
                 hxPercent = hxRaw / 102.4;
             }
+
             if (dataLen >= 34)
             {
                 var socRaw = (data[31] << 16) | (data[32] << 8) | data[33];
                 socPercent = socRaw / 10000.0;
             }
+
             if (dataLen >= 38)
             {
                 var ahrRaw = (data[35] << 16) | (data[36] << 8) | data[37];
@@ -80,6 +81,7 @@ public static class BmsParsingHelpers
                 var hxRaw = (data[26] << 8) | data[27];
                 hxPercent = hxRaw / 100.0;
             }
+
             if (dataLen >= 36)
             {
                 var ahrRaw = (data[33] << 16) | (data[34] << 8) | data[35];
@@ -91,8 +93,8 @@ public static class BmsParsingHelpers
     }
 
     /// <summary>
-    /// Parses ISO-TP frames from ELM327 response lines.
-    /// Handles format like "7BB102B6101000000EB" (CAN_ID + frame bytes, no spaces).
+    ///     Parses ISO-TP frames from ELM327 response lines.
+    ///     Handles format like "7BB102B6101000000EB" (CAN_ID + frame bytes, no spaces).
     /// </summary>
     public static List<IsoTpFrame> ParseIsoTpFrames(string[] lines)
     {
@@ -142,6 +144,7 @@ public static class BmsParsingHelpers
                         var totalLen = (frameInfo << 8) | frameBytes[1];
                         frames.Add(new IsoTpFrame(1, totalLen, frameBytes.Skip(2).ToArray()));
                     }
+
                     break;
 
                 case 2:
@@ -154,7 +157,7 @@ public static class BmsParsingHelpers
     }
 
     /// <summary>
-    /// Reassembles ISO-TP payload from parsed frames.
+    ///     Reassembles ISO-TP payload from parsed frames.
     /// </summary>
     public static byte[] ReassembleIsoTpPayload(List<IsoTpFrame> frames)
     {
@@ -196,12 +199,12 @@ public static class BmsParsingHelpers
 }
 
 /// <summary>
-/// Represents a parsed ISO-TP frame.
+///     Represents a parsed ISO-TP frame.
 /// </summary>
 public record IsoTpFrame(int FrameType, int SeqOrLen, byte[] Data);
 
 /// <summary>
-/// Represents parsed BMS Group 01 data.
+///     Represents parsed BMS Group 01 data.
 /// </summary>
 public record BmsGroup01Data(
     double? SocPercent,

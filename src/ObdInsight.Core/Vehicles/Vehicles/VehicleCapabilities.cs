@@ -1,45 +1,40 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 namespace ObdInsight.Core.Vehicles;
 
 public interface IAntilockBrakingSystem : IVehicleCapability
 {
     /// <summary>
-    /// Gets current ABS status including wheel speeds and vehicle speed.
+    ///     Gets current ABS status including wheel speeds and vehicle speed.
     /// </summary>
     ValueTask<AbsStatus> GetStatusAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Streams ABS status as the underlying broadcast frames arrive (0x130/0x245/0x284/0x285/0x292/0x354 on the Leaf), re-emitting
-    /// on every contributing frame with the rest of the record taken from the shared monitor's
-    /// latest-frame cache.
+    ///     Streams ABS status as the underlying broadcast frames arrive (0x130/0x245/0x284/0x285/0x292/0x354 on the Leaf),
+    ///     re-emitting
+    ///     on every contributing frame with the rest of the record taken from the shared monitor's
+    ///     latest-frame cache.
     /// </summary>
     /// <param name="minInterval">
-    /// Minimum spacing between emissions; default (zero) emits on every contributing frame.
-    /// Emissions inside the interval are skipped rather than queued, so the next one always
-    /// carries the newest state.
+    ///     Minimum spacing between emissions; default (zero) emits on every contributing frame.
+    ///     Emissions inside the interval are skipped rather than queued, so the next one always
+    ///     carries the newest state.
     /// </param>
     /// <param name="ct">Stops the stream. The stream also completes when monitoring ends.</param>
     IAsyncEnumerable<AbsStatus> StreamStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
 }
 
 /// <summary>
-/// Battery Management System interface - generic across all vehicle makes/models.
+///     Battery Management System interface - generic across all vehicle makes/models.
 /// </summary>
 public interface IBatteryManagementSystem : IVehicleCapability
 {
     /// <summary>
-    /// Gets detailed cell voltage information if available.
-    /// Returns null if vehicle doesn't support individual cell monitoring.
+    ///     Gets detailed cell voltage information if available.
+    ///     Returns null if vehicle doesn't support individual cell monitoring.
     /// </summary>
     ValueTask<CellVoltageData?> GetCellVoltagesAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Gets comprehensive battery status (SOC, voltage, current, capacity, health).
+    ///     Gets comprehensive battery status (SOC, voltage, current, capacity, health).
     /// </summary>
     ValueTask<BatteryStatus> GetStatusAsync(CancellationToken ct = default);
 }
@@ -49,17 +44,18 @@ public interface IBodyControl : IVehicleCapability
     ValueTask<BodyControlStatus> GetStatusAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Streams body control status as the underlying broadcast frames arrive (0x60D/0x625 on the Leaf), re-emitting
-    /// on every contributing frame with the rest of the record taken from the shared monitor's
-    /// latest-frame cache.
+    ///     Streams body control status as the underlying broadcast frames arrive (0x60D/0x625 on the Leaf), re-emitting
+    ///     on every contributing frame with the rest of the record taken from the shared monitor's
+    ///     latest-frame cache.
     /// </summary>
     /// <param name="minInterval">
-    /// Minimum spacing between emissions; default (zero) emits on every contributing frame.
-    /// Emissions inside the interval are skipped rather than queued, so the next one always
-    /// carries the newest state.
+    ///     Minimum spacing between emissions; default (zero) emits on every contributing frame.
+    ///     Emissions inside the interval are skipped rather than queued, so the next one always
+    ///     carries the newest state.
     /// </param>
     /// <param name="ct">Stops the stream. The stream also completes when monitoring ends.</param>
-    IAsyncEnumerable<BodyControlStatus> StreamStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
+    IAsyncEnumerable<BodyControlStatus> StreamStatusAsync(TimeSpan minInterval = default,
+        CancellationToken ct = default);
 }
 
 public interface IBrake : IVehicleCapability
@@ -67,14 +63,14 @@ public interface IBrake : IVehicleCapability
     ValueTask<BrakeStatus> GetStatusAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Streams brake status as the underlying broadcast frames arrive (0x1CA on the Leaf), re-emitting
-    /// on every contributing frame with the rest of the record taken from the shared monitor's
-    /// latest-frame cache.
+    ///     Streams brake status as the underlying broadcast frames arrive (0x1CA on the Leaf), re-emitting
+    ///     on every contributing frame with the rest of the record taken from the shared monitor's
+    ///     latest-frame cache.
     /// </summary>
     /// <param name="minInterval">
-    /// Minimum spacing between emissions; default (zero) emits on every contributing frame.
-    /// Emissions inside the interval are skipped rather than queued, so the next one always
-    /// carries the newest state.
+    ///     Minimum spacing between emissions; default (zero) emits on every contributing frame.
+    ///     Emissions inside the interval are skipped rather than queued, so the next one always
+    ///     carries the newest state.
     /// </param>
     /// <param name="ct">Stops the stream. The stream also completes when monitoring ends.</param>
     IAsyncEnumerable<BrakeStatus> StreamStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
@@ -85,14 +81,14 @@ public interface IHvac : IVehicleCapability
     ValueTask<HvacStatus> GetStatusAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Streams HVAC status as the underlying broadcast frames arrive (0x54A/0x54B/0x54C/0x54F on the Leaf), re-emitting
-    /// on every contributing frame with the rest of the record taken from the shared monitor's
-    /// latest-frame cache.
+    ///     Streams HVAC status as the underlying broadcast frames arrive (0x54A/0x54B/0x54C/0x54F on the Leaf), re-emitting
+    ///     on every contributing frame with the rest of the record taken from the shared monitor's
+    ///     latest-frame cache.
     /// </summary>
     /// <param name="minInterval">
-    /// Minimum spacing between emissions; default (zero) emits on every contributing frame.
-    /// Emissions inside the interval are skipped rather than queued, so the next one always
-    /// carries the newest state.
+    ///     Minimum spacing between emissions; default (zero) emits on every contributing frame.
+    ///     Emissions inside the interval are skipped rather than queued, so the next one always
+    ///     carries the newest state.
     /// </param>
     /// <param name="ct">Stops the stream. The stream also completes when monitoring ends.</param>
     IAsyncEnumerable<HvacStatus> StreamStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
@@ -104,52 +100,53 @@ public interface IHvbat : IVehicleCapability
 }
 
 /// <summary>
-/// Motor/Inverter interface - provides motor and inverter status data.
+///     Motor/Inverter interface - provides motor and inverter status data.
 /// </summary>
 public interface IMotorController : IVehicleCapability
 {
     /// <summary>
-    /// Gets current motor and inverter status.
+    ///     Gets current motor and inverter status.
     /// </summary>
     ValueTask<MotorStatus> GetStatusAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Streams motor and inverter status as the underlying broadcast frames arrive (0x1DA/0x55A on the Leaf), re-emitting
-    /// on every contributing frame with the rest of the record taken from the shared monitor's
-    /// latest-frame cache.
+    ///     Streams motor and inverter status as the underlying broadcast frames arrive (0x1DA/0x55A on the Leaf), re-emitting
+    ///     on every contributing frame with the rest of the record taken from the shared monitor's
+    ///     latest-frame cache.
     /// </summary>
     /// <param name="minInterval">
-    /// Minimum spacing between emissions; default (zero) emits on every contributing frame.
-    /// Emissions inside the interval are skipped rather than queued, so the next one always
-    /// carries the newest state.
+    ///     Minimum spacing between emissions; default (zero) emits on every contributing frame.
+    ///     Emissions inside the interval are skipped rather than queued, so the next one always
+    ///     carries the newest state.
     /// </param>
     /// <param name="ct">Stops the stream. The stream also completes when monitoring ends.</param>
     IAsyncEnumerable<MotorStatus> StreamStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
 }
 
 /// <summary>
-/// On-board charger interface - provides charging status and power information.
+///     On-board charger interface - provides charging status and power information.
 /// </summary>
 public interface IOnboardCharger : IVehicleCapability
 {
     /// <summary>
-    /// Gets current charging status if vehicle is plugged in.
+    ///     Gets current charging status if vehicle is plugged in.
     /// </summary>
     ValueTask<ChargingStatus?> GetChargingStatusAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Streams charging status as the underlying broadcast frames arrive (0x390 on the Leaf), re-emitting
-    /// on every contributing frame with the rest of the record taken from the shared monitor's
-    /// latest-frame cache. Nullable for the same reason the pull
-    /// method is: a frame that arrives but cannot be decoded yields null rather than an error.
+    ///     Streams charging status as the underlying broadcast frames arrive (0x390 on the Leaf), re-emitting
+    ///     on every contributing frame with the rest of the record taken from the shared monitor's
+    ///     latest-frame cache. Nullable for the same reason the pull
+    ///     method is: a frame that arrives but cannot be decoded yields null rather than an error.
     /// </summary>
     /// <param name="minInterval">
-    /// Minimum spacing between emissions; default (zero) emits on every contributing frame.
-    /// Emissions inside the interval are skipped rather than queued, so the next one always
-    /// carries the newest state.
+    ///     Minimum spacing between emissions; default (zero) emits on every contributing frame.
+    ///     Emissions inside the interval are skipped rather than queued, so the next one always
+    ///     carries the newest state.
     /// </param>
     /// <param name="ct">Stops the stream. The stream also completes when monitoring ends.</param>
-    IAsyncEnumerable<ChargingStatus?> StreamChargingStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
+    IAsyncEnumerable<ChargingStatus?> StreamChargingStatusAsync(TimeSpan minInterval = default,
+        CancellationToken ct = default);
 }
 
 public interface ISteering : IVehicleCapability
@@ -160,70 +157,73 @@ public interface ISteering : IVehicleCapability
 public interface IVcm : IVehicleCapability
 {
     /// <summary>
-    /// Reads the current gear selector position as reported by the Vehicle Control Module (VCM).
+    ///     Reads the current gear selector position as reported by the Vehicle Control Module (VCM).
     /// </summary>
     ValueTask<GearPosition> GetGearPositionAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Gets comprehensive VCM status including power consumption, climate data, and eco indicators.
-    /// This data is typically transmitted on the CAR-CAN bus.
+    ///     Gets comprehensive VCM status including power consumption, climate data, and eco indicators.
+    ///     This data is typically transmitted on the CAR-CAN bus.
     /// </summary>
     ValueTask<VcmStatus> GetStatusAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Streams VCM status as the underlying broadcast frames arrive (0x510/0x180/0x5A9 on the Leaf), re-emitting
-    /// on every contributing frame with the rest of the record taken from the shared monitor's
-    /// latest-frame cache.
+    ///     Streams VCM status as the underlying broadcast frames arrive (0x510/0x180/0x5A9 on the Leaf), re-emitting
+    ///     on every contributing frame with the rest of the record taken from the shared monitor's
+    ///     latest-frame cache.
     /// </summary>
     /// <param name="minInterval">
-    /// Minimum spacing between emissions; default (zero) emits on every contributing frame.
-    /// Emissions inside the interval are skipped rather than queued, so the next one always
-    /// carries the newest state.
+    ///     Minimum spacing between emissions; default (zero) emits on every contributing frame.
+    ///     Emissions inside the interval are skipped rather than queued, so the next one always
+    ///     carries the newest state.
     /// </param>
     /// <param name="ct">Stops the stream. The stream also completes when monitoring ends.</param>
     IAsyncEnumerable<VcmStatus> StreamStatusAsync(TimeSpan minInterval = default, CancellationToken ct = default);
 }
 
 /// <summary>
-/// Marker for vehicle capabilities.
-/// <para><b>Degradation contract (all capabilities):</b> data absence — a silent ECU,
-/// an unreachable bus, an adapter error, or an unparseable response — yields a null
-/// result or a result record whose fields are null/default. Capability methods never
-/// throw for missing data; the only exception that propagates is
-/// <see cref="OperationCanceledException"/> on cancellation. Consumers can therefore
-/// bind results directly without try/catch.</para>
+///     Marker for vehicle capabilities.
+///     <para>
+///         <b>Degradation contract (all capabilities):</b> data absence — a silent ECU,
+///         an unreachable bus, an adapter error, or an unparseable response — yields a null
+///         result or a result record whose fields are null/default. Capability methods never
+///         throw for missing data; the only exception that propagates is
+///         <see cref="OperationCanceledException" /> on cancellation. Consumers can therefore
+///         bind results directly without try/catch.
+///     </para>
 /// </summary>
 public interface IVehicleCapability
-{ }
+{
+}
 
 /// <summary>
-/// Vehicle identification interface - provides access to vehicle identification data.
+///     Vehicle identification interface - provides access to vehicle identification data.
 /// </summary>
 public interface IVehicleIdentification : IVehicleCapability
 {
     /// <summary>
-    /// Gets the Vehicle Identification Number.
+    ///     Gets the Vehicle Identification Number.
     /// </summary>
     ValueTask<string?> GetVinAsync(CancellationToken ct = default);
 }
 
 /// <summary>
-/// Diagnostic trouble code access (OBD-II Mode 03 stored / Mode 07 pending).
+///     Diagnostic trouble code access (OBD-II Mode 03 stored / Mode 07 pending).
 /// </summary>
 public interface IDiagnosticTroubleCodes : IVehicleCapability
 {
     /// <summary>
-    /// Reads stored and pending DTCs. Never throws for missing data: ECUs that don't
-    /// answer (or answer NO DATA) simply contribute no codes, so a healthy vehicle and
-    /// an unsupported ECU both yield empty lists. Cancellation propagates as
-    /// <see cref="OperationCanceledException"/>.
+    ///     Reads stored and pending DTCs. Never throws for missing data: ECUs that don't
+    ///     answer (or answer NO DATA) simply contribute no codes, so a healthy vehicle and
+    ///     an unsupported ECU both yield empty lists. Cancellation propagates as
+    ///     <see cref="OperationCanceledException" />.
     /// </summary>
     ValueTask<DtcReadResult> GetDtcsAsync(CancellationToken ct = default);
 }
 
 /// <summary>
-/// Result of a DTC read: standard code strings ("P0A80", "U0155", ...), deduplicated
-/// across responding ECUs. Empty lists mean "no codes readable", never an error.
+///     Result of a DTC read: standard code strings ("P0A80", "U0155", ...), deduplicated
+///     across responding ECUs. Empty lists mean "no codes readable", never an error.
 /// </summary>
 public sealed record DtcReadResult
 {
@@ -232,7 +232,7 @@ public sealed record DtcReadResult
 }
 
 /// <summary>
-/// Generic battery status - applicable to any EV/hybrid.
+///     Generic battery status - applicable to any EV/hybrid.
 /// </summary>
 public sealed record BatteryStatus
 {
@@ -268,7 +268,7 @@ public sealed record BatteryStatus
 }
 
 /// <summary>
-/// Individual cell voltage data - not all vehicles support this.
+///     Individual cell voltage data - not all vehicles support this.
 /// </summary>
 public sealed record CellVoltageData
 {
@@ -279,8 +279,10 @@ public sealed record CellVoltageData
     public int AvgVoltageMv { get; init; }
     public int DeltaVoltageMv => MaxVoltageMv - MinVoltageMv;
 
-    /// <summary>Per-cell balancing flags, parallel to <see cref="CellVoltagesMv"/>;
-    /// null when the vehicle doesn't report shunt states.</summary>
+    /// <summary>
+    ///     Per-cell balancing flags, parallel to <see cref="CellVoltagesMv" />;
+    ///     null when the vehicle doesn't report shunt states.
+    /// </summary>
     public bool[]? BalancingCells { get; init; }
 
     /// <summary>Number of cells currently balancing, or null when unreported.</summary>
@@ -288,7 +290,7 @@ public sealed record CellVoltageData
 }
 
 /// <summary>
-/// Charging status information.
+///     Charging status information.
 /// </summary>
 public sealed record ChargingStatus
 {
@@ -301,7 +303,7 @@ public sealed record ChargingStatus
 }
 
 /// <summary>
-/// Motor and inverter status information.
+///     Motor and inverter status information.
 /// </summary>
 public sealed record MotorStatus
 {
@@ -335,9 +337,10 @@ public sealed record MotorStatus
             ? EffectiveTorqueNm.Value * OutputRevolutionRpm.Value * (2.0 * Math.PI / 60.0)
             : null;
 }
+
 public readonly record struct HvbatStatus(
-    double Voltage,      // in Volts
-    double Current,      // in Amperes
+    double Voltage, // in Volts
+    double Current, // in Amperes
     double StateOfCharge // in Percentage
 );
 
@@ -353,7 +356,7 @@ public readonly record struct BodyControlStatus(
 );
 
 /// <summary>
-/// ABS (Anti-lock Braking System) status information.
+///     ABS (Anti-lock Braking System) status information.
 /// </summary>
 public sealed record AbsStatus
 {
@@ -398,7 +401,7 @@ public sealed record AbsStatus
 }
 
 /// <summary>
-/// VCM (Vehicle Control Module) status information including power consumption and climate data.
+///     VCM (Vehicle Control Module) status information including power consumption and climate data.
 /// </summary>
 public sealed record VcmStatus
 {
@@ -439,9 +442,8 @@ public sealed record VcmStatus
     public double? ThrottlePositionPercent { get; init; }
 
     /// <summary>
-    /// Remaining range estimate as displayed on the instrument cluster (km).
-    /// Null when the source frame is absent or reports the "charging" sentinel.
+    ///     Remaining range estimate as displayed on the instrument cluster (km).
+    ///     Null when the source frame is absent or reports the "charging" sentinel.
     /// </summary>
     public double? RangeKm { get; init; }
 }
-

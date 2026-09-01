@@ -6,8 +6,8 @@ using ObdInsight.Simulation;
 namespace OdbTestApp.Tests.Elm327;
 
 /// <summary>
-/// Phase 1 tests for <see cref="CanMonitor"/> (docs/STREAMING_MONITOR_DESIGN.md) over the
-/// replay transport: demux, drop-oldest, latest cache, BUFFER FULL restart, end reasons.
+///     Phase 1 tests for <see cref="CanMonitor" /> (docs/STREAMING_MONITOR_DESIGN.md) over the
+///     replay transport: demux, drop-oldest, latest cache, BUFFER FULL restart, end reasons.
 /// </summary>
 [Timeout(30_000)]
 public class CanMonitorTests
@@ -16,10 +16,7 @@ public class CanMonitorTests
     {
         var transport = new ReplayElmTransport();
         var session = new ElmSession(new ElmFramer(transport));
-        var monitor = new CanMonitor(session, EcuContext.NissanLeafHvbatMonitor)
-        {
-            RestartDelay = TimeSpan.Zero,
-        };
+        var monitor = new CanMonitor(session, EcuContext.NissanLeafHvbatMonitor) { RestartDelay = TimeSpan.Zero };
         // "ATMA" must stay silent — monitoring streams instead of prompting.
         transport.Expect("ATMA", "");
         return (transport, session, monitor);
@@ -175,7 +172,7 @@ public class CanMonitorTests
         KeepAliveCommand = keepAlive,
         KeepAliveIntervalMs = keepAliveMs,
         EnableHeaders = true,
-        EnableAutoFormatting = false,
+        EnableAutoFormatting = false
     };
 
     [Test]
@@ -206,7 +203,7 @@ public class CanMonitorTests
     {
         var transport = new ReplayElmTransport();
         var session = new ElmSession(new ElmFramer(transport));
-        var monitor = new CanMonitor(session, ActiveMonitorContext(keepAlive: "3E80", keepAliveMs: 100));
+        var monitor = new CanMonitor(session, ActiveMonitorContext("3E80", 100));
 
         transport.Expect("1081", "\r>");
         // Monitoring re-enters after every keep-alive beat and TesterPresent repeats — use
@@ -344,8 +341,8 @@ public class CanMonitorTests
             FilterRotation =
             [
                 new CanFilterWindow("700", "100", TimeSpan.FromMilliseconds(150)),
-                new CanFilterWindow("700", "500", TimeSpan.FromMilliseconds(150)),
-            ],
+                new CanFilterWindow("700", "500", TimeSpan.FromMilliseconds(150))
+            ]
         };
         transport.AutoRespond("ATMA", ""); // one enter per window, unbounded
 

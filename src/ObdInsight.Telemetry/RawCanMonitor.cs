@@ -56,6 +56,12 @@ public sealed class RawCanMonitor : IRawCanMonitor
         return TimestampAsync(frames, ct);
     }
 
+    /// <inheritdoc />
+    public ValueTask DisposeAsync()
+    {
+        return _monitor.DisposeAsync();
+    }
+
     private static async IAsyncEnumerable<RawCanFrame> TimestampAsync(
         IAsyncEnumerable<Core.Protocols.RawCanFrame> frames,
         [EnumeratorCancellation] CancellationToken ct)
@@ -64,11 +70,5 @@ public sealed class RawCanMonitor : IRawCanMonitor
         {
             yield return new RawCanFrame(DateTimeOffset.UtcNow, frame.CanId, frame.Data.ToArray());
         }
-    }
-
-    /// <inheritdoc />
-    public ValueTask DisposeAsync()
-    {
-        return _monitor.DisposeAsync();
     }
 }

@@ -6,9 +6,9 @@ using ObdInsight.Simulation;
 namespace OdbTestApp.Tests.NissanLeaf.AZE0.Unit;
 
 /// <summary>
-/// Roadmap B5: OBD-II Mode 03/07 DTC reading through the production path —
-/// LeafAze0CommandSet → ObdDtcReader over replay. Multi-ECU responses, multi-frame
-/// ISO-TP, padding, and graceful degradation on NO DATA.
+///     Roadmap B5: OBD-II Mode 03/07 DTC reading through the production path —
+///     LeafAze0CommandSet → ObdDtcReader over replay. Multi-ECU responses, multi-frame
+///     ISO-TP, padding, and graceful degradation on NO DATA.
 /// </summary>
 [Timeout(30_000)]
 public class LeafDtcTests
