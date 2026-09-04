@@ -275,6 +275,13 @@ namespace ObdInsight
 
             try
             {
+                // USB-CAN adapter on a COM port (CANable): raw broadcast capture, no BLE, no ELM327.
+                if (SerialCanSession.IsRequested(args))
+                {
+                    await SerialCanSession.RunAsync(args, cts.Token);
+                    return;
+                }
+
                 // Check for favorite device and auto-connect WITHOUT scanning
                 BleDeviceInfo? selectedDevice = null;
 

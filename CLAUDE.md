@@ -28,6 +28,7 @@ on the broadcast capabilities, typed `ITelemetrySession.Stream<T>`, short-frame 
 | `src/ObdInsight.Telemetry` | Consumer telemetry facade (net10.0, refs Core): `ITelemetrySession` — cadence-tiered polling, decimal DTOs, availability report, snapshots. See `docs/TELEMETRY_SESSION_DESIGN.md` |
 | `src/ObdInsight.Simulation` | Shippable sim package (net10.0, refs Core, no test deps): `ReplayElmTransport` (scripted, test workhorse), `LeafGoldenData` (golden captures), `SimulatedLeafAze0Transport` + `LeafDriveProfile` (time-driven fake Leaf for zero-hardware dev) |
 | `src/ObdInsight.Transports.WindowsBle` | Windows BLE transport on WinRT (`Windows.Devices.Bluetooth`): `BleElmTransport` + `BleScanner`. Extracted from the console app 2026-08-31; logs via `ILogger`, not Serilog |
+| `src/ObdInsight.Transports.Serial` | COM-port `IElmTransport` (`System.IO.Ports`) for USB-CAN adapters (CANable, SLCAN firmware) and serial ELM327s. Pairs with `SlcanFrameSource` (Core) → `CanMonitor(ICanFrameSource)`. Hardware-verified 2026-09-03; see `docs/CANABLE_SUPPORT.md` |
 | `src/ObdInsight.Transports.Ble` | Cross-platform BLE transport (net10.0;-android;-ios) on Plugin.BLE: GATT profile table + pure auto-probe resolver, `PluginBleElmTransport`. See `docs/BLE_TRANSPORT_DESIGN.md` |
 | `src/ObdInsight.DevTools` | Windows diagnostic console. Partially ported to current architecture; several commands stubbed; `*.cs.broken` files are dead old code |
 | `src/ObdInsight.Maui` | Empty MAUI template. `src/ObdInsight.Drivers` is an empty leftover folder |
@@ -64,7 +65,10 @@ Never hand-edit `*.verified.cs`.
 ## Architecture (bottom-up)
 
 ```
-IElmTransport            byte I/O (BLE impls live in the console app; ReplayElmTransport in tests)
+IElmTransport            byte I/O (BLE impls in Transports.WindowsBle/Ble, SerialElmTransport in
+                         Transports.Serial; ReplayElmTransport in Simulation for tests)
+  ├─ SlcanFrameSource    raw USB-CAN path (CANable): ICanFrameSource, firmware-dialect handshake,
+  │                      feeds CanMonitor(ICanFrameSource) directly — no ElmSession, no UDS
   └─ ElmFramer           CR/prompt framing, carry-over buffering (bytes past a delimiter are preserved)
     └─ ElmSession        init, protocol detect/lock, query vs monitoring state machine, 4-level recovery
                          optional IEcuWakeupStrategy (vehicle-specific probe, e.g. LeafBmsWakeupStrategy)
@@ -162,4 +166,11 @@ public partial class BatteryFrame_1DB_AZE0
   scrub before making the repo public).
 - Stale docs exist: `README.md` (old architecture diagram), `tests/ObdInsight.Tests/README.md`.
   `src/ObdInsight/ARCHITECTURE.md` predates `CanMonitor` but is otherwise accurate.
+- **CANable firmware has no Lawicel `L`**: listen-only is `M1` then `O`; `L` is silently
+  ignored and the channel stays closed (stock firmware ACKs nothing). `SlcanFrameSource`
+  probes `V` and picks the sequence per `SlcanDialect`. ElmüSoft slcan 2.5 ACKs with CR/BEL
+  and rejects `E`. `S7` differs between firmwares (750 vs 800 kbit/s) — `BitrateCommand` refuses it.
+- **`SerialPort.BaseStream.ReadAsync` never returns on a quiet port on Windows** (ignores
+  `ReadTimeout` and cancellation once in flight). `SerialElmTransport` uses synchronous reads
+  on a pool thread; do not "simplify" it back to `ReadAsync`.
 - NU1900 warnings about `nuget.telerik.com` are machine-local feed noise — ignore.

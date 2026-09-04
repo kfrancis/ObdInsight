@@ -1,3 +1,4 @@
+using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Communication.Slcan;
 using ObdInsight.Core.Protocols;
 using ObdInsight.Simulation;
@@ -14,17 +15,23 @@ namespace ObdInsight.Tests.Elm327;
 [Timeout(30_000)]
 public class SlcanFrameSourceTests
 {
+    /// <summary>Banner captured from a CANable 2.0 on COM5, 2026-09-03 (stock canable2-fw).</summary>
+    private const string CanableBanner = "16e7497-dirty github.com/normaldotcom/canable2.git";
+
     /// <summary>
     ///     The replay transport auto-answers AT commands but not SLCAN verbs, so the handshake is
-    ///     scripted here. A real device answers each with a bare CR meaning "accepted".
+    ///     scripted here as a Lawicel device: a bare CR meaning "accepted", and a classic
+    ///     <c>V1013</c> banner so dialect detection lands on Lawicel and the open command is <c>L</c>.
     /// </summary>
-    private static ReplayElmTransport Transport()
+    private static ReplayElmTransport Transport(string versionBanner = "V1013")
     {
         var transport = new ReplayElmTransport();
-        foreach (var command in new[] { "C", "S6", "S5", "S4", "S8", "L", "O", "V" })
+        foreach (var command in new[] { "C", "S6", "S5", "S4", "S8", "L", "O", "M0", "M1" })
         {
             transport.AutoRespond(command, "\r");
         }
+
+        transport.AutoRespond("V", versionBanner.Length == 0 ? "" : versionBanner + "\r");
 
         return transport;
     }
@@ -67,8 +74,147 @@ public class SlcanFrameSourceTests
 
         await source.StartAsync(token);
 
-        // Close first (the device may be open from a previous process), then bitrate, then open.
-        await Assert.That(transport.SentCommands).IsEquivalentTo(new[] { "C", "S6", "L" });
+        // Close first (the device may be open from a previous process), probe the firmware,
+        // then bitrate, then open.
+        await Assert.That(transport.SentCommands).IsEquivalentTo(new[] { "C", "V", "S6", "L" });
+        await Assert.That(source.Dialect).IsEqualTo(SlcanDialect.Lawicel);
+        await Assert.That(source.FirmwareVersion).IsEqualTo("V1013");
+    }
+
+    /// <summary>
+    ///     The finding that motivated dialect detection: CANable firmware has no <c>L</c>. Sent
+    ///     <c>L</c>, it stays closed and never emits a frame; listen-only there is <c>M1</c> before
+    ///     <c>O</c>. The banner is the real one from the bench device.
+    /// </summary>
+    [Test]
+    public async Task Start_OnCanableFirmware_UsesSilentModeThenOpen(CancellationToken token)
+    {
+        var transport = Transport(CanableBanner);
+        await using var source = new SlcanFrameSource(transport);
+
+        await source.StartAsync(token);
+
+        await Assert.That(transport.SentCommands).IsEquivalentTo(new[] { "C", "V", "S6", "M1", "O" });
+        await Assert.That(transport.SentCommands).DoesNotContain("L");
+        await Assert.That(source.Dialect).IsEqualTo(SlcanDialect.Canable);
+        await Assert.That(source.FirmwareVersion).IsEqualTo(CanableBanner);
+    }
+
+    [Test]
+    public async Task Start_OnCanableFirmware_NormalModeIsExplicit(CancellationToken token)
+    {
+        var transport = Transport(CanableBanner);
+        await using var source = new SlcanFrameSource(transport, listenOnly: false);
+
+        await source.StartAsync(token);
+
+        await Assert.That(transport.SentCommands).IsEquivalentTo(new[] { "C", "V", "S6", "M0", "O" });
+    }
+
+    /// <summary>A caller that already knows the firmware skips the probe entirely.</summary>
+    [Test]
+    public async Task Start_WithExplicitDialect_DoesNotProbe(CancellationToken token)
+    {
+        var transport = Transport();
+        await using var source = new SlcanFrameSource(transport, dialect: SlcanDialect.Canable);
+
+        await source.StartAsync(token);
+
+        await Assert.That(transport.SentCommands).DoesNotContain("V");
+        await Assert.That(transport.SentCommands).IsEquivalentTo(new[] { "C", "S6", "M1", "O" });
+        await Assert.That(source.FirmwareVersion).IsNull();
+    }
+
+    /// <summary>
+    ///     A device that stays silent on <c>V</c> gets the Lawicel sequence: <c>L</c> is the one
+    ///     listen-only request that cannot open anything in normal mode by accident.
+    /// </summary>
+    [Test]
+    public async Task Start_WhenDeviceStaysSilent_FallsBackToLawicelListenOnly(CancellationToken token)
+    {
+        var transport = Transport(versionBanner: "");
+        await using var source = new SlcanFrameSource(transport) { ProbeTimeout = TimeSpan.FromMilliseconds(100) };
+
+        await source.StartAsync(token);
+
+        await Assert.That(source.Dialect).IsEqualTo(SlcanDialect.Unknown);
+        await Assert.That(source.FirmwareVersion).IsNull();
+        await Assert.That(transport.SentCommands).IsEquivalentTo(new[] { "C", "V", "S6", "L" });
+    }
+
+    /// <summary>
+    ///     Bytes that arrive in the same read as the banner belong to the frame stream, not to the
+    ///     probe. Dropping them would lose the first frames after every open.
+    /// </summary>
+    [Test]
+    public async Task Start_LinesArrivingWithTheBanner_AreNotLost(CancellationToken token)
+    {
+        var transport = Transport();
+        transport.AutoRespond("V", CanableBanner + "\rt1DB80102030405060708\r");
+        await using var source = new SlcanFrameSource(transport);
+        await source.StartAsync(token);
+
+        var frames = await ReadAsync(source, 1, token);
+
+        await Assert.That(frames).Count().IsEqualTo(1);
+        await Assert.That(frames[0].CanId).IsEqualTo(0x1DB);
+    }
+
+    /// <summary>
+    ///     An unplugged adapter must end the stream, not spin it. The replay transport's failure
+    ///     injection stands in for the serial port throwing on a vanished device.
+    /// </summary>
+    [Test]
+    public async Task ReadFrames_EndsWithTransportError_WhenTheLinkDies(CancellationToken token)
+    {
+        var transport = Transport();
+        await using var source = new SlcanFrameSource(transport);
+        await source.StartAsync(token);
+
+        Feed(transport, "t1DB80102030405060708\r");
+        var frames = new List<RawCanFrame>();
+        var reader = Task.Run(async () =>
+        {
+            await foreach (var frame in source.ReadFramesAsync(token))
+            {
+                frames.Add(frame);
+                transport.SimulateConnectionLost();
+            }
+        }, token);
+
+        await reader.WaitAsync(TimeSpan.FromSeconds(5), token);
+
+        await Assert.That(frames).Count().IsEqualTo(1);
+        await Assert.That(source.LastEndReason).IsEqualTo(MonitoringEndReason.TransportError);
+    }
+
+    /// <summary>CAN FD with bit-rate switch (<c>b</c>/<c>B</c>) is what a CANable 2.0 emits on a real FD bus.</summary>
+    [Test]
+    public async Task ReadFrames_CountsBrsFramesAsCanFd(CancellationToken token)
+    {
+        var transport = Transport(CanableBanner);
+        await using var source = new SlcanFrameSource(transport);
+        await source.StartAsync(token);
+
+        Feed(transport, "b1DB80102030405060708\rB18DAF11080102030405060708\r");
+
+        var frames = await ReadAsync(source, 2, token);
+
+        await Assert.That(frames).Count().IsEqualTo(2);
+        await Assert.That(source.CanFdFrameCount).IsEqualTo(2);
+    }
+
+    /// <summary>The error register is the only diagnostic a stock CANable offers; it must be readable.</summary>
+    [Test]
+    public async Task Query_ReturnsTheDeviceReply(CancellationToken token)
+    {
+        var transport = Transport(CanableBanner);
+        transport.AutoRespond("E", "CANable Error Register: 0\r");
+        await using var source = new SlcanFrameSource(transport);
+
+        var reply = await source.QueryAsync(SlcanProtocol.ErrorRegister, TimeSpan.FromSeconds(1), token);
+
+        await Assert.That(reply).IsEqualTo("CANable Error Register: 0");
     }
 
     /// <summary>

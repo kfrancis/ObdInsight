@@ -21,14 +21,18 @@ namespace ObdInsight.Core.Communication.Elm327
     /// </remarks>
     public sealed class CanMonitor : IAsyncDisposable
     {
-        private readonly EcuContext _context;
+        // Exactly one of (_session + _context) or _source is set. The ELM path owns mode
+        // transitions, filter rotation, activation and keep-alive; a frame source (raw CAN
+        // adapter such as a CANable) has none of those concepts - it starts and emits frames.
+        private readonly EcuContext? _context;
 
         // Serializes suspend/resume cycles (external query arbitration vs the keep-alive timer).
         private readonly SemaphoreSlim _controlGate = new(1, 1);
         private readonly ConcurrentDictionary<int, RawCanFrame> _latest = new();
         private readonly Lock _lock = new();
         private readonly ILogger _logger;
-        private readonly IElmSession _session;
+        private readonly IElmSession? _session;
+        private readonly ICanFrameSource? _source;
         private readonly List<Subscription> _subscriptions = [];
         private bool _ended;
         private CancellationTokenSource? _keepAliveCts;
@@ -51,6 +55,27 @@ namespace ObdInsight.Core.Communication.Elm327
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _context = monitoringContext ?? throw new ArgumentNullException(nameof(monitoringContext));
             _logger = logger ?? NullLogger<CanMonitor>.Instance;
+        }
+
+        /// <summary>
+        ///     Monitors a raw CAN frame source (e.g. <c>SlcanFrameSource</c> over a CANable) instead
+        ///     of an ELM327 session. Same fan-out, cache, typed streams and end reasons; the
+        ///     ELM-only features do not apply: <see cref="FilterRotation" /> must stay empty
+        ///     (software demux already sees every frame), there is no session activation or
+        ///     keep-alive, and <see cref="SuspendAsync" /> stops and restarts the source.
+        /// </summary>
+        /// <param name="source">The frame source. Started by <see cref="StartAsync" />, stopped by <see cref="StopAsync" />.</param>
+        /// <param name="logger">Optional logger; defaults to a no-op logger.</param>
+        public CanMonitor(ICanFrameSource source, ILogger<CanMonitor>? logger = null)
+        {
+            _source = source ?? throw new ArgumentNullException(nameof(source));
+            _logger = logger ?? NullLogger<CanMonitor>.Instance;
+        }
+
+        /// <summary>True when monitoring an <see cref="ICanFrameSource" /> rather than an ELM327 session.</summary>
+        public bool IsFrameSourceBacked
+        {
+            get => _source is not null;
         }
 
         /// <summary>Why the last run ended. <see cref="MonitoringEndReason.None" /> while running.</summary>
@@ -117,9 +142,16 @@ namespace ObdInsight.Core.Communication.Elm327
                 return;
             }
 
+            if (_source is not null && FilterRotation.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    "FilterRotation is an ELM327 hardware-filter workaround and does not apply to a frame-source-backed monitor.");
+            }
+
             // Cold-start only — resume after a suspension skips re-activation; the keep-alive
             // cycle is what keeps the ECU's session alive across suspensions.
-            if (_context.RequiresSessionActivation && !string.IsNullOrEmpty(_context.SessionActivationCommand))
+            if (_session is not null && _context is { RequiresSessionActivation: true } &&
+                !string.IsNullOrEmpty(_context.SessionActivationCommand))
             {
                 var activated = await _session.ActivateSessionAsync(_context, ct);
                 if (!activated)
@@ -138,7 +170,7 @@ namespace ObdInsight.Core.Communication.Elm327
             // With a filter rotation the loop enters monitoring itself, once per window.
             if (FilterRotation.Count == 0)
             {
-                await _session.EnterMonitoringModeAsync(_context, ct);
+                await EnterAsync(ct);
             }
 
             lock (_lock)
@@ -150,7 +182,7 @@ namespace ObdInsight.Core.Communication.Elm327
             _loopCts = new CancellationTokenSource();
             _loopTask = Task.Run(() => RunLoopAsync(_loopCts.Token), CancellationToken.None);
 
-            if (!string.IsNullOrEmpty(_context.KeepAliveCommand) && _keepAliveTask is not { IsCompleted: false })
+            if (!string.IsNullOrEmpty(_context?.KeepAliveCommand) && _keepAliveTask is not { IsCompleted: false })
             {
                 _keepAliveCts = new CancellationTokenSource();
                 _keepAliveTask = Task.Run(() => RunKeepAliveAsync(_keepAliveCts.Token), CancellationToken.None);
@@ -245,7 +277,10 @@ namespace ObdInsight.Core.Communication.Elm327
 
         private async Task RunKeepAliveAsync(CancellationToken ct)
         {
-            var interval = TimeSpan.FromMilliseconds(Math.Max(100, _context.KeepAliveIntervalMs));
+            // Only ever started for a session-backed monitor whose context has a keep-alive.
+            var context = _context!;
+            var session = _session!;
+            var interval = TimeSpan.FromMilliseconds(Math.Max(100, context.KeepAliveIntervalMs));
             while (!ct.IsCancellationRequested)
             {
                 try
@@ -266,7 +301,7 @@ namespace ObdInsight.Core.Communication.Elm327
                 try
                 {
                     await using var scope = await SuspendAsync(ct);
-                    await _session.SendKeepAliveAsync(_context, ct);
+                    await session.SendKeepAliveAsync(context, ct);
                 }
                 catch (OperationCanceledException)
                 {
@@ -352,14 +387,14 @@ namespace ObdInsight.Core.Communication.Elm327
                             // Enter monitoring with this window's hardware filter; Enter exits
                             // any previous window first. The dwell token rotates us out.
                             var window = FilterRotation[_windowIndex % FilterRotation.Count];
-                            await _session.EnterMonitoringModeAsync(CreateWindowContext(window), ct);
+                            await _session!.EnterMonitoringModeAsync(CreateWindowContext(window), ct);
                             dwellCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                             dwellCts.CancelAfter(window.Dwell);
                             frameToken = dwellCts.Token;
                         }
 
                         var framesThisRun = 0;
-                        await foreach (var frame in _session.MonitorFramesAsync(frameToken))
+                        await foreach (var frame in ReadFramesAsync(frameToken))
                         {
                             framesThisRun++;
                             _latest[frame.CanId] = frame;
@@ -372,7 +407,7 @@ namespace ObdInsight.Core.Communication.Elm327
                             break;
                         }
 
-                        var sessionReason = _session.LastMonitoringEndReason;
+                        var sessionReason = LastSourceEndReason;
                         // Both are adapter-initiated exits (overflow, or a stray prompt from
                         // residual bytes/adapter quirks) — recoverable by re-entering monitoring.
                         if (sessionReason is MonitoringEndReason.BufferFull or MonitoringEndReason.PromptDetected)
@@ -403,7 +438,7 @@ namespace ObdInsight.Core.Communication.Elm327
 
                                 if (!rotating)
                                 {
-                                    await _session.EnterMonitoringModeAsync(_context, ct);
+                                    await EnterAsync(ct);
                                 }
                                 // Rotating: the next iteration enters the next window anyway.
                             }
@@ -474,7 +509,7 @@ namespace ObdInsight.Core.Communication.Elm327
 
                 try
                 {
-                    await _session.ExitMonitoringModeAsync(CancellationToken.None);
+                    await ExitAsync();
                 }
                 catch (Exception ex)
                 {
@@ -485,26 +520,63 @@ namespace ObdInsight.Core.Communication.Elm327
 
         private EcuContext CreateWindowContext(CanFilterWindow window)
         {
+            // Rotation is rejected for frame-source monitors in StartAsync, so the context exists.
+            var context = _context!;
             return new EcuContext
             {
-                Name = $"{_context.Name} [{window.Pattern}/{window.Mask}]",
-                TxHeader = _context.TxHeader,
-                RxFilter = _context.RxFilter,
-                FlowControlHeader = _context.FlowControlHeader,
-                FlowControlData = _context.FlowControlData,
-                FlowControlMode = _context.FlowControlMode,
-                EnableHeaders = _context.EnableHeaders,
-                EnableAutoFormatting = _context.EnableAutoFormatting,
-                CommunicationMode = _context.CommunicationMode,
-                MonitoringCommand = _context.MonitoringCommand,
-                AdapterTimeoutUnits = _context.AdapterTimeoutUnits,
-                SessionActivationCommand = _context.SessionActivationCommand,
-                RequiresSessionActivation = _context.RequiresSessionActivation,
-                KeepAliveCommand = _context.KeepAliveCommand,
-                KeepAliveIntervalMs = _context.KeepAliveIntervalMs,
+                Name = $"{context.Name} [{window.Pattern}/{window.Mask}]",
+                TxHeader = context.TxHeader,
+                RxFilter = context.RxFilter,
+                FlowControlHeader = context.FlowControlHeader,
+                FlowControlData = context.FlowControlData,
+                FlowControlMode = context.FlowControlMode,
+                EnableHeaders = context.EnableHeaders,
+                EnableAutoFormatting = context.EnableAutoFormatting,
+                CommunicationMode = context.CommunicationMode,
+                MonitoringCommand = context.MonitoringCommand,
+                AdapterTimeoutUnits = context.AdapterTimeoutUnits,
+                SessionActivationCommand = context.SessionActivationCommand,
+                RequiresSessionActivation = context.RequiresSessionActivation,
+                KeepAliveCommand = context.KeepAliveCommand,
+                KeepAliveIntervalMs = context.KeepAliveIntervalMs,
                 CanFilterMask = window.Mask,
                 CanFilterPattern = window.Pattern
             };
+        }
+
+        // ---- Backend seam: ELM327 session vs raw frame source -------------------------------
+
+        /// <summary>Enters monitoring on the session, or starts the frame source.</summary>
+        private ValueTask EnterAsync(CancellationToken ct)
+        {
+            return _source is not null
+                ? _source.StartAsync(ct)
+                : _session!.EnterMonitoringModeAsync(_context!, ct);
+        }
+
+        private IAsyncEnumerable<RawCanFrame> ReadFramesAsync(CancellationToken ct)
+        {
+            return _source is not null
+                ? _source.ReadFramesAsync(ct)
+                : _session!.MonitorFramesAsync(ct);
+        }
+
+        /// <summary>
+        ///     Why the backend's last frame enumeration ended. A frame source never reports
+        ///     <see cref="MonitoringEndReason.BufferFull" /> / <see cref="MonitoringEndReason.PromptDetected" />
+        ///     (those are ELM327 adapter exits), so the restart branch in the loop is ELM-only by construction.
+        /// </summary>
+        private MonitoringEndReason LastSourceEndReason
+        {
+            get => _source?.LastEndReason ?? _session!.LastMonitoringEndReason;
+        }
+
+        /// <summary>Exits monitoring on the session, or stops the frame source.</summary>
+        private ValueTask ExitAsync()
+        {
+            return _source is not null
+                ? _source.StopAsync(CancellationToken.None)
+                : _session!.ExitMonitoringModeAsync(CancellationToken.None);
         }
 
         private void Publish(RawCanFrame frame)

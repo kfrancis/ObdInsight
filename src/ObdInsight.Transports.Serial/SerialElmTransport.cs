@@ -29,6 +29,12 @@ public sealed class SerialElmTransport : IElmTransport
     /// </summary>
     public const int DefaultBaudRate = 115200;
 
+    /// <summary>
+    ///     Synchronous read timeout. Bounds cancellation latency for <see cref="ReadAsync" />
+    ///     (see its remarks); not a data timeout - a quiet bus just loops.
+    /// </summary>
+    public const int ReadTimeoutMs = 250;
+
     private readonly int _baudRate;
 
     private readonly ILogger<SerialElmTransport>? _logger;
@@ -65,9 +71,9 @@ public sealed class SerialElmTransport : IElmTransport
             DtrEnable = true,
             RtsEnable = true,
 
-            // ReadAsync is cancelled by the caller's token rather than by a port timeout, but
-            // SerialPort still needs finite values or a read can block past cancellation.
-            ReadTimeout = 500,
+            // ReadAsync polls with synchronous reads (see its remarks); this timeout is how often
+            // a blocked read wakes to notice cancellation.
+            ReadTimeout = ReadTimeoutMs,
             WriteTimeout = 2000
         };
 
@@ -92,6 +98,18 @@ public sealed class SerialElmTransport : IElmTransport
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    ///     Blocks until at least one byte arrives or <paramref name="ct" /> is cancelled; returns 0
+    ///     only at end of stream (device unplugged or port closed). A quiet bus therefore never
+    ///     produces a 0, which keeps the caller's loop asleep rather than spinning.
+    ///     Implemented with synchronous reads on a pool thread because
+    ///     <see cref="SerialPort.BaseStream" />'s <c>ReadAsync</c> on Windows honours neither
+    ///     <see cref="SerialPort.ReadTimeout" /> nor the cancellation token once the overlapped
+    ///     read is in flight - it simply never returns on a silent port (measured 2026-09-03 on a
+    ///     CANable 2.0: a 3 s token and a 500 ms timeout both blocked indefinitely). The
+    ///     synchronous <c>Read</c> does honour the timeout, so the loop wakes every
+    ///     <see cref="ReadTimeoutMs" /> to check for cancellation.
+    /// </remarks>
     public async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct)
     {
         var port = _port;
@@ -100,25 +118,38 @@ public sealed class SerialElmTransport : IElmTransport
             return 0;
         }
 
-        try
+        var stream = port.BaseStream;
+        while (true)
         {
-            return await port.BaseStream.ReadAsync(buffer, ct);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (TimeoutException)
-        {
-            // A quiet bus is not an error; report "nothing yet" and let the caller loop.
-            return 0;
-        }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException)
-        {
-            // The device was unplugged mid-read. Surface it as end-of-stream so a capture loop
-            // terminates cleanly instead of spinning on a dead handle.
-            _logger?.LogWarning(ex, "Serial read failed on {Port}; treating as end of stream", _portName);
-            return 0;
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                var read = await Task.Run(() => stream.Read(buffer.Span), ct).ConfigureAwait(false);
+                if (read > 0)
+                {
+                    return read;
+                }
+
+                // A synchronous serial read returns 0 only when the stream has ended.
+                return 0;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (TimeoutException)
+            {
+                // Quiet bus: nothing arrived within ReadTimeout. Loop to re-check cancellation.
+            }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException)
+            {
+                // The device was unplugged mid-read (or the port was closed under us). Surface it
+                // as end-of-stream so a capture loop terminates cleanly instead of spinning on a
+                // dead handle.
+                _logger?.LogWarning(ex, "Serial read failed on {Port}; treating as end of stream", _portName);
+                return 0;
+            }
         }
     }
 

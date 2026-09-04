@@ -18,6 +18,7 @@
     <ProjectReference Include="..\..\src\ObdInsight\ObdInsight.csproj" />
     <ProjectReference Include="..\..\src\ObdInsight.Simulation\ObdInsight.Simulation.csproj" />
     <ProjectReference Include="..\..\src\ObdInsight.Transports.WindowsBle\ObdInsight.Transports.WindowsBle.csproj" />
+    <ProjectReference Include="..\..\src\ObdInsight.Transports.Serial\ObdInsight.Transports.Serial.csproj" />
   </ItemGroup>
 
 </Project>
