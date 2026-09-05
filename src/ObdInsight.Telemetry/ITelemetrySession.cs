@@ -64,6 +64,8 @@ public interface ITelemetrySession : IAsyncDisposable
     ///     value; <see cref="Availability" /> says whether a quiet signal is merely cold or
     ///     genuinely unsupported. Buffering, drop-oldest behaviour and eager registration match
     ///     <see cref="Batches" /> — this is a projection of the same subscription.
+    ///     Stale and unknown-age values retain their observation metadata; this projection
+    ///     does not filter them. Use Batches to record missing/invalid/timeout outcomes too.
     /// </remarks>
     /// <param name="signal">A typed handle from <see cref="Signals" />.</param>
     /// <param name="ct">Stops the stream.</param>
@@ -79,6 +81,8 @@ public interface ITelemetrySession : IAsyncDisposable
     /// <summary>
     ///     One-shot full diagnostic snapshot (pre-/post-check), independent of the
     ///     subscription. Serialized against the scheduler — safe to call while running.
+    ///     TimestampUtc denotes assembly. Measurements retain per-signal evidence; numeric
+    ///     convenience fields include only readings fresh at assembly time.
     /// </summary>
     ValueTask<TelemetrySnapshot> GetSnapshotAsync(CancellationToken ct = default);
 

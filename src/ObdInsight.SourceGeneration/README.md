@@ -17,6 +17,11 @@ partial decoded response. Nullable arrays preserve invalid elements as null slot
 nonnullable invalid elements fail the response. `OBDUDS001` diagnoses unsupported
 or inconsistent schemas. Custom parsing helper methods are no longer required.
 
+Generated query return types are `Task<Observed<Response?>>` (Core). A null `Value`
+means decoding failed; the envelope retains query-completion time/source and Invalid
+quality. Queries use `_session.QueryResponseAsync`; cancellation and I/O errors still
+propagate. This is a pre-1.0 generated API change: regenerate with matching packages.
+
 Reference alongside **`ObdInsight.Annotations`** (the attribute types) when defining
 your own frames:
 

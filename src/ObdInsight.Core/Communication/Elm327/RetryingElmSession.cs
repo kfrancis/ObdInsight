@@ -88,14 +88,18 @@ public sealed class RetryingElmSession : IElmSession
     public ValueTask<string[]> QueryAsync(string obdCommand, CancellationToken ct) =>
         RetryAsync(() => _inner.QueryAsync(obdCommand, ct), obdCommand, ct);
 
+    public TimeProvider TimeProvider => _inner.TimeProvider;
+    public ValueTask<Observed<string[]>> QueryResponseAsync(string command, EcuContext context, CancellationToken ct) =>
+        RetryAsync(() => _inner.QueryResponseAsync(command, context, ct), command, ct);
+
     public ValueTask<string[]> QueryAsync(string obdCommand, EcuContext context, CancellationToken ct) =>
         RetryAsync(() => _inner.QueryAsync(obdCommand, context, ct), obdCommand, ct);
 
     public ValueTask SetEcuContextAsync(EcuContext context, CancellationToken ct) =>
         _inner.SetEcuContextAsync(context, ct);
 
-    private async ValueTask<string[]> RetryAsync(
-        Func<ValueTask<string[]>> query, string command, CancellationToken ct)
+    private async ValueTask<T> RetryAsync<T>(
+        Func<ValueTask<T>> query, string command, CancellationToken ct)
     {
         for (var attempt = 1;; attempt++)
         {

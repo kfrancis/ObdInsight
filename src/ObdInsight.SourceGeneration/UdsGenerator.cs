@@ -124,7 +124,7 @@ public class UdsGenerator : IIncrementalGenerator
     {
         var elementType = GetElementType(field.PropertyType);
         var name = field.PropertyName.ToLowerInvariant() + "Values";
-        sb.AppendLine($"        if (data.Length < {field.Offset + field.ElementCount * field.ElementLength}) return null;");
+        sb.AppendLine($"        if (data.Length < {field.Offset + field.ElementCount * field.ElementLength}) return Invalid();");
         sb.AppendLine($"        var {name} = new {elementType}[{field.ElementCount}];");
         sb.AppendLine($"        for (int index = 0; index < {field.ElementCount}; index++)");
         sb.AppendLine("        {");
@@ -141,10 +141,10 @@ public class UdsGenerator : IIncrementalGenerator
         {
             TryRange(field.ValidRange!, out var min, out var max);
             sb.AppendLine($"            if (value < {min.ToString("R", CultureInfo.InvariantCulture)}d || value > {max.ToString("R", CultureInfo.InvariantCulture)}d)");
-            sb.AppendLine(elementType.EndsWith("?") ? "                continue; // Preserve this index as missing." : "                return null;");
+            sb.AppendLine(elementType.EndsWith("?") ? "                continue; // Preserve this index as missing." : "                return Invalid();");
         }
         var numericType = elementType.TrimEnd('?');
-        sb.AppendLine($"            if ((double)value < (double){numericType}.MinValue || (double)value > (double){numericType}.MaxValue) return null;");
+        sb.AppendLine($"            if ((double)value < (double){numericType}.MinValue || (double)value > (double){numericType}.MaxValue) return Invalid();");
         sb.AppendLine($"            {name}[index] = ({elementType})value;");
         sb.AppendLine("        }");
         sb.AppendLine($"        response.{field.PropertyName} = {name};");
@@ -164,11 +164,11 @@ public class UdsGenerator : IIncrementalGenerator
         if (field.FrameSource != "Payload")
         {
             var start = field.FrameSource == "FirstFrame" ? 0 : 6 + ((field.FrameSequence == 0 ? 16 : field.FrameSequence) - 1) * 7;
-            sb.AppendLine($"            if (payload.Length <= 7 || payload.Length < {start + field.Offset + field.Length}) return null;");
+            sb.AppendLine($"            if (payload.Length <= 7 || payload.Length < {start + field.Offset + field.Length}) return Invalid();");
             sb.AppendLine($"            var frameData = payload.AsSpan({start}, System.Math.Min({(field.FrameSource == "FirstFrame" ? 6 : 7)}, payload.Length - {start}));");
             source = "frameData";
         }
-        sb.AppendLine($"            if ({source}.Length < {field.Offset + field.Length}) return null;");
+        sb.AppendLine($"            if ({source}.Length < {field.Offset + field.Length}) return Invalid();");
         GenerateValueExtraction(sb, field, source, "            ");
         sb.AppendLine("        }");
         sb.AppendLine();
@@ -176,16 +176,18 @@ public class UdsGenerator : IIncrementalGenerator
 
     private static void GenerateQueryMethod(StringBuilder sb, UdsServiceModel service, UdsPidModel pid)
     {
-        sb.AppendLine($"    public async System.Threading.Tasks.Task<{pid.ClassName}?> Query{pid.MethodName}Async(System.Threading.CancellationToken ct = default)");
+        sb.AppendLine($"    public async System.Threading.Tasks.Task<global::ObdInsight.Core.Protocols.Observed<{pid.ClassName}?>> Query{pid.MethodName}Async(System.Threading.CancellationToken ct = default)");
         sb.AppendLine("    {");
         sb.AppendLine("        ct.ThrowIfCancellationRequested();");
-        sb.AppendLine($"        var lines = await _session.QueryAsync(\"{service.ServiceId:X2}{pid.PidId:X2}\", _context, ct).ConfigureAwait(false);");
+        sb.AppendLine($"        var reply = await _session.QueryResponseAsync(\"{service.ServiceId:X2}{pid.PidId:X2}\", _context, ct).ConfigureAwait(false);");
+        sb.AppendLine("        var lines = reply.Value;");
+        sb.AppendLine($"        global::ObdInsight.Core.Protocols.Observed<{pid.ClassName}?> Invalid() => new(null, reply.Observation with {{ Quality = global::ObdInsight.Core.Protocols.ObservationQuality.Invalid }});");
         sb.AppendLine("        ct.ThrowIfCancellationRequested();");
-        sb.AppendLine($"        if (!global::ObdInsight.Core.Protocols.IsoTpParser.TryReadPayload(lines, out var payload, _context.RxFilter, \"{service.ServiceId:X2}{pid.PidId:X2}\")) return null;");
-        sb.AppendLine($"        if (payload.Length < 2 || payload[0] != 0x{service.ServiceId + 0x40:X2} || payload[1] != 0x{pid.PidId:X2}) return null;");
+        sb.AppendLine($"        if (!global::ObdInsight.Core.Protocols.IsoTpParser.TryReadPayload(lines, out var payload, _context.RxFilter, \"{service.ServiceId:X2}{pid.PidId:X2}\")) return Invalid();");
+        sb.AppendLine($"        if (payload.Length < 2 || payload[0] != 0x{service.ServiceId + 0x40:X2} || payload[1] != 0x{pid.PidId:X2}) return Invalid();");
         sb.AppendLine("        var data = payload.AsSpan(2);");
-        if (pid.MinLength > 0) sb.AppendLine($"        if (data.Length < {pid.MinLength}) return null;");
-        if (pid.MaxLength > 0) sb.AppendLine($"        if (data.Length > {pid.MaxLength}) return null;");
+        if (pid.MinLength > 0) sb.AppendLine($"        if (data.Length < {pid.MinLength}) return Invalid();");
+        if (pid.MaxLength > 0) sb.AppendLine($"        if (data.Length > {pid.MaxLength}) return Invalid();");
         if (pid.Variants.Count > 0)
         {
             sb.AppendLine("        string? variant = data.Length switch");
@@ -194,7 +196,7 @@ public class UdsGenerator : IIncrementalGenerator
                 sb.AppendLine($"            {variant.Length} => \"{variant.Model}\",");
             sb.AppendLine("            _ => null");
             sb.AppendLine("        };");
-            sb.AppendLine("        if (variant is null) return null;");
+            sb.AppendLine("        if (variant is null) return Invalid();");
         }
         sb.AppendLine($"        var response = new {pid.ClassName}();");
         foreach (var name in pid.Fields.Where(f => !f.IsComputed && !f.IsArray && f.PropertyType.EndsWith("?")).Select(f => f.PropertyName).Distinct())
@@ -204,7 +206,7 @@ public class UdsGenerator : IIncrementalGenerator
             if (field.IsArray) GenerateArrayFieldExtraction(sb, field);
             else GenerateFieldExtraction(sb, field, pid.Variants.Count > 0);
         }
-        sb.AppendLine("        return response;");
+        sb.AppendLine($"        return new global::ObdInsight.Core.Protocols.Observed<{pid.ClassName}?>(response, reply.Observation);");
         sb.AppendLine("    }");
         sb.AppendLine();
     }
@@ -280,16 +282,16 @@ public class UdsGenerator : IIncrementalGenerator
         }
 
         var targetType = field.PropertyType.TrimEnd('?');
-        sb.AppendLine($"{indent}if (!double.IsFinite(value) || value < (double){targetType}.MinValue || value > (double){targetType}.MaxValue) return null;");
+        sb.AppendLine($"{indent}if (!double.IsFinite(value) || value < (double){targetType}.MinValue || value > (double){targetType}.MaxValue) return Invalid();");
         sb.AppendLine($"{indent}{targetType} converted;");
         sb.AppendLine($"{indent}try {{ converted = checked(({targetType})value); }}");
-        sb.AppendLine($"{indent}catch (System.OverflowException) {{ return null; }}");
+        sb.AppendLine($"{indent}catch (System.OverflowException) {{ return Invalid(); }}");
         if (!string.IsNullOrEmpty(field.ValidRange))
         {
             TryRange(field.ValidRange!, out var min, out var max);
             sb.AppendLine($"{indent}if (value >= {min.ToString("R", CultureInfo.InvariantCulture)}d && value <= {max.ToString("R", CultureInfo.InvariantCulture)}d)");
             sb.AppendLine($"{indent}    response.{field.PropertyName} = converted;");
-            if (!isNullable) sb.AppendLine($"{indent}else return null;");
+            if (!isNullable) sb.AppendLine($"{indent}else return Invalid();");
         }
         else
         {

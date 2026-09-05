@@ -41,14 +41,17 @@ internal static class TelemetryValidator
 
         if (value.Scalar is { } s)
         {
-            return s >= range.Min && s <= range.Max ? value : TelemetryValue.Empty;
+            return s >= range.Min && s <= range.Max ? value : TelemetryValue.Empty with
+            { Observation = value.Observation with { Quality = Core.Protocols.ObservationQuality.Invalid } };
         }
 
         if (value.Vector is { } vec)
         {
             var validated = vec.Select(element => element is { } v && v >= range.Min && v <= range.Max
                 ? element : null).ToArray();
-            return value with { Vector = Array.AsReadOnly(validated) };
+            return value with { Vector = Array.AsReadOnly(validated), Observation = value.Observation with
+            { Quality = value.Observation.Quality == Core.Protocols.ObservationQuality.Partial || validated.Any(v => v is null)
+                ? Core.Protocols.ObservationQuality.Partial : Core.Protocols.ObservationQuality.Valid } };
         }
 
         return value;

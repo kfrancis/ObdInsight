@@ -45,8 +45,9 @@ public class LeafBmsGroup04And06Tests
     public async Task GetStatus_WhenGroup04Unavailable_TemperaturesNullNotThrow(CancellationToken token)
     {
         var (transport, bms) = CreateBms();
-        // Only 2101 scripted — the 2104 attempt fails (unscripted) and must be swallowed.
+        // An actual adapter no-data response is missing data, not a programming error.
         transport.Expect("2101", LeafGoldenData.GoldenGroup01Lines.AsElmResponse());
+        transport.AutoRespond("2104", "NO DATA\r\r>");
 
         var status = await bms.GetStatusAsync(token);
 
@@ -90,6 +91,7 @@ public class LeafBmsGroup04And06Tests
     {
         var (transport, bms) = CreateBms();
         transport.Expect("2102", LeafGoldenData.GoldenGroup02Lines.AsElmResponse());
+        transport.AutoRespond("2106", "NO DATA\r\r>");
 
         var cells = await bms.GetCellVoltagesAsync(token);
 

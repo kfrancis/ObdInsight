@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Vehicles;
+using ObdInsight.Core.Protocols;
 
 namespace ObdInsight.Telemetry;
 
@@ -26,6 +27,8 @@ public sealed class TelemetrySession : ITelemetrySession
     private readonly object _stateLock = new();
     private readonly List<Channel<TelemetrySampleBatch>> _subscribers = [];
     private readonly TelemetrySubscription _subscription;
+    private readonly TimeProvider _clock;
+    private readonly long? _connectionGeneration;
 
     private CancellationTokenSource? _loopCts;
     private Task? _loopTask;
@@ -52,11 +55,15 @@ public sealed class TelemetrySession : ITelemetrySession
         IVehicleIdentification? identification = null,
         IDiagnosticTroubleCodes? dtc = null,
         IConnectionStateSource? connectionState = null,
-        ILogger<TelemetrySession>? logger = null)
+        ILogger<TelemetrySession>? logger = null,
+        TimeProvider? timeProvider = null, long? connectionGeneration = null)
     {
         _providers = providers;
         _subscription = subscription ?? TelemetrySubscription.Default;
         _options = options ?? new TelemetrySessionOptions();
+        if (_options.MaxObservationAge < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(options));
+        _clock = timeProvider ?? TimeProvider.System;
+        _connectionGeneration = connectionGeneration;
         _identification = identification;
         _dtc = dtc;
         _connectionState = connectionState;
@@ -161,7 +168,7 @@ public sealed class TelemetrySession : ITelemetrySession
                         var wanted = provider.Signals.Where(subscribed.Contains).ToHashSet();
                         if (wanted.Count == 0) continue;
                         var values = await ReadProviderAsync(provider, wanted, probeCts.Token).ConfigureAwait(false);
-                        UpdateAvailability(values, true, provider.IsCacheOnly);
+                        UpdateAvailability(values.ToDictionary(kv => kv.Key, kv => Assess(kv.Key, kv.Value, _clock.GetUtcNow())));
                     }
                     probeCts.Token.ThrowIfCancellationRequested();
                 }
@@ -255,9 +262,7 @@ public sealed class TelemetrySession : ITelemetrySession
                 var values = await ReadProviderAsync(provider, wanted, ct);
                 foreach (var (signal, value) in values)
                 {
-                    all[signal] = _options.ValidateRanges
-                        ? TelemetryValidator.Validate(signal, value)
-                        : value;
+                    all[signal] = value;
                 }
             }
 
@@ -302,9 +307,14 @@ public sealed class TelemetrySession : ITelemetrySession
             }
 
             lock (_stateLock) { if (_forcedError is not null) throw _forcedError; }
+            var published = _clock.GetUtcNow();
+            foreach (var signal in Enum.GetValues<TelemetrySignal>())
+                all[signal] = Assess(signal, all.GetValueOrDefault(signal, Absent(signal)), published);
             return new TelemetrySnapshot
             {
-                TimestampUtc = DateTimeOffset.UtcNow,
+                TimestampUtc = published,
+                ConnectionGeneration = _connectionGeneration,
+                Measurements = new System.Collections.ObjectModel.ReadOnlyDictionary<TelemetrySignal, TelemetryValue>(all),
                 Vin = vin,
                 SocPercent = Scalar(all, TelemetrySignal.StateOfCharge),
                 PackVoltageV = Scalar(all, TelemetrySignal.PackVoltage),
@@ -379,7 +389,8 @@ public sealed class TelemetrySession : ITelemetrySession
         TelemetrySubscription? subscription = null,
         TelemetrySessionOptions? options = null,
         IConnectionStateSource? connectionState = null,
-        ILogger<TelemetrySession>? logger = null)
+        ILogger<TelemetrySession>? logger = null,
+        TimeProvider? timeProvider = null, long? connectionGeneration = null)
     {
         commands.TryGet<IVehicleIdentification>(out var identification);
         commands.TryGet<IDiagnosticTroubleCodes>(out var dtc);
@@ -390,7 +401,7 @@ public sealed class TelemetrySession : ITelemetrySession
             identification,
             dtc,
             connectionState,
-            logger);
+            logger, timeProvider, connectionGeneration);
     }
 
     private void OnConnectionStateChanged(object? sender, ConnectionStateChangedEventArgs e)
@@ -420,7 +431,9 @@ public sealed class TelemetrySession : ITelemetrySession
             {
                 if (sample.Signal == signal.Signal && signal.TryRead(sample.Value, out var value))
                 {
-                    yield return new TelemetrySample<T>(sample.Signal, value, sample.TimestampUtc, sample.Tier);
+                    yield return new TelemetrySample<T>(sample.Signal, value, sample.TimestampUtc, sample.Tier)
+                    { Observation = sample.Value.Observation, Freshness = sample.Value.Freshness,
+                        Age = sample.Value.Age, ConnectionGeneration = batch.ConnectionGeneration };
                 }
             }
         }
@@ -468,50 +481,50 @@ public sealed class TelemetrySession : ITelemetrySession
     private async Task TickAsync(CadenceTier tier, CancellationToken ct)
     {
         var signals = _subscription.SignalsFor(tier).ToHashSet();
-        if (signals.Count == 0)
-        {
-            return;
-        }
-
-        var timestamp = DateTimeOffset.UtcNow;
-        var samples = new List<TelemetrySample>(signals.Count);
-        var served = new HashSet<TelemetrySignal>();
-
-        await _busGate.WaitAsync(ct);
+        if (signals.Count == 0) return;
+        var raw = new Dictionary<TelemetrySignal, TelemetryValue>();
+        await _busGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             foreach (var provider in _providers)
             {
                 var wanted = provider.Signals.Where(signals.Contains).ToHashSet();
-                if (wanted.Count == 0)
-                {
-                    continue;
-                }
-
-                var values = await ReadProviderAsync(provider, wanted, ct);
-                UpdateAvailability(values, false, provider.IsCacheOnly);
-                foreach (var (signal, rawValue) in values)
-                {
-                    var value = _options.ValidateRanges
-                        ? TelemetryValidator.Validate(signal, rawValue)
-                        : rawValue;
-                    samples.Add(new TelemetrySample(signal, value, timestamp, tier));
-                    served.Add(signal);
-                }
+                if (wanted.Count == 0) continue;
+                var values = await ReadProviderAsync(provider, wanted, ct).ConfigureAwait(false);
+                foreach (var (signal, value) in values)
+                    if (wanted.Contains(signal)) raw[signal] = value;
             }
         }
-        finally
-        {
-            _busGate.Release();
-        }
+        finally { _busGate.Release(); }
 
-        // Signals with no provider still get an (empty) sample — the batch shape is stable.
-        foreach (var signal in signals.Where(s => !served.Contains(s)))
-        {
-            samples.Add(new TelemetrySample(signal, TelemetryValue.Empty, timestamp, tier));
-        }
+        // Publication is after acquisition. Every value retains its own original observation.
+        var published = _clock.GetUtcNow();
+        var assessed = signals.ToDictionary(s => s, s => Assess(s, raw.GetValueOrDefault(s, Absent(s)), published));
+        UpdateAvailability(assessed);
+        var samples = assessed.Select(kv => new TelemetrySample(kv.Key, kv.Value, published, tier)).ToArray();
+        Publish(new TelemetrySampleBatch(tier, published, Array.AsReadOnly(samples))
+        { ConnectionGeneration = _connectionGeneration });
+    }
 
-        Publish(new TelemetrySampleBatch(tier, timestamp, samples));
+    private TelemetryValue Absent(TelemetrySignal signal) => TelemetryValue.Empty with
+    {
+        Observation = new(Quality: HasProviderFor(signal) ? ObservationQuality.Missing : ObservationQuality.Unsupported)
+    };
+
+    private TelemetryValue Assess(TelemetrySignal signal, TelemetryValue value, DateTimeOffset published)
+    {
+        value = value.WithObservation(value.Observation);
+        var originalVector = value.Vector;
+        if (_options.ValidateRanges) value = TelemetryValidator.Validate(signal, value);
+        if (value.Vector is not null && ReferenceEquals(value.Vector, originalVector))
+            value = value with { Vector = Array.AsReadOnly(value.Vector.ToArray()) };
+        var age = value.Observation.AgeAt(_clock, published);
+        return value with
+        {
+            Age = age is { } elapsed && elapsed >= TimeSpan.Zero ? elapsed : null,
+            Freshness = age is null || age < TimeSpan.Zero ? ObservationFreshness.Unknown :
+                age > _options.MaxObservationAge ? ObservationFreshness.Stale : ObservationFreshness.Fresh
+        };
     }
 
     private async ValueTask<IReadOnlyDictionary<TelemetrySignal, TelemetryValue>> ReadProviderAsync(
@@ -538,7 +551,8 @@ public sealed class TelemetrySession : ITelemetrySession
                                                  !ct.IsCancellationRequested)
         {
             // Cold cache hit the read bound — absent data, not an error.
-            return wanted.ToDictionary(s => s, _ => TelemetryValue.Empty);
+            return wanted.ToDictionary(s => s, _ => TelemetryValue.Empty with
+            { Observation = new(Source: ObservationSource.CanBroadcast, Quality: ObservationQuality.Missing) });
         }
         catch (OperationCanceledException)
         {
@@ -548,7 +562,9 @@ public sealed class TelemetrySession : ITelemetrySession
         {
             ct.ThrowIfCancellationRequested();
             _logger.LogDebug(ex, "Telemetry provider {Provider} read failed", provider.GetType().Name);
-            return wanted.ToDictionary(s => s, _ => TelemetryValue.Empty);
+            return wanted.ToDictionary(s => s, _ => TelemetryValue.Empty with
+            { Observation = new(Source: provider.IsCacheOnly ? ObservationSource.CanBroadcast : ObservationSource.DiagnosticQuery,
+                Quality: ObservationQuality.TimedOut) });
         }
         finally
         {
@@ -556,24 +572,18 @@ public sealed class TelemetrySession : ITelemetrySession
         }
     }
 
-    private void UpdateAvailability(
-        IReadOnlyDictionary<TelemetrySignal, TelemetryValue> values, bool probe, bool cacheOnly)
+    private void UpdateAvailability(IReadOnlyDictionary<TelemetrySignal, TelemetryValue> values)
     {
         lock (_stateLock)
         {
             foreach (var (signal, value) in values)
             {
-                if (!value.IsEmpty)
-                {
-                    _availability[signal] = SignalAvailability.Available;
-                }
-                else if (probe && !cacheOnly &&
-                         _availability.GetValueOrDefault(signal) != SignalAvailability.Available)
-                {
-                    // A UDS probe that answered with nothing is a definitive miss;
-                    // an empty cache probe stays Unknown (frames may appear while driving).
-                    _availability[signal] = SignalAvailability.Unavailable;
-                }
+                _availability[signal] = value.Observation.Quality == ObservationQuality.Unsupported
+                    ? SignalAvailability.Unavailable
+                    : value.IsEmpty || value.Vector is { } vector && !vector.Any(v => v.HasValue) ? SignalAvailability.Unknown
+                    : value.Freshness == ObservationFreshness.Stale ? SignalAvailability.Stale
+                    : value.Freshness == ObservationFreshness.Fresh ? SignalAvailability.Available
+                    : SignalAvailability.Unknown;
             }
         }
     }
@@ -594,12 +604,15 @@ public sealed class TelemetrySession : ITelemetrySession
     private bool HasProviderFor(TelemetrySignal signal) =>
         _providers.Any(p => p.Signals.Contains(signal));
 
+    private static TelemetryValue Current(TelemetryValue value) =>
+        value.Freshness == ObservationFreshness.Fresh ? value : TelemetryValue.Empty;
+
     private static decimal? Scalar(Dictionary<TelemetrySignal, TelemetryValue> all, TelemetrySignal s) =>
-        all.GetValueOrDefault(s).Scalar;
+        Current(all.GetValueOrDefault(s)).Scalar;
 
     private static IReadOnlyList<decimal?>? Vector(Dictionary<TelemetrySignal, TelemetryValue> all, TelemetrySignal s) =>
-        all.GetValueOrDefault(s).Vector;
+        Current(all.GetValueOrDefault(s)).Vector;
 
     private static bool? Boolean(Dictionary<TelemetrySignal, TelemetryValue> all, TelemetrySignal s) =>
-        all.GetValueOrDefault(s).Boolean;
+        Current(all.GetValueOrDefault(s)).Boolean;
 }

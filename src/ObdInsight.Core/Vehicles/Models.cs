@@ -53,6 +53,8 @@ public static class VariantAttr
 
 public sealed class HvacStatus
 {
+    public Protocols.ObservationMetadata CabinTemperatureObservation { get; init; }
+    public Protocols.ObservationMetadata ClimateStateObservation { get; init; }
     public bool AcOn { get; init; }
     public int? AcPowerWatts { get; init; }
     public int? AmbientTempAc { get; init; }

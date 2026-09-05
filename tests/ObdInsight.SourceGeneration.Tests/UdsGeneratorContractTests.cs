@@ -14,6 +14,10 @@ public class UdsGeneratorContractTests
         public class Session
         {
             public Task<string[]> QueryAsync(string command, Context context, CancellationToken ct) => Task.FromResult(new string[0]);
+            public async Task<ObdInsight.Core.Protocols.Observed<string[]>> QueryResponseAsync(string command, Context context, CancellationToken ct) =>
+                new(await QueryAsync(command, context, ct), new ObdInsight.Core.Protocols.ObservationMetadata(
+                    new System.DateTimeOffset(2026, 1, 1, 0, 0, 0, System.TimeSpan.Zero),
+                    ObdInsight.Core.Protocols.ObservationSource.DiagnosticQuery, Query: command));
         }
         public class Context { public string RxFilter => "7BB"; }
         [UdsService(0x21)]
@@ -41,8 +45,8 @@ public class UdsGeneratorContractTests
             """));
         var source = GeneratorTestHelper.GetGeneratedSource(result);
         await Assert.That(source).Contains("new int?[3]");
-        await Assert.That(source).Contains("if (data.Length < 6) return null;");
-        await Assert.That(source).Contains("if (data.Length > 6) return null;");
+        await Assert.That(source).Contains("if (data.Length < 6) return Invalid();");
+        await Assert.That(source).Contains("if (data.Length > 6) return Invalid();");
         await Assert.That(source).Contains("continue; // Preserve this index as missing.");
         await Assert.That(source).Contains("cellsValues[index]");
     }
@@ -131,8 +135,12 @@ public class UdsGeneratorContractTests
         source += """
             public static class Entry
             {
-                public static async System.Threading.Tasks.Task<bool> Run() =>
-                    await new Diagnostics().QueryStatusAsync() is not null;
+                public static async System.Threading.Tasks.Task<bool> Run()
+                {
+                    var result = await new Diagnostics().QueryStatusAsync();
+                    return result is not null && result.Value is not null && result.Observation.Query == "2101" &&
+                        result.Observation.ObservedAtUtc == new System.DateTimeOffset(2026, 1, 1, 0, 0, 0, System.TimeSpan.Zero);
+                }
             }
             """;
         var compilation = GeneratorTestHelper.CreateCompilation(source, includeCore: true);

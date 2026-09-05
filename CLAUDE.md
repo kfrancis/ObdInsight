@@ -112,7 +112,9 @@ public partial class BatteryFrame_1DB_AZE0
   (Core does), frames also implement it + `FrameCanId` — that's what typed `Subscribe<T>()` uses.
 - `UdsGenerator` emits `Query{Name}Async` methods from `[UdsService]`/`[UdsPid]`/`[UdsField]`
   (see `LeafBmsDiagnostics` in `BmsFrames.cs`). Partial classes must supply
-  `ParseIsoTpFrames`/`ReassembleIsoTpPayload`/`_session`/`_context`.
+  `_session`/`_context`; generated code uses Core's strict ISO-TP parser.
+  Queries return `Observed<Response?>`, preserving invalid-query evidence; see
+  `docs/OBSERVATION_SEMANTICS.md`. Match generator and Core package versions.
 - `MinValue`/`MaxValue` are **documentation only** — no runtime validation is emitted.
 - **Bit order:** both DBC conventions are supported. `ByteOrder = CanByteOrder.Motorola`
   (DBC `@0`) makes the start bit the signal's MSB; the default `Intel` (DBC `@1`) makes it

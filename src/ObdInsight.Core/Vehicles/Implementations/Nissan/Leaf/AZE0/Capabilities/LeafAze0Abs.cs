@@ -41,13 +41,14 @@ internal sealed class LeafAze0Abs : IAntilockBrakingSystem
     {
         _monitor.TryGetLatest<AbsFrame_130_AZE0>(out var frame130);
         _monitor.TryGetLatest<AbsFrame_245_AZE0>(out var frame245);
-        _monitor.TryGetLatest<AbsFrame_284_AZE0>(out var frame284);
+        _monitor.TryGetLatest<AbsFrame_284_AZE0>(out var frame284, out var speedObservation);
         _monitor.TryGetLatest<AbsFrame_285_AZE0>(out var frame285);
         _monitor.TryGetLatest<AbsFrame_292_AZE0>(out var frame292);
         _monitor.TryGetLatest<AbsFrame_354_AZE0>(out var frame354);
 
         return new AbsStatus
         {
+            VehicleSpeedObservation = speedObservation,
             WheelSpeedFrKmh = frame284?.WheelSpeedFr,
             WheelSpeedFlKmh = frame284?.WheelSpeedFl,
             VehicleSpeedKmh = frame284?.VehicleSpeedFromAbs,

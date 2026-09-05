@@ -16,7 +16,7 @@ public class UdsGeneratorTests
                      {
                          public interface IElmSession
                          {
-                             Task<string[]> QueryAsync(string command, object context, CancellationToken ct);
+                             Task<ObdInsight.Core.Protocols.Observed<string[]>> QueryResponseAsync(string command, object context, CancellationToken ct);
                          }
 
                          public class EcuContext { public string RxFilter => "7BB"; }
@@ -65,7 +65,7 @@ public class UdsGeneratorTests
                      {
                          public interface IElmSession
                          {
-                             Task<string[]> QueryAsync(string command, object context, CancellationToken ct);
+                             Task<ObdInsight.Core.Protocols.Observed<string[]>> QueryResponseAsync(string command, object context, CancellationToken ct);
                          }
 
                          public class EcuContext { public string RxFilter => "7BB"; }
@@ -108,7 +108,7 @@ public class UdsGeneratorTests
                      {
                          public interface IElmSession
                          {
-                             Task<string[]> QueryAsync(string command, object context, CancellationToken ct);
+                             Task<ObdInsight.Core.Protocols.Observed<string[]>> QueryResponseAsync(string command, object context, CancellationToken ct);
                          }
 
                          public class EcuContext { public string RxFilter => "7BB"; }
@@ -155,7 +155,7 @@ public class UdsGeneratorTests
                      {
                          public interface IElmSession
                          {
-                             Task<string[]> QueryAsync(string command, object context, CancellationToken ct);
+                             Task<ObdInsight.Core.Protocols.Observed<string[]>> QueryResponseAsync(string command, object context, CancellationToken ct);
                          }
 
                          public class EcuContext { public string RxFilter => "7BB"; }
@@ -200,7 +200,7 @@ public class UdsGeneratorTests
                      {
                          public interface IElmSession
                          {
-                             Task<string[]> QueryAsync(string command, object context, CancellationToken ct);
+                             Task<ObdInsight.Core.Protocols.Observed<string[]>> QueryResponseAsync(string command, object context, CancellationToken ct);
                          }
 
                          public class EcuContext { public string RxFilter => "7BB"; }

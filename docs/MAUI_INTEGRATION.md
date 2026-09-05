@@ -10,6 +10,12 @@ and use new subscriptions. `VehicleConnection` owns reinitialization and fresh
 generations after loss; recording explicitly starts a new segment, never an
 uninterrupted subscription across physical connections.
 
+**Recording evidence:** [observation semantics](OBSERVATION_SEMANTICS.md) separates
+publication from acquisition time. Persist your drive ID and ConnectionGeneration
+alongside each value's Observation/Freshness/Age. Use batches to retain missing-data
+outcomes. Snapshot convenience fields now omit stale/unknown-age readings; inspect
+Measurements before drawing pre/post health conclusions.
+
 ## Packages to reference
 
 NuGet packages (see `docs/RELEASING.md`; project references work identically):

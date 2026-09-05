@@ -19,6 +19,7 @@ public class LeafBmsGroup01ParsingTests
     {
         var transport = new ReplayElmTransport();
         transport.Expect("2101", LeafGoldenData.GoldenGroup01Lines.AsElmResponse());
+        transport.AutoRespond("2104", "NO DATA\r\r>");
 
         var session = new ElmSession(new ElmFramer(transport));
         var commands = new LeafAze0CommandSet(session);
@@ -60,9 +61,10 @@ public class LeafBmsGroup01ParsingTests
     {
         await using var transport = new ReplayElmTransport();
         transport.Expect("2101", LeafGoldenData.GoldenGroup01Lines.AsElmResponse());
+        transport.AutoRespond("2104", "NO DATA\r\r>");
         var diagnostics = new LeafBmsDiagnostics(new ElmSession(new ElmFramer(transport)), EcuContext.NissanLeafBms);
         var response = await diagnostics.QueryGroup01Async(token);
-        await Assert.That(response!.HxPercent).IsEqualTo(35.44);
+        await Assert.That(response.Value!.HxPercent).IsEqualTo(35.44);
     }
 
     [Test]
@@ -93,6 +95,7 @@ public class LeafBmsGroup01ParsingTests
     {
         var transport = new ReplayElmTransport();
         transport.Expect("2101", LeafGoldenData.GoldenGroup01Lines.AsElmResponse());
+        transport.AutoRespond("2104", "NO DATA\r\r>");
 
         var session = new ElmSession(new ElmFramer(transport));
         var commands = new LeafAze0CommandSet(session);

@@ -52,11 +52,13 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         {
             _monitor.TryGetLatest<HvacFrame_54A_AZE0>(out var ambient);
             _monitor.TryGetLatest<HvacFrame_54B_AZE0>(out var fan);
-            _monitor.TryGetLatest<HvacFrame_54C_AZE0>(out var status);
-            _monitor.TryGetLatest<HvacFrame_54F_AZE0>(out var power);
+            _monitor.TryGetLatest<HvacFrame_54C_AZE0>(out var status, out var stateObservation);
+            _monitor.TryGetLatest<HvacFrame_54F_AZE0>(out var power, out var temperatureObservation);
 
             return new HvacStatus
             {
+                ClimateStateObservation = stateObservation,
+                CabinTemperatureObservation = temperatureObservation,
                 ClimateControlOn = status?.ClimateControlOn ?? false,
                 AcOn = status?.AcOn ?? false,
                 RearDefrostOn = status?.RearDefrostOn ?? false,

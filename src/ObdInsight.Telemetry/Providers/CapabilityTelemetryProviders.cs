@@ -28,21 +28,7 @@ public sealed class BatteryStatusTelemetryProvider : ITelemetryProvider
     public async ValueTask<IReadOnlyDictionary<TelemetrySignal, TelemetryValue>> ReadAsync(
         IReadOnlySet<TelemetrySignal> requested, CancellationToken ct)
     {
-        BatteryStatus? status;
-        try
-        {
-            status = await _bms.GetStatusAsync(ct);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch
-        {
-            // Capabilities contract data absence as nulls (B7); this catch is a belt
-            // for third-party implementations that don't honor it.
-            status = null;
-        }
+        var status = await _bms.GetStatusAsync(ct).ConfigureAwait(false);
 
         var result = new Dictionary<TelemetrySignal, TelemetryValue>();
         foreach (var signal in Provided)
@@ -62,6 +48,16 @@ public sealed class BatteryStatusTelemetryProvider : ITelemetryProvider
                 TelemetrySignal.StateOfHealth => TelemetryValue.FromDouble(status?.StateOfHealthPercent),
                 _ => TelemetryValue.Empty
             };
+            result[signal] = result[signal].WithObservation(signal switch
+            {
+                TelemetrySignal.StateOfCharge => status?.SocObservation ?? default,
+                TelemetrySignal.PackVoltage => status?.VoltageObservation ?? default,
+                TelemetrySignal.PackCurrent => status?.CurrentObservation ?? default,
+                TelemetrySignal.PackPower => status?.PowerObservation ?? default,
+                TelemetrySignal.PackTemperature => status?.TemperatureObservation ?? default,
+                TelemetrySignal.StateOfHealth => status?.StateOfHealthObservation ?? default,
+                _ => default
+            });
         }
 
         return result;
@@ -90,19 +86,7 @@ public sealed class CellVoltagesTelemetryProvider : ITelemetryProvider
     public async ValueTask<IReadOnlyDictionary<TelemetrySignal, TelemetryValue>> ReadAsync(
         IReadOnlySet<TelemetrySignal> requested, CancellationToken ct)
     {
-        CellVoltageData? cells;
-        try
-        {
-            cells = await _bms.GetCellVoltagesAsync(ct);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch
-        {
-            cells = null;
-        }
+        var cells = await _bms.GetCellVoltagesAsync(ct).ConfigureAwait(false);
 
         var result = new Dictionary<TelemetrySignal, TelemetryValue>();
         foreach (var signal in Provided)
@@ -124,6 +108,7 @@ public sealed class CellVoltagesTelemetryProvider : ITelemetryProvider
                     new TelemetryValue(cells.AvgVoltageMv / 1000m),
                 _ => TelemetryValue.Empty
             };
+            result[signal] = result[signal].WithObservation(cells?.Observation ?? default);
         }
 
         return result;
@@ -147,7 +132,7 @@ public sealed class SpeedTelemetryProvider : ITelemetryProvider
         var status = await _abs.GetStatusAsync(ct);
         return new Dictionary<TelemetrySignal, TelemetryValue>
         {
-            [TelemetrySignal.VehicleSpeed] = TelemetryValue.FromDouble(status.VehicleSpeedKmh)
+            [TelemetrySignal.VehicleSpeed] = TelemetryValue.FromDouble(status.VehicleSpeedKmh).WithObservation(status.VehicleSpeedObservation)
         };
     }
 }
@@ -177,13 +162,13 @@ public sealed class HvacTelemetryProvider : ITelemetryProvider
         if (requested.Contains(TelemetrySignal.CabinTemperature))
         {
             result[TelemetrySignal.CabinTemperature] =
-                TelemetryValue.FromDouble(status.InteriorIntakeTempC);
+                TelemetryValue.FromDouble(status.InteriorIntakeTempC).WithObservation(status.CabinTemperatureObservation);
         }
 
         if (requested.Contains(TelemetrySignal.HvacActive))
         {
             result[TelemetrySignal.HvacActive] =
-                TelemetryValue.FromBool(status.ClimateControlOn || status.AcOn);
+                TelemetryValue.FromBool(status.ClimateControlOn || status.AcOn).WithObservation(status.ClimateStateObservation);
         }
 
         return result;
@@ -207,7 +192,7 @@ public sealed class RangeTelemetryProvider : ITelemetryProvider
         var status = await _vcm.GetStatusAsync(ct);
         return new Dictionary<TelemetrySignal, TelemetryValue>
         {
-            [TelemetrySignal.RemainingRange] = TelemetryValue.FromDouble(status.RangeKm)
+            [TelemetrySignal.RemainingRange] = TelemetryValue.FromDouble(status.RangeKm).WithObservation(status.RangeObservation)
         };
     }
 }

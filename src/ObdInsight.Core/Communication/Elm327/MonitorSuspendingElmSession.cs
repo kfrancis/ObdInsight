@@ -16,6 +16,13 @@ namespace ObdInsight.Core.Communication.Elm327
         private readonly IElmSession _inner;
         private readonly CanMonitor _monitor;
         private IAsyncDisposable? _monitoringSuspension;
+        public TimeProvider TimeProvider => _inner.TimeProvider;
+
+        public async ValueTask<Observed<string[]>> QueryResponseAsync(string command, EcuContext context, CancellationToken ct)
+        {
+            await using var scope = await _monitor.SuspendAsync(ct);
+            return await _inner.QueryResponseAsync(command, context, ct).ConfigureAwait(false);
+        }
 
         public MonitorSuspendingElmSession(IElmSession inner, CanMonitor monitor)
         {

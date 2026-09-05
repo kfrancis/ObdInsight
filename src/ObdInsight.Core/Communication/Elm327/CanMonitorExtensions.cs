@@ -163,9 +163,22 @@ namespace ObdInsight.Core.Communication.Elm327
         /// </summary>
         public static bool TryGetLatest<T>(this CanMonitor monitor, out T frame)
             where T : ICanFrame<T>
+            => monitor.TryGetLatest(out frame, out _);
+
+        /// <summary>Decodes and returns metadata from the same cached frame; never restamps a cache read.</summary>
+        public static bool TryGetLatest<T>(this CanMonitor monitor, out T frame, out ObservationMetadata observation)
+            where T : ICanFrame<T>
         {
-            if (monitor.TryGetLatest(T.FrameCanId, out var raw) && raw.Data.Length >= T.MinimumLength)
+            observation = new(Source: ObservationSource.CanBroadcast, Quality: ObservationQuality.Missing, CanId: T.FrameCanId);
+            if (monitor.TryGetLatest(T.FrameCanId, out var raw))
             {
+                observation = raw.Observation with { Source = ObservationSource.CanBroadcast, CanId = raw.CanId };
+                if (raw.Data.Length < T.MinimumLength)
+                {
+                    observation = observation with { Quality = ObservationQuality.Invalid };
+                    frame = default!;
+                    return false;
+                }
                 frame = T.Parse(raw.Data.Span);
                 return true;
             }

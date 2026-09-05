@@ -62,7 +62,9 @@ remain the existing authoring convention.
   include the SID/PID; CF sequence selects its first occurrence (1..15, then 0).
   Multiple fields from one frame have independent scopes. Missing frames/bytes fail.
 - Caller cancellation is checked before and after the query. Existing protocol
-  failure semantics remain: invalid/unsupported payloads return null.
+  failure evidence is now retained: generated queries return `Observed<Response?>`;
+  invalid/unsupported payloads have null Value and Invalid observation quality. See
+  [observation semantics](OBSERVATION_SEMANTICS.md).
 
 `OBDUDS001` reports invalid bounds/variant ambiguity, unsupported numeric or wire
 types, invalid geometry, invalid ranges/scales, unknown variants, and nonnullable

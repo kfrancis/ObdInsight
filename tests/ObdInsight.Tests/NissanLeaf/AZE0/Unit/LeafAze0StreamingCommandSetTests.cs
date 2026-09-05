@@ -25,6 +25,7 @@ public class LeafAze0StreamingCommandSetTests
         transport.AutoRespond("ATMA", "");
         // BMS query suspends the monitor (exit + query) and the rotation resumes after.
         transport.Expect("2101", LeafGoldenData.GoldenGroup01Lines.AsElmResponse());
+        transport.AutoRespond("2104", "NO DATA\r\r>");
 
         commands.TryGet<IHvac>(out var hvac);
         commands.TryGet<IBatteryManagementSystem>(out var bms);

@@ -77,12 +77,15 @@ public enum SignalAvailability
     /// </summary>
     Unknown,
 
-    /// <summary>Data has been observed for this signal.</summary>
+    /// <summary>The latest assessment contains fresh, usable data for this signal.</summary>
     Available,
 
     /// <summary>
-    ///     No provider exists for this signal on this vehicle, or the probe
-    ///     failed definitively.
+    ///     No provider exists, or the provider explicitly reports unsupported.
+    ///     A timeout, missing reply, or invalid reading is not proof of unsupported hardware.
     /// </summary>
-    Unavailable
+    Unavailable,
+
+    /// <summary>The most recent published reading exceeded the configured maximum observation age.</summary>
+    Stale
 }

@@ -18,76 +18,97 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 
         public async ValueTask<CellVoltageData?> GetCellVoltagesAsync(CancellationToken ct = default)
         {
-            // Degradation contract (audit B7): data absence — silent ECU, adapter error,
-            // parse failure — yields null, never a throw. Cancellation still propagates.
-            LeafBmsDiagnostics.Group02Response? response;
+            // Missing I/O retains the legacy null result; received malformed data and
+            // timeouts carry explicit evidence. Cancellation/programming errors propagate.
+            Observed<LeafBmsDiagnostics.Group02Response?> response;
             try
             {
                 response = await _diagnostics.QueryGroup02Async(ct);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (TimeoutException)
+            {
+                return new CellVoltageData([]) { Observation = new(Source: ObservationSource.DiagnosticQuery,
+                    Quality: ObservationQuality.TimedOut, Query: "2102") };
+            }
+            catch (IOException)
             {
                 return null;
             }
 
-            if (response == null || response?.CellVoltagesMv?.Length == 0)
-                return null;
+            if (response.Value is null || response.Value.CellVoltagesMv.Length == 0)
+                return new CellVoltageData([]) { Observation = response.Observation };
 
             // Best-effort: shunt states (group 06) enrich the result but must not fail it.
-            LeafBmsDiagnostics.Group06Response? shunts = null;
+            Observed<LeafBmsDiagnostics.Group06Response?>? shunts = null;
             try
             {
                 shunts = await _diagnostics.QueryGroup06Async(ct);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is IOException or TimeoutException)
             {
                 // Group unsupported / transient adapter noise — voltages alone are still valid.
             }
 
-            return new CellVoltageData(response!.CellVoltagesMv, shunts?.GetBalancingCells());
+            return new CellVoltageData(response.Value.CellVoltagesMv, shunts?.Value?.GetBalancingCells()) { Observation = response.Observation };
         }
 
         public async ValueTask<BatteryStatus> GetStatusAsync(CancellationToken ct = default)
         {
-            // Degradation contract (audit B7): data absence yields an all-null status,
-            // never a throw. Cancellation still propagates.
-            LeafBmsDiagnostics.Group01Response? response;
+            // Missing I/O yields an all-null status. Timeouts and invalid replies retain
+            // evidence; cancellation and programming errors are not data absence.
+            Observed<LeafBmsDiagnostics.Group01Response?>? response;
             try
             {
                 response = await _diagnostics.QueryGroup01Async(ct);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (TimeoutException)
+            {
+                response = new(null, new(Source: ObservationSource.DiagnosticQuery,
+                    Quality: ObservationQuality.TimedOut, Query: "2101"));
+            }
+            catch (IOException)
             {
                 response = null;
             }
 
-            if (response is null)
+            if (response?.Value is null)
             {
-                return new BatteryStatus();
+                var missing = response?.Observation ?? new ObservationMetadata(Source: ObservationSource.DiagnosticQuery,
+                    Quality: ObservationQuality.Missing, Query: "2101");
+                return new BatteryStatus { SocObservation = missing, VoltageObservation = missing, CurrentObservation = missing };
             }
 
             // Best-effort: pack temperatures (group 04) enrich the status but must not fail it.
-            LeafBmsDiagnostics.Group04Response? temps = null;
+            Observed<LeafBmsDiagnostics.Group04Response?>? temps = null;
             try
             {
                 temps = await _diagnostics.QueryGroup04Async(ct);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (TimeoutException)
+            {
+                temps = new(null, new(Source: ObservationSource.DiagnosticQuery,
+                    Quality: ObservationQuality.TimedOut, Query: "2104"));
+            }
+            catch (IOException)
             {
                 // Group unsupported / transient adapter noise — core status is still valid.
             }
 
             return new BatteryStatus
             {
-                SocPercent = response.SocPercent,
-                VoltageVolts = response.VoltageVolts,
-                CurrentAmps = response.CurrentAmps,
-                CapacityAh = response.CapacityAh,
+                SocObservation = response.Observation,
+                VoltageObservation = response.Observation,
+                CurrentObservation = response.Observation,
+                TemperatureObservation = temps?.Observation ?? default,
+                SocPercent = response.Value.SocPercent,
+                VoltageVolts = response.Value.VoltageVolts,
+                CurrentAmps = response.Value.CurrentAmps,
+                CapacityAh = response.Value.CapacityAh,
                 // Group 01 supplies Nissan Hx, not SOH. Leave SOH unavailable until
                 // a validated, source-specific SOH provider is connected.
-                TemperatureC = temps?.AverageTempC,
-                MinTemperatureC = temps?.MinTempC,
-                MaxTemperatureC = temps?.MaxTempC
+                TemperatureC = temps?.Value?.AverageTempC,
+                MinTemperatureC = temps?.Value?.MinTempC,
+                MaxTemperatureC = temps?.Value?.MaxTempC
             };
         }
 

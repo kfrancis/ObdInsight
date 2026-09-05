@@ -24,7 +24,10 @@ public class StrictLeafDiagnosticsTests
         await using var transport = new ReplayElmTransport();
         transport.Expect("2101", IsoTpWireFormat.Encode(payload, 0x7BB, 0).AsElmResponse());
         var diagnostics = new LeafBmsDiagnostics(new ElmSession(new ElmFramer(transport)), EcuContext.NissanLeafBms);
-        await Assert.That(await diagnostics.QueryGroup01Async()).IsNull();
+        var result = await diagnostics.QueryGroup01Async();
+        await Assert.That(result.Value).IsNull();
+        await Assert.That(result.Observation.Quality).IsEqualTo(ObservationQuality.Invalid);
+        await Assert.That(result.Observation.ObservedAtUtc).IsNotNull();
     }
 
     [Test]
@@ -33,7 +36,9 @@ public class StrictLeafDiagnosticsTests
         await using var transport = new ReplayElmTransport();
         transport.Expect("2101", LeafGoldenData.GoldenGroup01Lines.Select(l => "7BC" + l[3..]).ToArray().AsElmResponse());
         var diagnostics = new LeafBmsDiagnostics(new ElmSession(new ElmFramer(transport)), EcuContext.NissanLeafBms);
-        await Assert.That(await diagnostics.QueryGroup01Async()).IsNull();
+        var result = await diagnostics.QueryGroup01Async();
+        await Assert.That(result.Value).IsNull();
+        await Assert.That(result.Observation.Quality).IsEqualTo(ObservationQuality.Invalid);
     }
 
     [Test]
@@ -44,7 +49,9 @@ public class StrictLeafDiagnosticsTests
         await using var transport = new ReplayElmTransport();
         transport.Expect("2104", IsoTpWireFormat.Encode(payload, 0x7BB, 0).AsElmResponse());
         var diagnostics = new LeafBmsDiagnostics(new ElmSession(new ElmFramer(transport)), EcuContext.NissanLeafBms);
-        await Assert.That(await diagnostics.QueryGroup04Async()).IsNull();
+        var result = await diagnostics.QueryGroup04Async();
+        await Assert.That(result.Value).IsNull();
+        await Assert.That(result.Observation.Quality).IsEqualTo(ObservationQuality.Invalid);
     }
 
     [Test]
@@ -85,7 +92,11 @@ public class StrictLeafDiagnosticsTests
         transport.Expect("2102", LeafGoldenData.GoldenGroup02Lines[..^1].AsElmResponse());
         var commands = new LeafAze0CommandSet(new ElmSession(new ElmFramer(transport)));
         commands.TryGet<IBatteryManagementSystem>(out var bms);
-        await Assert.That(await bms.GetCellVoltagesAsync()).IsNull();
+        var result = (await bms.GetCellVoltagesAsync())!;
+        await Assert.That(result.CellCount).IsEqualTo(0);
+        await Assert.That(result.Observation.Quality).IsEqualTo(ObservationQuality.Invalid);
+        await Assert.That(result.Observation.Query).IsEqualTo("2102");
+        await Assert.That(result.Observation.ObservedAtUtc).IsNotNull();
     }
 
     [Test]

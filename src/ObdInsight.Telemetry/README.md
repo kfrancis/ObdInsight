@@ -1,5 +1,12 @@
 # ObdInsight.Telemetry
 
+Telemetry carries per-signal `Observation` (acquisition time, source, quality), `Age`
+and `Freshness`, separately from publication time. `MaxObservationAge` defaults to
+30 seconds. Snapshot convenience fields contain only fresh readings; `Measurements`
+retains stale/invalid/missing evidence. Owner-created batches/snapshots/typed samples
+include `ConnectionGeneration`. Custom providers must attach acquisition evidence;
+unstamped values have unknown freshness, not a fabricated current timestamp.
+
 Diagnostic snapshots retain per-mode DTC outcomes and responding-ECU evidence in
 `DiagnosticTroubleCodes`. Check status before interpreting codes: failed/partial
 reads are not clean results, and success covers only observed responders. Leaf
@@ -30,7 +37,8 @@ var preCheck = await telemetry.GetSnapshotAsync(ct);
 await telemetry.StartAsync(ct);
 await foreach (var batch in telemetry.Batches(ct))
 {
-    // one batch per cadence tick; samples carry signal, value, timestamp, tier
+    // Publication time differs from Value.Observation.ObservedAtUtc.
+    // Record batch.ConnectionGeneration and each value's Quality/Freshness/Age.
 }
 
 // Or one signal at its own type — no enum switch, no TelemetryValue unpacking:

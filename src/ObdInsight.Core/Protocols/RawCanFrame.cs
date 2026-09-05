@@ -7,6 +7,7 @@ namespace ObdInsight.Core.Protocols;
 /// <param name="Data">The data bytes of the CAN frame</param>
 public readonly record struct RawCanFrame(int CanId, ReadOnlyMemory<byte> Data)
 {
+    public ObservationMetadata Observation { get; init; }
     /// <summary>
     ///     Gets the CAN ID as a hexadecimal string (3-digit for 11-bit IDs, 8-digit for 29-bit IDs).
     /// </summary>

@@ -234,7 +234,7 @@ public sealed class SlcanFrameSource : ICanFrameSource
                         CanFdFrameCount++;
                     }
 
-                    yield return frame;
+                    yield return frame with { Observation = ObservationMetadata.Capture(TimeProvider.System, ObservationSource.CanBroadcast, frame.CanId) };
                 }
                 else
                 {

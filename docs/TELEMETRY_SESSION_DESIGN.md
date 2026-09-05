@@ -85,7 +85,7 @@ public sealed record TelemetrySample(TelemetrySignal Signal, TelemetryValue Valu
 public sealed record TelemetrySampleBatch(CadenceTier Tier, DateTimeOffset TimestampUtc,
     IReadOnlyList<TelemetrySample> Samples);
 
-public enum SignalAvailability { Unknown, Available, Unavailable }
+public enum SignalAvailability { Unknown, Available, Unavailable, Stale }
 
 public interface ITelemetryProvider
 {
@@ -142,11 +142,19 @@ until B13/B14/B5).
 
 ### Availability
 
-Probed once during `StartAsync` (each provider read once; UDS = one real query). Non-null
-→ `Available`; null from a cache-only provider → `Unknown` (may warm up while driving —
-scheduler keeps reading, flips to `Available` on first data); null/query timeout from a UDS
-provider → `Unavailable`. Signals with no provider (Odometer, ChargeCycleCount today) →
-`Unavailable`. The dictionary updates live; the app binds it for graceful degradation.
+Probed during `StartAsync`, then reassessed at publication. Fresh usable observations
+are `Available`; usable old observations are `Stale`; missing/invalid/timeout/unknown-age
+readings are `Unknown`. Only absent providers or explicit unsupported evidence produce
+`Unavailable`. A failed UDS probe is not proof of unsupported vehicle hardware.
+
+### Observation evidence
+
+See [observation semantics](OBSERVATION_SEMANTICS.md) for the implemented contract.
+Publication follows provider reads and is distinct from acquisition. Snapshots retain a
+per-signal `Measurements` evidence map; convenience fields contain only fresh readings.
+`MaxObservationAge` defaults to 30 seconds. Batches, snapshots and typed streams carry
+connection-generation identity when created by `VehicleConnection`. Typed streams retain
+stale metadata but still skip absent values; use batches to record missing-data outcomes.
 
 ### Validation
 

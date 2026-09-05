@@ -101,8 +101,9 @@ generation's telemetry facade for the supported snapshot/recording workflow.
 ## Deliberate limits
 
 This is not gap-free recording: buffered batches still belong to the old generation.
-Publication timestamps are not acquisition timestamps; freshness/quality within a
-generation remains a separate measurement-contract concern.
+Batches and snapshots now carry their owner-local ConnectionGeneration. Publication
+timestamps remain separate from acquisition; [observation semantics](OBSERVATION_SEMANTICS.md)
+defines within-generation quality, age and stale-value handling.
 
 A quiet link is not evidence of disconnection. A framer timeout without physical loss
 does not trigger replacement; partial-timeout resynchronization and operation-specific

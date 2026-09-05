@@ -8,6 +8,15 @@ namespace ObdInsight.Core.Communication.Elm327
 {
     public interface IElmSession
     {
+        TimeProvider TimeProvider => TimeProvider.System;
+
+        /// <summary>Query completion evidence, captured before outer arbitration resumes monitoring.</summary>
+        async ValueTask<Observed<string[]>> QueryResponseAsync(string command, EcuContext context, CancellationToken ct)
+        {
+            var lines = await QueryAsync(command, context, ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            return new(lines, ObservationMetadata.Capture(TimeProvider, ObservationSource.DiagnosticQuery, query: command));
+        }
         TimeSpan CommandTimeout { get; set; }
         EcuCommunicationMode CurrentMode { get; }
         bool EnableDebugLogging { get; set; }
@@ -69,9 +78,10 @@ namespace ObdInsight.Core.Communication.Elm327
         /// </param>
         /// <param name="logger">Optional logger; defaults to a no-op logger.</param>
         public ElmSession(ElmFramer framer, IEcuWakeupStrategy? wakeupStrategy = null,
-            ILogger<ElmSession>? logger = null)
+            ILogger<ElmSession>? logger = null, TimeProvider? timeProvider = null)
         {
             _framer = framer;
+            TimeProvider = timeProvider ?? TimeProvider.System;
             _wakeupStrategy = wakeupStrategy;
             _logger = logger ?? NullLogger<ElmSession>.Instance;
         }
@@ -80,6 +90,7 @@ namespace ObdInsight.Core.Communication.Elm327
         ///     Gets or sets the maximum amount of time to wait for a command to execute before timing out.
         /// </summary>
         public TimeSpan CommandTimeout { get; set; } = TimeSpan.FromSeconds(4);
+        public TimeProvider TimeProvider { get; }
 
         /// <summary>
         ///     Gets or sets the timeout for protocol detection commands (0100 probe).
@@ -549,7 +560,7 @@ namespace ObdInsight.Core.Communication.Elm327
                         continue;
                     }
 
-                    yield return frame;
+                    yield return frame with { Observation = ObservationMetadata.Capture(TimeProvider, ObservationSource.CanBroadcast, frame.CanId) };
                 }
                 else if (!rawData.StartsWith('<') &&
                          !rawData.Contains('?'))

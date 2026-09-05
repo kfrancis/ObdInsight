@@ -44,6 +44,7 @@ public sealed class VehicleConnection : IAsyncDisposable, IConnectionStateSource
     private readonly TelemetrySessionOptions? _telemetryOptions;
     private readonly IEcuWakeupStrategy? _wakeup;
     private readonly ILogger<VehicleConnection> _logger;
+    private readonly TimeProvider _clock;
     private readonly object _gate = new();
     private readonly CancellationTokenSource _lifetime = new();
     private TaskCompletionSource _changed = NewSignal();
@@ -58,9 +59,10 @@ public sealed class VehicleConnection : IAsyncDisposable, IConnectionStateSource
     public VehicleConnection(Func<IElmTransport> transportFactory, IReadOnlyList<IVehicleProfile> profiles,
         VehicleConnectionOptions? options = null, TelemetrySubscription? subscription = null,
         TelemetrySessionOptions? telemetryOptions = null, IEcuWakeupStrategy? wakeupStrategy = null,
-        ILogger<VehicleConnection>? logger = null)
+        ILogger<VehicleConnection>? logger = null, TimeProvider? timeProvider = null)
     {
         _factory = transportFactory ?? throw new ArgumentNullException(nameof(transportFactory));
+        _clock = timeProvider ?? TimeProvider.System;
         ArgumentNullException.ThrowIfNull(profiles);
         if (profiles.Count == 0) throw new ArgumentException("Register at least one vehicle profile.", nameof(profiles));
         _profiles = profiles.ToArray(); // Explicit registration, no scans/activation.
@@ -157,7 +159,7 @@ public sealed class VehicleConnection : IAsyncDisposable, IConnectionStateSource
                             await transport.OpenAsync(init.Token).ConfigureAwait(false);
                             _lifetime.Token.ThrowIfCancellationRequested();
                             init.Token.ThrowIfCancellationRequested();
-                            var session = new ElmSession(new ElmFramer(transport), _wakeup);
+                            var session = new ElmSession(new ElmFramer(transport), _wakeup, timeProvider: _clock);
                             await session.InitializeAndLockAsync(init.Token).ConfigureAwait(false);
                             detection = await VehicleResolver.ResolveAsync(session, _profiles, init.Token).ConfigureAwait(false);
                             init.Token.ThrowIfCancellationRequested();
@@ -171,7 +173,8 @@ public sealed class VehicleConnection : IAsyncDisposable, IConnectionStateSource
                     if (expectedVin is not null && expectedVin != detection.Vin)
                         throw new InvalidOperationException("Replacement connection identified a different vehicle; create a new owner explicitly.");
                     expectedVin ??= detection.Vin;
-                    telemetry = TelemetrySession.Create(detection.Commands, _subscription, _telemetryOptions, this);
+                    telemetry = TelemetrySession.Create(detection.Commands, _subscription, _telemetryOptions, this,
+                        timeProvider: _clock, connectionGeneration: number + 1);
                     generation = new(++number, detection, telemetry);
                     lock (_gate)
                     {

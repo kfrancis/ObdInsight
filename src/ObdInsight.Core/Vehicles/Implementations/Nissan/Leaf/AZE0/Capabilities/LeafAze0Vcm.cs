@@ -131,7 +131,9 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 
             // Range rides 0x5A9 (CAR-CAN, hardware-locked 179.2 km capture) independently
             // of 0x510 presence. Raw 0xFFF = "charging" sentinel → 819.0 after ×0.2 scaling.
-            if (_monitor.TryGetLatest<VcmFrame_5A9_AZE0>(out var frame5A9) &&
+            var hasRange = _monitor.TryGetLatest<VcmFrame_5A9_AZE0>(out var frame5A9, out var rangeObservation);
+            status = status with { RangeObservation = rangeObservation };
+            if (hasRange &&
                 frame5A9.RangeInstrumentCluster < 819.0)
             {
                 status = status with { RangeKm = frame5A9.RangeInstrumentCluster };

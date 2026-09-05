@@ -235,6 +235,12 @@ public sealed record DtcReadResult
 /// </summary>
 public sealed record BatteryStatus
 {
+    public Protocols.ObservationMetadata SocObservation { get; init; }
+    public Protocols.ObservationMetadata VoltageObservation { get; init; }
+    public Protocols.ObservationMetadata CurrentObservation { get; init; }
+    public Protocols.ObservationMetadata TemperatureObservation { get; init; }
+    public Protocols.ObservationMetadata StateOfHealthObservation { get; init; }
+    public Protocols.ObservationMetadata PowerObservation => VoltageObservation.Combine(CurrentObservation);
     /// <summary>State of Charge (0-100%)</summary>
     public double? SocPercent { get; init; }
 
@@ -274,6 +280,7 @@ public sealed record BatteryStatus
 /// </summary>
 public sealed class CellVoltageData
 {
+    public Protocols.ObservationMetadata Observation { get; init; }
     public CellVoltageData(IEnumerable<int?> cellVoltagesMv, IEnumerable<bool>? balancingCells = null)
     {
         ArgumentNullException.ThrowIfNull(cellVoltagesMv);
@@ -373,6 +380,7 @@ public readonly record struct BodyControlStatus(
 /// </summary>
 public sealed record AbsStatus
 {
+    public Protocols.ObservationMetadata VehicleSpeedObservation { get; init; }
     /// <summary>Front right wheel speed (km/h)</summary>
     public double? WheelSpeedFrKmh { get; init; }
 
@@ -418,6 +426,7 @@ public sealed record AbsStatus
 /// </summary>
 public sealed record VcmStatus
 {
+    public Protocols.ObservationMetadata RangeObservation { get; init; }
     /// <summary>Climate control active flag</summary>
     public bool? ClimateControlActive { get; init; }
 

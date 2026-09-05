@@ -110,4 +110,10 @@ public sealed record TelemetrySample<T>(
     TelemetrySignal Signal,
     T Value,
     DateTimeOffset TimestampUtc,
-    CadenceTier Tier);
+    CadenceTier Tier)
+{
+    public ObdInsight.Core.Protocols.ObservationMetadata Observation { get; init; }
+    public ObservationFreshness Freshness { get; init; }
+    public TimeSpan? Age { get; init; }
+    public long? ConnectionGeneration { get; init; }
+}

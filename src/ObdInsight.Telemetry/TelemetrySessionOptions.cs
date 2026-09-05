@@ -3,6 +3,8 @@ namespace ObdInsight.Telemetry;
 /// <summary>Cadence configuration for a <see cref="TelemetrySession" />.</summary>
 public sealed record TelemetrySessionOptions
 {
+    /// <summary>Maximum observation age for current-value projections. Default 30 seconds.</summary>
+    public TimeSpan MaxObservationAge { get; init; } = TimeSpan.FromSeconds(30);
     /// <summary>High-tier period (default 1.5 s).</summary>
     public TimeSpan HighPeriod { get; init; } = TimeSpan.FromSeconds(1.5);
 

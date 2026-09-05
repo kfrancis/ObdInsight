@@ -3,12 +3,21 @@ using ObdInsight.Core.Vehicles;
 namespace ObdInsight.Telemetry;
 
 /// <summary>
-///     One-shot diagnostic snapshot (pre-/post-check). Every field is nullable —
-///     Null measurements mean unavailable. Diagnostic outcomes preserve read failures.
+///     One-shot diagnostic snapshot (pre-/post-check). Convenience measurements are null
+///     unless fresh at assembly. Measurements preserve richer evidence, including stale values.
 /// </summary>
 public sealed record TelemetrySnapshot
 {
     public required DateTimeOffset TimestampUtc { get; init; }
+    public long? ConnectionGeneration { get; init; }
+
+    /// <summary>
+    /// Per-signal evidence, including stale/invalid/missing values. Convenience scalar/vector
+    /// fields expose only fresh readings; consult this map before drawing report conclusions.
+    /// TimestampUtc is snapshot assembly, not measurement acquisition time.
+    /// </summary>
+    public IReadOnlyDictionary<TelemetrySignal, TelemetryValue> Measurements { get; init; } =
+        new System.Collections.ObjectModel.ReadOnlyDictionary<TelemetrySignal, TelemetryValue>(new Dictionary<TelemetrySignal, TelemetryValue>());
 
     /// <summary>Vehicle Identification Number, when readable.</summary>
     public string? Vin { get; init; }
