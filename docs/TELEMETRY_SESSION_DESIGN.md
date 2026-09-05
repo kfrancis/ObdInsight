@@ -4,6 +4,12 @@
 Phase 0 (this doc is the reviewable artifact — flag objections and the API can still move).
 **Date:** 2026-07-19
 
+**Contract update 2026-09-04:** snapshots now preserve `DiagnosticTroubleCodes` as
+independent stored/pending outcomes with observed responder coverage. Failure and
+partial reads are not empty clean lists. Leaf Group 01 Hx no longer populates SOH;
+SOH remains null until a validated source is wired in. See
+[Diagnostic evidence](DIAGNOSTIC_EVIDENCE.md) for the current contract and migration.
+
 ## 1. Problem
 
 EvTestDrive (MAUI consumer app) needs "give me these N signals at these cadences and raise

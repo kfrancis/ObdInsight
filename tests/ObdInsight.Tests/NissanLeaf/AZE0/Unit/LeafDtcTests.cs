@@ -8,7 +8,7 @@ namespace ObdInsight.Tests.NissanLeaf.AZE0.Unit;
 /// <summary>
 ///     Roadmap B5: OBD-II Mode 03/07 DTC reading through the production path —
 ///     LeafAze0CommandSet → ObdDtcReader over replay. Multi-ECU responses, multi-frame
-///     ISO-TP, padding, and graceful degradation on NO DATA.
+///     ISO-TP, padding, and explicit failures on NO DATA.
 /// </summary>
 [Timeout(30_000)]
 public class LeafDtcTests
@@ -27,8 +27,11 @@ public class LeafDtcTests
 
         var result = await dtc.GetDtcsAsync(token);
 
-        await Assert.That(result.StoredCodes).IsEquivalentTo(["P0143", "P0196", "P0A80", "U0155"]);
-        await Assert.That(result.PendingCodes).IsEmpty();
+        await Assert.That(result.Stored.Status).IsEqualTo(DtcReadStatus.Succeeded);
+        await Assert.That(result.Stored.Codes!).IsEquivalentTo(["P0143", "P0196", "P0A80", "U0155"]);
+        await Assert.That(result.Stored.Responders.Select(r => r.CanId)).IsEquivalentTo([0x7E8, 0x7EB, 0x7EC]);
+        await Assert.That(result.Pending.Status).IsEqualTo(DtcReadStatus.Succeeded);
+        await Assert.That(result.Pending.Codes!).IsEmpty();
     }
 
     [Test]
@@ -37,13 +40,14 @@ public class LeafDtcTests
         var (transport, dtc) = Setup();
         // One ECU, three stored codes → ISO-TP FF + CF: payload 43 03 0143 0196 0A80 (8 bytes).
         transport.Expect("03", Lines(
-            "7E8 10 08 43 03 01 43 01",
-            "7E8 21 96 0A 80 00 00 00"));
+            "7E8 10 08 43 03 01 43 01 96",
+            "7E8 21 0A 80 00 00 00 00 00"));
         transport.Expect("07", Lines("7E8 02 47 00"));
 
         var result = await dtc.GetDtcsAsync(token);
 
-        await Assert.That(result.StoredCodes).IsEquivalentTo(["P0143", "P0196", "P0A80"]);
+        await Assert.That(result.Stored.Status).IsEqualTo(DtcReadStatus.Succeeded);
+        await Assert.That(result.Stored.Codes!).IsEquivalentTo(["P0143", "P0196", "P0A80"]);
     }
 
     [Test]
@@ -55,12 +59,12 @@ public class LeafDtcTests
 
         var result = await dtc.GetDtcsAsync(token);
 
-        await Assert.That(result.StoredCodes).IsEmpty();
-        await Assert.That(result.PendingCodes).IsEquivalentTo(["C0035"]);
+        await Assert.That(result.Stored.Codes!).IsEmpty();
+        await Assert.That(result.Pending.Codes!).IsEquivalentTo(["C0035"]);
     }
 
     [Test]
-    public async Task GetDtcs_NoData_YieldsEmptyLists_NoThrow(CancellationToken token)
+    public async Task GetDtcs_NoData_IsNotACleanRead(CancellationToken token)
     {
         var (transport, dtc) = Setup();
         // The session retries an invalid response once before giving up — script both.
@@ -71,8 +75,11 @@ public class LeafDtcTests
 
         var result = await dtc.GetDtcsAsync(token);
 
-        await Assert.That(result.StoredCodes).IsEmpty();
-        await Assert.That(result.PendingCodes).IsEmpty();
+        // ElmSession collapses exhausted NO DATA recovery into IOException.
+        await Assert.That(result.Stored.Status).IsEqualTo(DtcReadStatus.QueryFailed);
+        await Assert.That(result.Pending.Status).IsEqualTo(DtcReadStatus.QueryFailed);
+        await Assert.That(result.Stored.Codes).IsNull();
+        await Assert.That(result.Pending.Codes).IsNull();
     }
 
     [Test]

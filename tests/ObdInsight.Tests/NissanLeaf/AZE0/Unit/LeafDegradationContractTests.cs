@@ -28,7 +28,7 @@ public class LeafDegradationContractTests
         await Assert.That(status.SocPercent).IsNull();
         await Assert.That(status.VoltageVolts).IsNull();
         await Assert.That(status.CurrentAmps).IsNull();
-        await Assert.That(status.HealthPercent).IsNull();
+        await Assert.That(status.StateOfHealthPercent).IsNull();
         await Assert.That(status.TemperatureC).IsNull();
     }
 

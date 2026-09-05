@@ -1,4 +1,5 @@
 using ObdInsight.Core.Communication.Elm327;
+using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Simulation;
 using ObdInsight.Telemetry;
@@ -106,6 +107,8 @@ public class TelemetrySessionTests
     {
         var (transport, commands) = Setup();
         transport.AutoRespond("2181", LeafGoldenData.GoldenVinLines.AsElmResponse());
+        transport.AutoRespond("03", "NO DATA\r\r>");
+        transport.AutoRespond("07", "NO DATA\r\r>");
         await using var session = TelemetrySession.Create(commands, TestSubscription, FastOptions);
 
         using var pumpCts = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -122,14 +125,14 @@ public class TelemetrySessionTests
         await Assert.That(snapshot.PackVoltageV!.Value).IsEqualTo(361.78m);
         await Assert.That(snapshot.CellVoltagesV!.Count).IsEqualTo(96);
         await Assert.That(snapshot.CellVoltageMinV).IsNotNull();
-        await Assert.That(snapshot.StateOfHealthPercent).IsNotNull();
+        await Assert.That(snapshot.StateOfHealthPercent).IsNull(); // Group 01 Hx is not SOH.
         // Pack power sign: golden capture has small positive current (discharge) → positive kW.
         await Assert.That(snapshot.PackPowerKw!.Value).IsGreaterThan(0m);
         await Assert.That(snapshot.PackPowerKw.Value).IsLessThan(1m);
-        // DTCs: replay scripts no Mode 03/07 exchange, so the reader degrades to
-        // empty lists (capability present, nothing readable). Odometer stays null.
-        await Assert.That(snapshot.StoredDtcCodes).IsNotNull();
-        await Assert.That(snapshot.StoredDtcCodes!).IsEmpty();
+        // Scripted NO DATA reads must retain failure, never a clean code list.
+        await Assert.That(snapshot.DiagnosticTroubleCodes).IsNotNull();
+        await Assert.That(snapshot.DiagnosticTroubleCodes!.Stored.Codes).IsNull();
+        await Assert.That(snapshot.DiagnosticTroubleCodes.Stored.Status).IsNotEqualTo(DtcReadStatus.Succeeded);
         await Assert.That(snapshot.OdometerKm).IsNull();
 
         await commands.Monitor.StopAsync(token);

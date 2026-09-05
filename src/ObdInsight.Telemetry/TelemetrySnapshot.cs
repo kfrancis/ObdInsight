@@ -1,8 +1,10 @@
+using ObdInsight.Core.Vehicles;
+
 namespace ObdInsight.Telemetry;
 
 /// <summary>
 ///     One-shot diagnostic snapshot (pre-/post-check). Every field is nullable —
-///     null always means "not available on this vehicle/adapter right now", never an error.
+///     Null measurements mean unavailable. Diagnostic outcomes preserve read failures.
 /// </summary>
 public sealed record TelemetrySnapshot
 {
@@ -26,7 +28,7 @@ public sealed record TelemetrySnapshot
     /// <summary>Battery pack temperature (°C).</summary>
     public decimal? PackTemperatureC { get; init; }
 
-    /// <summary>State of health (%; vehicle-specific metric, may exceed 100).</summary>
+    /// <summary>State of health (%), not an OEM proxy such as Nissan Hx. Null when unavailable.</summary>
     public decimal? StateOfHealthPercent { get; init; }
 
     /// <summary>Remaining capacity (Ah).</summary>
@@ -63,14 +65,9 @@ public sealed record TelemetrySnapshot
     public decimal? ChargeCycleCount { get; init; }
 
     /// <summary>
-    ///     Stored (Mode 03) DTC codes. Null when the vehicle exposes no DTC capability;
-    ///     empty when readable and clean.
+    ///     Stored/pending outcomes and observed ECU coverage. Null only when no DTC
+    ///     capability exists. A successful empty mode means no codes reported by its
+    ///     responding ECUs, not proof of a fault-free vehicle.
     /// </summary>
-    public IReadOnlyList<string>? StoredDtcCodes { get; init; }
-
-    /// <summary>
-    ///     Pending (Mode 07) DTC codes. Null when the vehicle exposes no DTC capability;
-    ///     empty when readable and clean.
-    /// </summary>
-    public IReadOnlyList<string>? PendingDtcCodes { get; init; }
+    public DtcReadResult? DiagnosticTroubleCodes { get; init; }
 }

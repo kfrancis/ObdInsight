@@ -218,9 +218,15 @@ public sealed class TelemetrySession : ITelemetrySession
                 {
                     throw;
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is IOException or TimeoutException)
                 {
+                    ct.ThrowIfCancellationRequested();
                     _logger.LogDebug(ex, "DTC read failed during snapshot");
+                    dtcs = new DtcReadResult
+                    {
+                        Stored = DtcModeResult.Failed(ex is TimeoutException ? DtcReadStatus.Timeout : DtcReadStatus.QueryFailed),
+                        Pending = DtcModeResult.Failed(ex is TimeoutException ? DtcReadStatus.Timeout : DtcReadStatus.QueryFailed)
+                    };
                 }
             }
 
@@ -244,8 +250,7 @@ public sealed class TelemetrySession : ITelemetrySession
                 HvacActive = Boolean(all, TelemetrySignal.HvacActive),
                 OdometerKm = Scalar(all, TelemetrySignal.Odometer),
                 ChargeCycleCount = Scalar(all, TelemetrySignal.ChargeCycleCount),
-                StoredDtcCodes = dtcs?.StoredCodes,
-                PendingDtcCodes = dtcs?.PendingCodes
+                DiagnosticTroubleCodes = dtcs
             };
         }
         finally

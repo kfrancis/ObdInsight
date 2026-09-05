@@ -68,15 +68,18 @@ await telemetry.StopAsync(ct);
 var postCheck = await telemetry.GetSnapshotAsync(ct);    // post-check
 ```
 
-- `TelemetrySnapshot` (pre/post-check): `Vin`, `StoredDtcCodes`/`PendingDtcCodes`
-  (null = capability absent, empty list = clean), `SocPercent`, `PackVoltageV`,
+- `TelemetrySnapshot` (pre/post-check): `Vin`, `DiagnosticTroubleCodes` with independent
+  stored/pending outcomes and responding-ECU evidence. Only `Succeeded` has aggregate
+  codes; an empty list covers observed responders, not whole-vehicle health. See
+  `docs/DIAGNOSTIC_EVIDENCE.md`. Leaf Group 01 Hx is not SOH; SOH is currently null.
+  Other measurements include `SocPercent`, `PackVoltageV`,
   `PackCurrentA` (+ discharge / − regen), `PackPowerKw`, `PackTemperatureC`,
   `StateOfHealthPercent`, `CapacityAh`, `CellVoltagesV` (full set, volts) +
   min/max/average, `VehicleSpeedKmh`, `RemainingRangeKm`, `CabinTemperatureC`,
   `HvacActive`, `OdometerKm`, `ChargeCycleCount`.
-- Every field is nullable `decimal` (or list/bool). **Null always means "unavailable
-  on this vehicle/adapter right now", never an error** — bind directly, render "—",
-  no try/catch anywhere in consuming code.
+- Measurement fields are nullable `decimal` (or list/bool); render unavailable values
+  as "—". DTC outcomes require status/coverage handling, and caller cancellation or
+  programming/lifecycle exceptions still need normal application handling.
 - Units are fixed: km, km/h, °C, kW, V, %. No conversion in the app.
 - Streaming: `TelemetrySampleBatch` per cadence tick; each `TelemetrySample` has
   `Signal` (`TelemetrySignal` enum), `Value` (`TelemetryValue` — one of

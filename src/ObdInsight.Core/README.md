@@ -9,7 +9,9 @@ Core OBD-II / CAN communication for EVs over ELM327-family adapters:
   adapters, UDS arbitration (queries transparently suspend/resume monitoring).
 - **Vehicle capabilities** — `IBatteryManagementSystem`, `IHvac`,
   `IDiagnosticTroubleCodes` (OBD Mode 03/07), `IVehicleIdentification`, and more.
-  Data absence yields nulls, never exceptions.
+  DTC reads preserve independent mode outcomes and responding-ECU evidence; failed
+  reads never become clean lists. Caller cancellation and programming errors propagate.
+  Battery `StateOfHealthPercent` is not a proxy for Nissan Hx; Leaf currently leaves it null.
 - **`VehicleResolver`** — VIN-driven vehicle/variant detection and command-set
   construction (Nissan Leaf AZE0 fully wired; profiles are pluggable).
 - **Resilience** — `ReconnectingElmTransport` (transport-factory reconnect with

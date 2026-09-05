@@ -213,22 +213,21 @@ public interface IVehicleIdentification : IVehicleCapability
 public interface IDiagnosticTroubleCodes : IVehicleCapability
 {
     /// <summary>
-    ///     Reads stored and pending DTCs. Never throws for missing data: ECUs that don't
-    ///     answer (or answer NO DATA) simply contribute no codes, so a healthy vehicle and
-    ///     an unsupported ECU both yield empty lists. Cancellation propagates as
-    ///     <see cref="OperationCanceledException" />.
+    ///     Reads stored and pending DTCs with independent outcomes and responder evidence.
+    ///     Successful empty results cover only responding ECUs, not the whole vehicle.
+    ///     Caller cancellation propagates; programming and lifecycle errors are not
+    ///     converted to diagnostic results.
     /// </summary>
     ValueTask<DtcReadResult> GetDtcsAsync(CancellationToken ct = default);
 }
 
 /// <summary>
-///     Result of a DTC read: standard code strings ("P0A80", "U0155", ...), deduplicated
-///     across responding ECUs. Empty lists mean "no codes readable", never an error.
+///     Independent stored (Mode 03) and pending (Mode 07) diagnostic outcomes.
 /// </summary>
 public sealed record DtcReadResult
 {
-    public required IReadOnlyList<string> StoredCodes { get; init; }
-    public required IReadOnlyList<string> PendingCodes { get; init; }
+    public required DtcModeResult Stored { get; init; }
+    public required DtcModeResult Pending { get; init; }
 }
 
 /// <summary>
@@ -248,8 +247,11 @@ public sealed record BatteryStatus
     /// <summary>Remaining capacity (amp-hours)</summary>
     public double? CapacityAh { get; init; }
 
-    /// <summary>Battery health/State of Health (0-100%)</summary>
-    public double? HealthPercent { get; init; }
+    /// <summary>
+    ///     Battery state of health (%) from a supported SOH source, or null when unavailable.
+    ///     Manufacturer-specific metrics such as Nissan Hx are not SOH substitutes.
+    /// </summary>
+    public double? StateOfHealthPercent { get; init; }
 
     /// <summary>Average battery temperature (°C)</summary>
     public double? TemperatureC { get; init; }

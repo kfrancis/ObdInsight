@@ -5,13 +5,9 @@ using ObdInsight.Core.Protocols;
 namespace ObdInsight.Core.Vehicles;
 
 /// <summary>
-///     Vehicle-agnostic OBD-II DTC reader (roadmap B5): Mode 03 (stored) + Mode 07
-///     (pending) over the functional broadcast address, tolerating multi-ECU responses.
-///     Each responding ECU's ISO-TP payload is reassembled independently by CAN header;
-///     codes are decoded to standard "P0xxx"-style strings and deduplicated.
-///     Degradation contract: adapter errors, NO DATA, silent ECUs, and malformed frames
-///     all yield empty code lists — never an exception (cancellation excepted).
-///     UDS 0x19 per-ECU reads are a separate roadmap item.
+///     OBD-II Mode 03/07 reader for header-bearing, classical 11-bit CAN responses.
+///     Missing or malformed replies never count as a successful clean read.
+///     Other diagnostic formats are not inferred.
 /// </summary>
 public sealed class ObdDtcReader : IDiagnosticTroubleCodes
 {
@@ -25,10 +21,8 @@ public sealed class ObdDtcReader : IDiagnosticTroubleCodes
     }
 
     /// <summary>
-    ///     Functional OBD-II context: request on 0x7DF, accept the full 0x7E8-0x7EF
-    ///     response range via the ELM327 "X" don't-care filter nibble. Adapters whose
-    ///     firmware rejects "AT CRA 7EX" keep their previous filter — the reader then
-    ///     degrades to whatever that filter admits (worst case: empty results).
+    ///     Functional request context. Results cover only observed responders;
+    ///     filter acceptance and silent ECUs cannot establish whole-vehicle coverage.
     /// </summary>
     public static EcuContext FunctionalContext { get; } = new()
     {
@@ -42,163 +36,132 @@ public sealed class ObdDtcReader : IDiagnosticTroubleCodes
 
     public async ValueTask<DtcReadResult> GetDtcsAsync(CancellationToken ct = default)
     {
-        var stored = await ReadModeAsync("03", 0x43, ct);
-        var pending = await ReadModeAsync("07", 0x47, ct);
-        return new DtcReadResult { StoredCodes = stored, PendingCodes = pending };
+        ct.ThrowIfCancellationRequested();
+        var stored = await ReadModeAsync("03", 0x43, ct).ConfigureAwait(false);
+        var pending = await ReadModeAsync("07", 0x47, ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        return new DtcReadResult { Stored = stored, Pending = pending };
     }
 
-    private async ValueTask<IReadOnlyList<string>> ReadModeAsync(
-        string mode, byte responseSid, CancellationToken ct)
+    private async ValueTask<DtcModeResult> ReadModeAsync(string mode, byte responseSid, CancellationToken ct)
     {
-        string[] lines;
+        ct.ThrowIfCancellationRequested();
         try
         {
-            lines = await _session.QueryAsync(mode, _context, ct);
+            var lines = await _session.QueryAsync(mode, _context, ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            return Parse(lines, mode, responseSid);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            throw;
+            // Current ELM framing uses cancellation for its internal deadline.
+            return DtcModeResult.Failed(DtcReadStatus.Timeout);
         }
-        catch
+        catch (TimeoutException)
         {
-            // NO DATA / adapter error / silent bus — nothing readable, not a failure.
-            return [];
+            ct.ThrowIfCancellationRequested();
+            return DtcModeResult.Failed(DtcReadStatus.Timeout);
         }
-
-        var codes = new List<string>();
-        foreach (var payload in ReassemblePerEcu(lines))
+        catch (IOException)
         {
-            DecodeDtcPayload(payload, responseSid, codes);
+            ct.ThrowIfCancellationRequested();
+            // Session recovery can collapse NO DATA / adapter rejection into IOException.
+            // Do not guess a more precise cause from an exception message.
+            return DtcModeResult.Failed(DtcReadStatus.QueryFailed);
         }
-
-        return codes.Distinct().ToList();
     }
 
-    /// <summary>
-    ///     Groups response lines by their 3-digit CAN header and reassembles each ECU's
-    ///     ISO-TP payload (SF, or FF + CFs in arrival order). One frame per line
-    ///     (the ELM327 line format this stack produces everywhere else); non-frame lines
-    ///     are skipped.
-    /// </summary>
-    private static List<byte[]> ReassemblePerEcu(string[] lines)
+    private static DtcModeResult Parse(string[] lines, string mode, byte sid)
     {
-        var perEcu = new Dictionary<string, (List<byte> Data, int ExpectedLength)>();
-
+        var responders = new Dictionary<int, Response>();
+        var invalidData = false;
+        var noData = false;
         foreach (var raw in lines)
         {
             var line = raw.Replace(" ", "").Trim();
-            if (line.Length < 5 || !line[..3].All(Uri.IsHexDigit))
+            if (line.Length == 0 || line == ">" || line == mode || line == "SEARCHING...")
+                continue;
+            if (line == "NODATA") { noData = true; continue; }
+            if (line.Length < 5 || !int.TryParse(line.AsSpan(0, 3), NumberStyles.HexNumber,
+                    CultureInfo.InvariantCulture, out var id) || id is < 0x700 or > 0x7FF)
             {
+                invalidData = true;
                 continue;
             }
-
-            var header = line[..3];
-            var hex = line[3..];
-            if (hex.Length % 2 == 1)
+            if (!responders.TryGetValue(id, out var response))
+                responders.Add(id, response = new Response());
+            var hex = line.AsSpan(3);
+            if (hex.Length % 2 != 0 || hex.Length > 16)
             {
-                hex = hex[..^1]; // stray trailing nibble — drop it
+                response.Invalid = true;
+                continue;
             }
-
             var bytes = new byte[hex.Length / 2];
             var valid = true;
             for (var i = 0; i < bytes.Length; i++)
+                valid &= byte.TryParse(hex.Slice(i * 2, 2), NumberStyles.HexNumber,
+                    CultureInfo.InvariantCulture, out bytes[i]);
+            if (!valid) response.Invalid = true;
+            else response.Add(bytes);
+        }
+        return DtcModeResult.FromResponses(responders.Select(r =>
+            new DtcResponderResult(r.Key, r.Value.Decode(sid))), invalidData || (noData && responders.Count > 0));
+    }
+
+    // Local DTC trust boundary. Other ISO-TP consumers remain a separate tranche;
+    // the permissive shared parser cannot establish diagnostic success.
+    private sealed class Response
+    {
+        private readonly List<byte> _data = [];
+        private int _expected;
+        private int _nextSequence = 1;
+        public bool Invalid { get; set; }
+
+        public void Add(byte[] bytes)
+        {
+            if (Invalid || bytes.Length == 0) { Invalid = true; return; }
+            switch (bytes[0] >> 4)
             {
-                if (!byte.TryParse(hex.AsSpan(i * 2, 2), NumberStyles.HexNumber, null, out bytes[i]))
-                {
-                    valid = false;
+                case 0 when _expected == 0:
+                    _expected = bytes[0] & 0xF;
+                    if (_expected is < 1 or > 7 || bytes.Length < _expected + 1) { Invalid = true; return; }
+                    _data.AddRange(bytes.AsSpan(1, _expected).ToArray());
                     break;
-                }
+                case 1 when _expected == 0 && bytes.Length == 8:
+                    _expected = ((bytes[0] & 0xF) << 8) | bytes[1];
+                    if (_expected <= 7) { Invalid = true; return; }
+                    _data.AddRange(bytes.AsSpan(2).ToArray());
+                    break;
+                case 2 when _expected > _data.Count && _expected > 7:
+                    var count = Math.Min(7, _expected - _data.Count);
+                    if ((bytes[0] & 0xF) != _nextSequence || bytes.Length < count + 1) { Invalid = true; return; }
+                    _data.AddRange(bytes.AsSpan(1, count).ToArray());
+                    _nextSequence = (_nextSequence + 1) & 0xF;
+                    break;
+                default:
+                    Invalid = true;
+                    break;
             }
+        }
 
-            if (!valid || bytes.Length == 0)
+        public IReadOnlyList<string>? Decode(byte sid)
+        {
+            if (Invalid || _expected < 2 || _data.Count != _expected || _data[0] != sid)
+                return null;
+            var count = _data[1];
+            var used = 2 + count * 2;
+            if (used > _data.Count || _data.Skip(used).Any(b => b != 0))
+                return null;
+            var codes = new List<string>(count);
+            for (var i = 0; i < count; i++)
             {
-                continue;
+                var hi = _data[2 + i * 2];
+                var lo = _data[3 + i * 2];
+                if (hi == 0 && lo == 0) return null;
+                var letter = "PCBU"[hi >> 6];
+                codes.Add($"{letter}{(hi >> 4) & 3:X1}{hi & 15:X1}{lo:X2}");
             }
-
-            var pciType = bytes[0] >> 4;
-            switch (pciType)
-            {
-                case 0: // Single frame
-                    {
-                        var length = bytes[0] & 0xF;
-                        if (length > 0 && bytes.Length >= 1 + length)
-                        {
-                            perEcu[header] = (bytes.Skip(1).Take(length).ToList(), length);
-                        }
-
-                        break;
-                    }
-                case 1: // First frame
-                    {
-                        if (bytes.Length >= 2)
-                        {
-                            var length = ((bytes[0] & 0xF) << 8) | bytes[1];
-                            perEcu[header] = (bytes.Skip(2).ToList(), length);
-                        }
-
-                        break;
-                    }
-                case 2: // Consecutive frame — append in arrival order
-                    {
-                        if (perEcu.TryGetValue(header, out var entry))
-                        {
-                            entry.Data.AddRange(bytes.Skip(1));
-                        }
-
-                        break;
-                    }
-            }
+            return codes;
         }
-
-        var payloads = new List<byte[]>();
-        foreach (var (data, expectedLength) in perEcu.Values)
-        {
-            payloads.Add(data.Take(expectedLength).ToArray());
-        }
-
-        return payloads;
-    }
-
-    /// <summary>
-    ///     Decodes one ECU's Mode 03/07 payload: [SID+0x40] [count] [2-byte DTC]* on CAN.
-    ///     Zero pairs (padding) are skipped; an implausible count byte falls back to
-    ///     consuming all pairs present.
-    /// </summary>
-    private static void DecodeDtcPayload(byte[] payload, byte responseSid, List<string> codes)
-    {
-        if (payload.Length < 2 || payload[0] != responseSid)
-        {
-            return;
-        }
-
-        var count = payload[1];
-        var pairsAvailable = (payload.Length - 2) / 2;
-        var pairs = count <= pairsAvailable ? count : pairsAvailable;
-
-        for (var i = 0; i < pairs; i++)
-        {
-            var hi = payload[2 + i * 2];
-            var lo = payload[3 + i * 2];
-            if (hi == 0 && lo == 0)
-            {
-                continue;
-            }
-
-            codes.Add(DecodeDtc(hi, lo));
-        }
-    }
-
-    /// <summary>SAE J2012 two-byte DTC → "P0143"-style string (nibbles are hex digits).</summary>
-    private static string DecodeDtc(byte hi, byte lo)
-    {
-        var letter = ((hi >> 6) & 0x3) switch
-        {
-            0 => 'P',
-            1 => 'C',
-            2 => 'B',
-            _ => 'U'
-        };
-
-        return $"{letter}{(hi >> 4) & 0x3:X1}{hi & 0xF:X1}{lo >> 4:X1}{lo & 0xF:X1}";
     }
 }

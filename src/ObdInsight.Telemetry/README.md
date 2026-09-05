@@ -1,5 +1,10 @@
 # ObdInsight.Telemetry
 
+Diagnostic snapshots retain per-mode DTC outcomes and responding-ECU evidence in
+`DiagnosticTroubleCodes`. Check status before interpreting codes: failed/partial
+reads are not clean results, and success covers only observed responders. Leaf
+Group 01 Hx is not SOH; `StateOfHealthPercent` is currently null for that provider.
+
 The consumer telemetry facade for ObdInsight — the only surface an app needs during a
 drive:
 

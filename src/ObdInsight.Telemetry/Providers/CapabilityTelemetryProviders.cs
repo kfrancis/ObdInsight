@@ -59,7 +59,7 @@ public sealed class BatteryStatusTelemetryProvider : ITelemetryProvider
                 TelemetrySignal.PackCurrent => TelemetryValue.FromDouble(status?.CurrentAmps),
                 TelemetrySignal.PackPower => TelemetryValue.FromDouble(status?.PowerWatts / 1000.0),
                 TelemetrySignal.PackTemperature => TelemetryValue.FromDouble(status?.TemperatureC),
-                TelemetrySignal.StateOfHealth => TelemetryValue.FromDouble(status?.HealthPercent),
+                TelemetrySignal.StateOfHealth => TelemetryValue.FromDouble(status?.StateOfHealthPercent),
                 _ => TelemetryValue.Empty
             };
         }

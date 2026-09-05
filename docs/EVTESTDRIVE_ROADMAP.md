@@ -125,12 +125,15 @@ Milestones: **M-A** pre-check · **M-B** live drive · **M-C** post-check/report
   New `IDiagnosticTroubleCodes` + `DtcReadResult` (VehicleCapabilities.cs) and generic
   `ObdDtcReader` (Vehicles/): Mode 03 + 07 over functional 7DF with
   `AT CRA 7EX` wildcard for the 7E8-7EF multi-ECU range (firmware lacking `X` support
-  degrades to prior filter → empty result, documented). Per-header ISO-TP reassembly
-  (SF + FF/CF), J2012 decode incl. hex-nibble codes (P0A80), zero-pair padding skipped,
-  dedupe across ECUs. Degradation contract: NO DATA / adapter error / silent bus →
-  empty lists, never a throw (OCE propagates). Registered for Leaf via arbitrated
-  session; `TelemetrySnapshot` gains `StoredDtcCodes`/`PendingDtcCodes` (null =
-  capability absent, empty = clean); simulator answers 03/07 with zero codes.
+  limits observed coverage to the accepted filter). **Contract revised 2026-09-04:**
+  per-mode `DtcModeResult` preserves status and CAN responder evidence; aggregate
+  `Codes` exists only for `Succeeded`. NO DATA / I/O errors / malformed or incomplete
+  replies cannot imply a clean read. Local DTC reassembly validates lengths and
+  sequence numbers; count/padding validation precedes decoding. Partial reads retain
+  valid per-responder codes. Caller cancellation and programming errors propagate.
+  `TelemetrySnapshot.DiagnosticTroubleCodes` preserves both modes (null = capability
+  absent). Successful empty codes mean only "no codes reported by these responders",
+  never whole-vehicle health. See [diagnostic evidence contract](DIAGNOSTIC_EVIDENCE.md).
   Tests: `LeafDtcTests` — multi-ECU, multi-frame, pending-independent, NO DATA
   graceful, functional-addressing asserts; suite 76/76. UDS 0x19 per-ECU remains a
   future item. *Unblocked:* M-A, M-C.

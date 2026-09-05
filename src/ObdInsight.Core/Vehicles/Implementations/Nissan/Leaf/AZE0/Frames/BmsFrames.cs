@@ -150,11 +150,11 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
             [UdsField(Offset = 0, Length = 4, Type = UdsFieldType.Int32BE, Scale = 1.0 / 1024.0)]
             public double CurrentAmps { get; set; }
 
-            // Health (Hx): Different offsets and scales by model
+            // Nissan Hx (not state of health): different offsets and scales by model.
             [UdsField(Offset = 26, Length = 2, Type = UdsFieldType.UInt16BE, Scale = 0.01, AppliesTo = "24kWh,30kWh")]
             [UdsField(Offset = 28, Length = 2, Type = UdsFieldType.UInt16BE, Scale = 1.0 / 102.4,
                 AppliesTo = "40kWh_ZE1")]
-            public double HealthPercent { get; set; }
+            public double? HxPercent { get; set; }
 
             // SOC (0.0001 %/bit, UInt24BE). ZE1 offset 31 is documented (OVMS
             // PollReply_Battery, Leaf2018-CAN). The 24/30 kWh offset 29 follows the

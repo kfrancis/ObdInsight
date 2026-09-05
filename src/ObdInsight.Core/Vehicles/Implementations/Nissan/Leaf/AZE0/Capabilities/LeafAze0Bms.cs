@@ -90,7 +90,8 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
                 VoltageVolts = response.VoltageVolts,
                 CurrentAmps = response.CurrentAmps,
                 CapacityAh = response.CapacityAh,
-                HealthPercent = response.HealthPercent,
+                // Group 01 supplies Nissan Hx, not SOH. Leave SOH unavailable until
+                // a validated, source-specific SOH provider is connected.
                 TemperatureC = temps?.AverageTempC,
                 MinTemperatureC = temps?.MinTempC,
                 MaxTemperatureC = temps?.MaxTempC

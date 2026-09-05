@@ -630,7 +630,7 @@ namespace ObdInsight
                                     parts.Add($"SOC: {soc:F1}%");
                                 }
 
-                                if (battery.HealthPercent is double health)
+                                if (battery.StateOfHealthPercent is double health)
                                 {
                                     parts.Add($"Hx: {health:F2}%");
                                     hxReadings.Add(health);

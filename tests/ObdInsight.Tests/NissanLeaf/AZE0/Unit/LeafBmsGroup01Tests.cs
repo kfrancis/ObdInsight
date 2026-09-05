@@ -1,6 +1,8 @@
 using ObdInsight.Core.Communication.Elm327;
+using ObdInsight.Core.Protocols;
 using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
+using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames;
 using ObdInsight.Simulation;
 
 namespace ObdInsight.Tests.NissanLeaf.AZE0.Unit;
@@ -46,13 +48,21 @@ public class LeafBmsGroup01ParsingTests
     }
 
     [Test]
-    public async Task GetStatus_ExtractsHealth(CancellationToken token)
+    public async Task GetStatus_DoesNotPublishHxAsStateOfHealth(CancellationToken token)
     {
         var result = await QueryGoldenStatusAsync(token);
 
-        var expectedHx = 0x0DD8 / 100.0; // 35.44 % (24/30kWh format: /100)
-        await Assert.That(result.HealthPercent).IsNotNull();
-        await Assert.That(Math.Abs(result.HealthPercent!.Value - expectedHx)).IsLessThan(0.1);
+        await Assert.That(result.StateOfHealthPercent).IsNull();
+    }
+
+    [Test]
+    public async Task Group01_PreservesNissanHxAsDistinctMetric(CancellationToken token)
+    {
+        await using var transport = new ReplayElmTransport();
+        transport.Expect("2101", LeafGoldenData.GoldenGroup01Lines.AsElmResponse());
+        var diagnostics = new LeafBmsDiagnostics(new ElmSession(new ElmFramer(transport)), EcuContext.NissanLeafBms);
+        var response = await diagnostics.QueryGroup01Async(token);
+        await Assert.That(response!.HxPercent).IsEqualTo(35.44);
     }
 
     [Test]

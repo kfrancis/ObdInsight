@@ -1,4 +1,5 @@
 using ObdInsight.Core.Communication.Elm327;
+using ObdInsight.Core.Vehicles;
 using ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0;
 using ObdInsight.Simulation;
 using ObdInsight.Telemetry;
@@ -55,10 +56,12 @@ public class SimulatedDriveTests
         await Assert.That(pre.PackVoltageV).IsNotNull();
         await Assert.That(pre.CellVoltagesV!.Count).IsEqualTo(96);
         await Assert.That(pre.PackTemperatureC).IsNotNull();
-        await Assert.That(pre.StateOfHealthPercent).IsNotNull();
+        await Assert.That(pre.StateOfHealthPercent).IsNull(); // Hx must not masquerade as SOH.
         // DTC pre-check: simulated car is healthy — readable, zero codes.
-        await Assert.That(pre.StoredDtcCodes!).IsEmpty();
-        await Assert.That(pre.PendingDtcCodes!).IsEmpty();
+        await Assert.That(pre.DiagnosticTroubleCodes!.Stored.Status).IsEqualTo(DtcReadStatus.Succeeded);
+        await Assert.That(pre.DiagnosticTroubleCodes.Stored.Codes!).IsEmpty();
+        await Assert.That(pre.DiagnosticTroubleCodes.Pending.Status).IsEqualTo(DtcReadStatus.Succeeded);
+        await Assert.That(pre.DiagnosticTroubleCodes.Pending.Codes!).IsEmpty();
 
         // --- Live drive: collect batches until speed shows movement and SOC streams ---
         await telemetry.StartAsync(token);
