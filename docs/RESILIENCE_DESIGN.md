@@ -105,12 +105,12 @@ Batches and snapshots now carry their owner-local ConnectionGeneration. Publicat
 timestamps remain separate from acquisition; [observation semantics](OBSERVATION_SEMANTICS.md)
 defines within-generation quality, age and stale-value handling.
 
-A quiet link is not evidence of disconnection. A framer timeout without physical loss
-does not trigger replacement; partial-timeout resynchronization and operation-specific
-retry safety are not redesigned here. Existing `RetryingElmSession` remains an
-expert opt-in API, not part of VehicleConnection. Core's existing adapter-response
-recovery also remains; it must not be interpreted as permission to replay arbitrary
-state-changing diagnostic commands.
+Quiet passive monitoring is not evidence of disconnection. An interrupted command
+exchange is different: [transaction safety](ELM_TRANSACTION_SAFETY.md) now permanently
+invalidates framing and ends the generation even without a physical-loss event.
+The owner rebuilds the graph without replaying the interrupted operation. Normal
+queries no longer retry; the expert retry decorator requires an explicit safe-command
+allowlist and only retries rejected, complete responses.
 
 Failed detection currently surfaces as an IOException with its detection status in the
 message (available as the inner failure of a failed open); the owner publishes only

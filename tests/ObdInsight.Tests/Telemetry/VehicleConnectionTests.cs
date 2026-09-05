@@ -161,15 +161,73 @@ public class VehicleConnectionTests
         await Assert.That(first.DisposeCount).IsEqualTo(1);
     }
 
+    [Test]
+    public async Task FramingTimeoutWithoutLinkLoss_ReplacesGraph_AndDoesNotReplay(CancellationToken ct)
+    {
+        var first = new Transport(); var second = new Transport(); var count = 0;
+        await using var owner = Create(() => ++count == 1 ? first : second);
+        var old = await owner.OpenAsync(ct);
+        first.TimeoutCommand = "2101";
+        await Assert.That(async () => await old.Telemetry.StartAsync(ct)).Throws<ElmSessionInvalidatedException>();
+        await Assert.That(await old.Ended.WaitAsync(ct)).IsTypeOf<ElmSessionInvalidatedException>();
+        var fresh = await owner.WaitForReadyAsync(old.Number, ct);
+        await Assert.That(first.DisposeCount).IsEqualTo(1);
+        await Assert.That(second.Replay.SentCommands.Contains("2101")).IsFalse();
+        await fresh.Telemetry.StartAsync(ct);
+        await using var reader = fresh.Telemetry.Batches(ct).GetAsyncEnumerator(ct);
+        await Assert.That(await reader.MoveNextAsync()).IsTrue();
+        await Assert.That(reader.Current.ConnectionGeneration).IsEqualTo(fresh.Number);
+    }
+
+    [Test]
+    public async Task CanceledSnapshotRead_EndsOldGenerationWithoutReplayingSnapshot(CancellationToken ct)
+    {
+        var first = new Transport(); var second = new Transport(); var count = 0;
+        await using var owner = Create(() => ++count == 1 ? first : second);
+        var old = await owner.OpenAsync(ct);
+        first.Replay.AutoRespond("2101", "7BB 10 29");
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var snapshot = old.Telemetry.GetSnapshotAsync(caller.Token).AsTask();
+        while (!first.Replay.SentCommands.Contains("2101")) await Task.Delay(5, ct);
+        caller.Cancel();
+        await Assert.That(async () => await snapshot).Throws<OperationCanceledException>();
+        await Assert.That(await old.Ended.WaitAsync(ct)).IsTypeOf<ElmSessionInvalidatedException>();
+        await owner.WaitForReadyAsync(old.Number, ct);
+        await Assert.That(second.Replay.SentCommands.Contains("2101")).IsFalse();
+        await Assert.That(first.DisposeCount).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task DisposeDuringNoncooperativeRead_JoinsIoBeforeReleasingTransport(CancellationToken ct)
+    {
+        var transport = new Transport(); var count = 0;
+        await using var owner = Create(() => { count++; return transport; });
+        var ready = await owner.OpenAsync(ct);
+        transport.ReadBlocked = Signal(); transport.ReleaseRead = Signal();
+        var snapshot = ready.Telemetry.GetSnapshotAsync(ct).AsTask();
+        await transport.ReadBlocked.Task.WaitAsync(ct);
+        var disposal = owner.DisposeAsync().AsTask();
+        await Assert.That(disposal.IsCompleted).IsFalse();
+        await Assert.That(transport.DisposeCount).IsEqualTo(0);
+        transport.ReleaseRead.SetResult();
+        await disposal.WaitAsync(ct);
+        await Assert.That(async () => await snapshot).Throws<IOException>();
+        await Assert.That(transport.DisposeCount).IsEqualTo(1);
+        await Assert.That(count).IsEqualTo(1);
+    }
+
     private sealed class Transport : IConnectionAwareTransport
     {
         public ReplayElmTransport Replay { get; } = new();
         public Func<CancellationToken, Task>? Opening { get; init; }
         public string? FailCommand;
+        public string? TimeoutCommand;
         public bool Eof;
         public bool FailFlush;
         public int UncertainWrites;
         public int DisposeCount;
+        public TaskCompletionSource? ReadBlocked;
+        public TaskCompletionSource? ReleaseRead;
         public Transport()
         {
             Replay.AutoRespond("0100", "7E8064100BE3FA813\r>");
@@ -186,11 +244,21 @@ public class VehicleConnectionTests
             if (Opening is not null) await Opening(ct);
             await Replay.OpenAsync(ct);
         }
-        public ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct) => Eof ? ValueTask.FromResult(0) : Replay.ReadAsync(buffer, ct);
+        public async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct)
+        {
+            if (ReadBlocked is not null)
+            {
+                ReadBlocked.TrySetResult();
+                await ReleaseRead!.Task; // deliberately ignores cancellation until released
+            }
+            return Eof ? 0 : await Replay.ReadAsync(buffer, ct);
+        }
         public ValueTask WriteAsync(ReadOnlyMemory<byte> bytes, CancellationToken ct)
         {
             if (Encoding.ASCII.GetString(bytes.Span).Trim() == FailCommand)
             { UncertainWrites++; throw new IOException("write may have reached adapter"); }
+            if (Encoding.ASCII.GetString(bytes.Span).Trim() == TimeoutCommand)
+                throw new TimeoutException("adapter exchange timed out without link-loss event");
             return Replay.WriteAsync(bytes, ct);
         }
         public ValueTask FlushAsync(CancellationToken ct)

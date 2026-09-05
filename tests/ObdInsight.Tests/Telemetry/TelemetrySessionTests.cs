@@ -90,7 +90,8 @@ public class TelemetrySessionTests
         await Assert.That(cells.Value.Vector.All(v => v is > 3.5m and < 4.5m)).IsTrue();
         await Assert.That(cells.Tier).IsEqualTo(CadenceTier.Low);
 
-        await Assert.That(commands.Monitor.IsRunning).IsTrue();
+        // It may be temporarily suspended by the next UDS tick, not permanently ended.
+        await Assert.That(commands.Monitor.EndReason).IsEqualTo(MonitoringEndReason.None);
 
         // Availability: served signals Available; provider-less Odometer Unavailable.
         var availability = session.Availability;
@@ -242,6 +243,7 @@ public class TelemetrySessionTests
             .IsEqualTo(SignalAvailability.Unknown);
 
         await session.StopAsync(token);
+        await Assert.That(await speedPending).IsFalse(); // join MoveNext before disposing its iterator
         await commands.Monitor.StopAsync(token);
     }
 

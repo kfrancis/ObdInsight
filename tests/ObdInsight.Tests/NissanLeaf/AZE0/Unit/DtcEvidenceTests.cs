@@ -196,7 +196,6 @@ public class DtcEvidenceTests
         public TimeSpan CommandTimeout { get; set; }
         public EcuCommunicationMode CurrentMode => EcuCommunicationMode.RequestResponse;
         public bool EnableDebugLogging { get; set; }
-        public int MaxConsecutiveFailures { get; set; }
         public TimeSpan ProtocolDetectionTimeout { get; set; }
         public MonitoringEndReason LastMonitoringEndReason => MonitoringEndReason.None;
         public ValueTask<string[]> QueryAsync(string command, CancellationToken ct)

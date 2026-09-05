@@ -186,6 +186,7 @@ namespace ObdInsight.Core.Communication.Elm327
         private async ValueTask StartCoreAsync(CancellationToken ct)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_session?.Failure is { } failure) throw failure;
             // With a filter rotation the loop enters monitoring itself, once per window.
             if (FilterRotation.Count == 0)
             {
@@ -286,6 +287,20 @@ namespace ObdInsight.Core.Communication.Elm327
             try
             {
                 _suspending = false;
+                if (_session?.Failure is not null)
+                {
+                    // Never mask the original query's cancellation/timeout with a resume
+                    // failure, nor reopen a monitor on an untrustworthy response boundary.
+                    EndReason = MonitoringEndReason.TransportError;
+                    _keepAliveCts?.Cancel();
+                    lock (_lock)
+                    {
+                        _ended = true;
+                        _latest.Clear();
+                        foreach (var subscription in _subscriptions) subscription.Channel.Writer.TryComplete();
+                    }
+                    return;
+                }
                 await StartCoreAsync(CancellationToken.None);
             }
             finally
@@ -398,6 +413,7 @@ namespace ObdInsight.Core.Communication.Elm327
             {
                 while (true)
                 {
+                    ct.ThrowIfCancellationRequested();
                     CancellationTokenSource? dwellCts = null;
                     try
                     {
@@ -407,7 +423,9 @@ namespace ObdInsight.Core.Communication.Elm327
                             // Enter monitoring with this window's hardware filter; Enter exits
                             // any previous window first. The dwell token rotates us out.
                             var window = FilterRotation[_windowIndex % FilterRotation.Count];
-                            await _session!.EnterMonitoringModeAsync(CreateWindowContext(window), ct);
+                            // Internal suspension stops the reader, not an in-flight adapter
+                            // configuration. Join this command-bounded transition before exit.
+                            await _session!.EnterMonitoringModeAsync(CreateWindowContext(window), CancellationToken.None);
                             dwellCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                             dwellCts.CancelAfter(window.Dwell);
                             frameToken = dwellCts.Token;
@@ -458,7 +476,7 @@ namespace ObdInsight.Core.Communication.Elm327
 
                                 if (!rotating)
                                 {
-                                    await EnterAsync(ct);
+                                    await EnterAsync(CancellationToken.None);
                                 }
                                 // Rotating: the next iteration enters the next window anyway.
                             }

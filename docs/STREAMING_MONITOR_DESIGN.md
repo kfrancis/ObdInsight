@@ -154,10 +154,11 @@ Broadcast-backed capabilities (`LeafAze0Hvac`, `LeafAze0Abs`, `LeafAze0Brake`,
 - `LeafAze0CommandSet` constructs one `CanMonitor` (accept-all EV-CAN context) and hands it to
   all broadcast capabilities; UDS capabilities (BMS, VIN) keep the session.
 
-**Mode arbitration:** UDS queries cannot run while monitoring. `ElmSession` already enforces
-this; the coordinator is `CanMonitor`: `PauseAsync()`/`ResumeAsync()` (or an
-`IDisposable`-scoped `SuspendScope`) lets the command set run a query batch between monitor
-windows. Phase 3; until then callers stop the monitor explicitly before UDS work.
+**Implemented mode arbitration:** `CanMonitor.SuspendAsync` returns an async-disposable
+scope. The command-set decorator uses it around diagnostic work. The session reader is
+joined before the stop prompt is consumed; internal suspension joins in-flight window
+configuration rather than canceling it halfway through. An invalidated session is never
+resumed. See [transaction safety](ELM_TRANSACTION_SAFETY.md) for the current contract.
 
 ### 3.4 What this deletes
 

@@ -8,7 +8,9 @@ Each telemetry run has `Completion`; unexpected producer failures fault it and i
 streams. Canceling a stop does not abandon the producer. Await stop before restart
 and use new subscriptions. `VehicleConnection` owns reinitialization and fresh
 generations after loss; recording explicitly starts a new segment, never an
-uninterrupted subscription across physical connections.
+uninterrupted subscription across physical connections. Interrupted command framing
+also ends the generation; see [transaction safety](ELM_TRANSACTION_SAFETY.md). Never
+retry an uncertain diagnostic command merely because BLE still reports connected.
 
 **Recording evidence:** [observation semantics](OBSERVATION_SEMANTICS.md) separates
 publication from acquisition time. Persist your drive ID and ConnectionGeneration

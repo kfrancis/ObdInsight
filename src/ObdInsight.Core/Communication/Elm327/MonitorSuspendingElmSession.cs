@@ -17,6 +17,7 @@ namespace ObdInsight.Core.Communication.Elm327
         private readonly CanMonitor _monitor;
         private IAsyncDisposable? _monitoringSuspension;
         public TimeProvider TimeProvider => _inner.TimeProvider;
+        public ElmSessionInvalidatedException? Failure => _inner.Failure;
 
         public async ValueTask<Observed<string[]>> QueryResponseAsync(string command, EcuContext context, CancellationToken ct)
         {
@@ -42,12 +43,6 @@ namespace ObdInsight.Core.Communication.Elm327
         {
             get => _inner.EnableDebugLogging;
             set => _inner.EnableDebugLogging = value;
-        }
-
-        public int MaxConsecutiveFailures
-        {
-            get => _inner.MaxConsecutiveFailures;
-            set => _inner.MaxConsecutiveFailures = value;
         }
 
         public TimeSpan ProtocolDetectionTimeout

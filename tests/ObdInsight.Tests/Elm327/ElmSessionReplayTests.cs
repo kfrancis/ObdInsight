@@ -45,7 +45,7 @@ public class ElmSessionReplayTests
     }
 
     [Test]
-    public async Task Query_InvalidResponse_RetriesOnceAndSucceeds(CancellationToken token)
+    public async Task Query_InvalidResponse_DoesNotRetryWithoutExplicitPolicy(CancellationToken token)
     {
         var (transport, session) = CreateSession();
 
@@ -57,11 +57,9 @@ public class ElmSessionReplayTests
         transport.Expect("010D", "41 0D 3C\r\r>");
 
         await session.InitializeAndLockAsync(token);
-        var lines = await session.QueryAsync("010D", token);
-
-        await Assert.That(lines.Length).IsEqualTo(1);
-        await Assert.That(lines[0]).IsEqualTo("41 0D 3C");
-        await Assert.That(transport.SentCommands.Count(c => c == "010D")).IsEqualTo(2);
+        await Assert.That(async () => await session.QueryAsync("010D", token)).Throws<ElmQueryRejectedException>();
+        await Assert.That(transport.SentCommands.Count(c => c == "010D")).IsEqualTo(1);
+        await Assert.That(session.Failure).IsNull();
     }
 
     [Test]

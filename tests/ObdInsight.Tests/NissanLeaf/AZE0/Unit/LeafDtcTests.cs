@@ -67,15 +67,13 @@ public class LeafDtcTests
     public async Task GetDtcs_NoData_IsNotACleanRead(CancellationToken token)
     {
         var (transport, dtc) = Setup();
-        // The session retries an invalid response once before giving up — script both.
+        // Each diagnostic request is sent once; prompt-terminated absence preserves framing.
         transport.Expect("03", "NO DATA\r\r>");
-        transport.Expect("03", "NO DATA\r\r>");
-        transport.Expect("07", "NO DATA\r\r>");
         transport.Expect("07", "NO DATA\r\r>");
 
         var result = await dtc.GetDtcsAsync(token);
 
-        // ElmSession collapses exhausted NO DATA recovery into IOException.
+        // A rejected query remains distinct from a clean DTC read.
         await Assert.That(result.Stored.Status).IsEqualTo(DtcReadStatus.QueryFailed);
         await Assert.That(result.Pending.Status).IsEqualTo(DtcReadStatus.QueryFailed);
         await Assert.That(result.Stored.Codes).IsNull();

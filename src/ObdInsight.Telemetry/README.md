@@ -1,5 +1,9 @@
 # ObdInsight.Telemetry
 
+`VehicleConnection` replaces the complete graph after command framing loss as well
+as physical disconnection. It never replays an interrupted snapshot/query; start new
+telemetry subscriptions on the newer generation. Normal ELM queries execute once.
+
 Telemetry carries per-signal `Observation` (acquisition time, source, quality), `Age`
 and `Freshness`, separately from publication time. `MaxObservationAge` defaults to
 30 seconds. Snapshot convenience fields contain only fresh readings; `Measurements`

@@ -24,6 +24,43 @@ namespace ObdInsight.Core.Communication.Elm327
         private readonly Queue<byte> _carryOver = new();
         private readonly ILogger _logger;
         private readonly IElmTransport _transport;
+        private ElmSessionInvalidatedException? _failure;
+        private int _operation;
+        private bool _writeAttempted;
+
+        /// <summary>Permanent framing failure, or null while the response boundary is trustworthy.</summary>
+        public ElmSessionInvalidatedException? Failure => Volatile.Read(ref _failure);
+
+        /// <summary>
+        /// Synchronous invalidation notification, once, before the failed operation returns.
+        /// Handlers must not block or perform I/O; exceptions are isolated. The transport remains owner-owned.
+        /// </summary>
+        public event EventHandler? Invalidated;
+
+        internal void ThrowIfInvalidated()
+        {
+            if (Failure is { } failure) throw failure;
+        }
+
+        internal void Invalidate(Exception cause)
+        {
+            var error = new ElmSessionInvalidatedException("ELM response boundary lost; replace the connection graph. Delivery is uncertain.", cause);
+            if (Interlocked.CompareExchange(ref _failure, error, null) is not null) return;
+            if (Invalidated is not { } handlers) return;
+            foreach (EventHandler handler in handlers.GetInvocationList())
+            {
+                try { handler(this, EventArgs.Empty); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Framer invalidation subscriber failed"); }
+            }
+        }
+
+        private void EnterOperation()
+        {
+            ThrowIfInvalidated();
+            if (Interlocked.CompareExchange(ref _operation, 1, 0) != 0)
+                throw new InvalidOperationException("Concurrent framer I/O is not allowed; use the owning ElmSession.");
+            _writeAttempted = false;
+        }
 
         /// <summary>
         ///     Initializes a new instance of the ElmFramer class using the specified transport.
@@ -52,25 +89,33 @@ namespace ObdInsight.Core.Communication.Elm327
             string command, TimeSpan timeout, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(command);
+            if (command.Contains('\r') || command.Contains('\n'))
+                throw new ArgumentException("An exchange must contain exactly one command.", nameof(command));
             ct.ThrowIfCancellationRequested();
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
             deadline.CancelAfter(timeout);
+            EnterOperation();
             try
             {
                 Log($">>> FRAME SEND: '{command}'");
-                await WriteAsync(command + "\r", deadline.Token).ConfigureAwait(false);
-                var response = await ReadUntilAsync(">", Timeout.InfiniteTimeSpan, deadline.Token).ConfigureAwait(false);
+                await WriteCoreAsync(command + "\r", deadline.Token).ConfigureAwait(false);
+                var response = await ReadUntilCoreAsync(">", Timeout.InfiniteTimeSpan, deadline.Token).ConfigureAwait(false);
                 Log($"<<< FRAME RECV: {response.Length} bytes");
                 return response;
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
             {
+                if (_writeAttempted) Invalidate(ex);
                 throw new OperationCanceledException(ct);
             }
             catch (OperationCanceledException ex) when (deadline.IsCancellationRequested)
             {
-                throw new TimeoutException($"Timeout waiting for response to '{command}'.", ex);
+                var error = new TimeoutException($"Timeout waiting for response to '{command}'.", ex);
+                if (_writeAttempted) Invalidate(error);
+                throw error;
             }
+            catch (Exception ex) { if (_writeAttempted) Invalidate(ex); throw; }
+            finally { Volatile.Write(ref _operation, 0); }
         }
 
         /// <summary>
@@ -79,8 +124,19 @@ namespace ObdInsight.Core.Communication.Elm327
         /// </summary>
         public async ValueTask WriteAsync(string text, CancellationToken ct)
         {
+            ArgumentNullException.ThrowIfNull(text);
+            ct.ThrowIfCancellationRequested();
+            EnterOperation();
+            try { await WriteCoreAsync(text, ct).ConfigureAwait(false); }
+            catch (Exception ex) { if (_writeAttempted) Invalidate(ex); throw; }
+            finally { Volatile.Write(ref _operation, 0); }
+        }
+
+        private async ValueTask WriteCoreAsync(string text, CancellationToken ct)
+        {
             ct.ThrowIfCancellationRequested();
             var bytes = Encoding.ASCII.GetBytes(text);
+            _writeAttempted = true;
             await _transport.WriteAsync(bytes, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             await _transport.FlushAsync(ct).ConfigureAwait(false);
@@ -92,6 +148,16 @@ namespace ObdInsight.Core.Communication.Elm327
         ///     Used for reading monitoring mode frames.
         /// </summary>
         public async ValueTask<string> ReadUntilAsync(string delimiter, TimeSpan timeout, CancellationToken ct)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(delimiter);
+            ct.ThrowIfCancellationRequested();
+            EnterOperation();
+            try { return await ReadUntilCoreAsync(delimiter, timeout, ct).ConfigureAwait(false); }
+            catch (Exception ex) when (delimiter == ">") { Invalidate(ex); throw; }
+            finally { Volatile.Write(ref _operation, 0); }
+        }
+
+        private async ValueTask<string> ReadUntilCoreAsync(string delimiter, TimeSpan timeout, CancellationToken ct)
         {
             ArgumentException.ThrowIfNullOrEmpty(delimiter);
             // Check for already-cancelled token before starting
@@ -173,8 +239,9 @@ namespace ObdInsight.Core.Communication.Elm327
         /// </summary>
         public void ClearBuffer()
         {
-            _carryOver.Clear();
-            _transport.ClearBuffer();
+            EnterOperation();
+            try { _carryOver.Clear(); _transport.ClearBuffer(); }
+            finally { Volatile.Write(ref _operation, 0); }
         }
 
         /// <summary>

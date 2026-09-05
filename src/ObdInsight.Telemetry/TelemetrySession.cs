@@ -353,13 +353,19 @@ public sealed class TelemetrySession : ITelemetrySession
     // The connection owner invalidates the whole generation, including cache-only providers.
     internal ValueTask TerminateAsync(Exception error)
     {
+        Invalidate(error);
+        return DisposeAsync();
+    }
+
+    // Synchronous admission barrier; teardown is separately owned and joined.
+    internal void Invalidate(Exception error)
+    {
         lock (_stateLock)
         {
             _forcedError ??= error;
             _disposed = true;
             if (_loopTask is null) CompleteSubscribers(error);
         }
-        return DisposeAsync();
     }
 
     private async Task DisposeCoreAsync()

@@ -77,7 +77,7 @@ IElmTransport            byte I/O (BLE impls in Transports.WindowsBle/Ble, Seria
   ├─ SlcanFrameSource    raw USB-CAN path (CANable): ICanFrameSource, firmware-dialect handshake,
   │                      feeds CanMonitor(ICanFrameSource) directly — no ElmSession, no UDS
   └─ ElmFramer           CR/prompt framing, carry-over buffering (bytes past a delimiter are preserved)
-    └─ ElmSession        init, protocol detect/lock, query vs monitoring state machine, 4-level recovery
+    └─ ElmSession        init, protocol detect/lock, atomic context+query, invalidation on interrupted exchange
                          optional IEcuWakeupStrategy (vehicle-specific probe, e.g. LeafBmsWakeupStrategy)
                          MonitorFramesAsync + LastMonitoringEndReason
        ├─ EcuContext     per-ECU headers/filters/flow control (presets in LeafAze0Contexts, EcuContext statics)
@@ -168,9 +168,11 @@ public partial class BatteryFrame_1DB_AZE0
   capabilities that depend on those IDs (MotorController 1DA/55A, Vcm gear 11A, Brake 1CA)
   time out on data-absence until UDS alternatives exist; their frame definitions stay for
   tests/modified-adapter transports. See `docs/FRAME_LAYOUT_AUDIT.md`.
-- `ElmSession` is not thread-safe; query and monitoring modes are mutually exclusive
-  (`QueryAsync` throws while monitoring). Arbitration exists: `CanMonitor.SuspendAsync` +
-  `MonitorSuspendingElmSession` decorator let UDS capabilities coexist with a running monitor.
+- Context-bearing `ElmSession.QueryAsync` holds one gate for configuration and exchange.
+  Monitoring holds reader ownership until enumeration disposal; suspend/join it before
+  querying. `CanMonitor.SuspendAsync` + `MonitorSuspendingElmSession` provide arbitration.
+  No implicit query retries; `MaxConsecutiveFailures` is removed. An interrupted exchange
+  invalidates framing and the consumer owner replaces the graph. See `docs/ELM_TRANSACTION_SAFETY.md`.
 - Test fixtures/launchSettings contain a hardcoded adapter MAC + a real VIN (audit M3.5:
   scrub before making the repo public).
 - Stale docs exist: `README.md` (old architecture diagram), `tests/ObdInsight.Tests/README.md`.

@@ -66,13 +66,14 @@ public class ElmFramerOutcomeTests
         command ? framer.SendAndReadFrameAsync("ATI", timeout, ct) : framer.ReadUntilAsync("\r", timeout, ct);
 
     [Test]
-    public async Task SuppressedKeepAlive_UsesExplicitDeadlineContract(CancellationToken ct)
+    public async Task SuppressedKeepAlive_StillRequiresAdapterPrompt(CancellationToken ct)
     {
         await using var transport = new ReplayElmTransport();
         transport.Expect("3E80", "");
-        var session = new ElmSession(new ElmFramer(transport));
+        var session = new ElmSession(new ElmFramer(transport)) { CommandTimeout = TimeSpan.FromMilliseconds(40) };
         var context = new EcuContext { Name = "test", TxHeader = "7E0", KeepAliveCommand = "3E80" };
-        await Assert.That(await session.SendKeepAliveAsync(context, ct)).IsTrue();
+        await Assert.That(async () => await session.SendKeepAliveAsync(context, ct)).Throws<TimeoutException>();
+        await Assert.That(session.Failure).IsNotNull();
     }
 
     private sealed class EndingTransport(string initial, bool eof) : IElmTransport

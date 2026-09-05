@@ -24,14 +24,16 @@ wait for bytes, cancellation, or termination; zero must not mean "try again".
 Cancellation is cooperative; the framer does not abandon in-flight I/O or recycle
 its buffer while a transport might still be writing into it.
 
-After timeout/cancellation/EOF, partial text is discarded. This does **not** establish
-that the physical session is synchronized: a delayed reply may still arrive. Do not
-blindly retry commands with uncertain delivery. Owned session recovery remains a
-separate migration concern; this change does not restore adapter state on reconnect.
+After timeout/cancellation/EOF, partial text is discarded. A delayed reply may still
+arrive, so [transaction safety](ELM_TRANSACTION_SAFETY.md) now invalidates an interrupted
+command exchange permanently. The owning VehicleConnection ends that generation and
+reinitializes a fresh physical graph. Queued cancellation and quiet CAN reads do not
+invalidate an otherwise healthy session.
 
 `ObdDtcReader` maps explicit `TimeoutException` to timeout evidence. It no longer
 guesses that an unrelated `OperationCanceledException` means timeout. The ELM
-suppress-positive-response keep-alive path now catches the explicit timeout type.
+suppress-positive-response keep-alive path still requires the adapter prompt: missing
+that prompt is framing failure, not proof that the keep-alive succeeded.
 
 ## Telemetry run ownership
 

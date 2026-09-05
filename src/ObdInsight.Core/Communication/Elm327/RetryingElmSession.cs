@@ -12,14 +12,17 @@ public sealed record QueryRetryOptions
 
     /// <summary>Delay between attempts (default 250 ms).</summary>
     public TimeSpan RetryDelay { get; init; } = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>Exact commands the caller confirms are safe to repeat. Empty by default.</summary>
+    public IReadOnlyCollection<string> RetrySafeCommands { get; init; } = [];
 }
 
 /// <summary>
 ///     <see cref="IElmSession" /> decorator adding per-request retry to <c>QueryAsync</c>
-///     (roadmap B10): each attempt already includes the inner session's
-///     recover-then-retry-once ladder, so 3 attempts = up to 3 recovery cycles. Only
-///     <see cref="IOException" /> is retried — cancellation and protocol-level errors
-///     propagate untouched. Compose <em>inside</em> the monitor-suspension decorator so a
+///     only for explicitly allowlisted retry-safe commands that receive an
+///     <see cref="ElmQueryRejectedException" /> (a complete response rejected by validation).
+///     Uncertain I/O, invalidated sessions, timeouts and cancellation are never retried.
+///     Compose <em>inside</em> the monitor-suspension decorator so a
 ///     suspension spans all attempts (the Leaf command set does this when handed a
 ///     retrying session).
 /// </summary>
@@ -28,6 +31,7 @@ public sealed class RetryingElmSession : IElmSession
     private readonly IElmSession _inner;
     private readonly ILogger<RetryingElmSession> _logger;
     private readonly QueryRetryOptions _options;
+    private readonly HashSet<string> _retrySafeCommands;
 
     public RetryingElmSession(
         IElmSession inner,
@@ -36,6 +40,11 @@ public sealed class RetryingElmSession : IElmSession
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _options = options ?? new QueryRetryOptions();
+        if (_options.MaxAttempts < 1 || _options.RetryDelay < TimeSpan.Zero ||
+            _options.RetryDelay.TotalMilliseconds > uint.MaxValue - 1)
+            throw new ArgumentOutOfRangeException(nameof(options));
+        ArgumentNullException.ThrowIfNull(_options.RetrySafeCommands);
+        _retrySafeCommands = new(_options.RetrySafeCommands, StringComparer.OrdinalIgnoreCase);
         _logger = logger ?? NullLogger<RetryingElmSession>.Instance;
     }
 
@@ -51,12 +60,6 @@ public sealed class RetryingElmSession : IElmSession
     {
         get => _inner.EnableDebugLogging;
         set => _inner.EnableDebugLogging = value;
-    }
-
-    public int MaxConsecutiveFailures
-    {
-        get => _inner.MaxConsecutiveFailures;
-        set => _inner.MaxConsecutiveFailures = value;
     }
 
     public TimeSpan ProtocolDetectionTimeout
@@ -89,6 +92,7 @@ public sealed class RetryingElmSession : IElmSession
         RetryAsync(() => _inner.QueryAsync(obdCommand, ct), obdCommand, ct);
 
     public TimeProvider TimeProvider => _inner.TimeProvider;
+    public ElmSessionInvalidatedException? Failure => _inner.Failure;
     public ValueTask<Observed<string[]>> QueryResponseAsync(string command, EcuContext context, CancellationToken ct) =>
         RetryAsync(() => _inner.QueryResponseAsync(command, context, ct), command, ct);
 
@@ -103,11 +107,13 @@ public sealed class RetryingElmSession : IElmSession
     {
         for (var attempt = 1;; attempt++)
         {
+            ct.ThrowIfCancellationRequested();
             try
             {
                 return await query();
             }
-            catch (IOException ex) when (attempt < _options.MaxAttempts)
+            catch (ElmQueryRejectedException ex) when (attempt < _options.MaxAttempts &&
+                _retrySafeCommands.Contains(command) && _inner.Failure is null)
             {
                 _logger.LogDebug(ex, "Query '{Command}' attempt {Attempt}/{Max} failed - retrying",
                     command, attempt, _options.MaxAttempts);

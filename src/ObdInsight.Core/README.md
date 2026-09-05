@@ -1,5 +1,12 @@
 # ObdInsight.Core
 
+Context-bearing ELM queries atomically configure the ECU and exchange one command.
+Queries no longer retry implicitly; `MaxConsecutiveFailures` is removed. Interrupted
+exchanges invalidate the session (`Failure`); buffer clearing cannot make it reusable.
+Expert retries require explicitly allowlisted safe commands and a complete rejected
+response. Monitoring must be suspended/joined before querying. See the repository's
+`docs/ELM_TRANSACTION_SAFETY.md` for cancellation, ownership and migration rules.
+
 Core OBD-II / CAN communication for EVs over ELM327-family adapters:
 
 - **`ElmSession`** — adapter init, protocol detect/lock, query vs monitoring state

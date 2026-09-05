@@ -139,13 +139,13 @@ public class CanMonitorTests
         // Run 1: a frame flows, then the adapter overruns.
         transport.EnqueueIncoming("1DB 01 00 00 00 00 00 00 00\r");
         await WaitForLatestAsync(monitor, 0x1DB, token);
-        transport.EnqueueIncoming("BUFFER FULL\r");
+        transport.EnqueueIncoming("BUFFER FULL\r\r>");
 
         // Run 2 (auto-restart): overruns immediately — no progress, retries exhausted.
         // Wait for the restart's ATMA to be consumed before feeding the second overrun.
         while (transport.SentCommands.Count(c => c == "ATMA") < 2)
             await Task.Delay(10, token);
-        transport.EnqueueIncoming("BUFFER FULL\r");
+        transport.EnqueueIncoming("BUFFER FULL\r\r>");
 
         await WaitForEndAsync(monitor, token);
 

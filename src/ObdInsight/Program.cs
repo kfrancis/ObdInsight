@@ -442,12 +442,10 @@ namespace ObdInsight
                     new ElmSession(framer, new LeafBmsWakeupStrategy(), loggerFactory.CreateLogger<ElmSession>())
                     {
                         CommandTimeout = TimeSpan.FromSeconds(5),
-                        MaxConsecutiveFailures = 3,
                         EnableDebugLogging = true
                     };
 
-                Log.Information("Initializing ELM327 session (Timeout={CommandTimeout}s, MaxFailures={MaxFailures})",
-                    session.CommandTimeout.TotalSeconds, session.MaxConsecutiveFailures);
+                Log.Information("Initializing ELM327 session (Timeout={CommandTimeout}s)", session.CommandTimeout.TotalSeconds);
                 AnsiConsole.MarkupLine("[yellow]Initializing ELM327 session...[/]");
                 await session.InitializeAndLockAsync(ct);
                 Log.Information("ELM327 session initialized and protocol locked");

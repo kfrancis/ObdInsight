@@ -139,6 +139,8 @@ until B13/B14/B5).
   internal timeout maps to null values; caller cancellation rethrows OCE.
 - UDS providers ride the existing `MonitorSuspendingElmSession` arbitration — the monitor
   suspends around the query batch and resumes, same as capabilities do today.
+  An interrupted exchange instead invalidates the graph; the consumer owner ends that
+  generation and replaces it without replay. See [transaction safety](ELM_TRANSACTION_SAFETY.md).
 
 ### Availability
 

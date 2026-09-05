@@ -68,6 +68,7 @@ public class SimulatedDriveTests
         var sawMovingSpeed = false;
         var sawSoc = false;
         var sawRange = false;
+        var sawSocDrain = false;
         using var driveCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         driveCts.CancelAfter(TimeSpan.FromSeconds(20));
         try
@@ -83,6 +84,7 @@ public class SimulatedDriveTests
                             break;
                         case TelemetrySignal.StateOfCharge:
                             sawSoc = true;
+                            sawSocDrain |= sample.Value.Scalar < pre.SocPercent - 0.5m;
                             break;
                         case TelemetrySignal.RemainingRange:
                             sawRange = true;
@@ -90,7 +92,7 @@ public class SimulatedDriveTests
                     }
                 }
 
-                if (sawMovingSpeed && sawSoc && sawRange)
+                if (sawMovingSpeed && sawSoc && sawRange && sawSocDrain)
                 {
                     break;
                 }

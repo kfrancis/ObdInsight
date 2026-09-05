@@ -143,6 +143,8 @@ public sealed class VehicleConnection : IAsyncDisposable, IConnectionStateSource
             {
                 _lifetime.Token.ThrowIfCancellationRequested();
                 GenerationTransport? transport = null;
+                ElmFramer? framer = null;
+                EventHandler? framingLost = null;
                 VehicleDetectionResult? detection = null;
                 TelemetrySession? telemetry = null;
                 VehicleConnectionGeneration? generation = null;
@@ -159,7 +161,15 @@ public sealed class VehicleConnection : IAsyncDisposable, IConnectionStateSource
                             await transport.OpenAsync(init.Token).ConfigureAwait(false);
                             _lifetime.Token.ThrowIfCancellationRequested();
                             init.Token.ThrowIfCancellationRequested();
-                            var session = new ElmSession(new ElmFramer(transport), _wakeup, timeProvider: _clock);
+                            framer = new ElmFramer(transport);
+                            framingLost = (_, _) =>
+                            {
+                                var error = framer.Failure!;
+                                transport.Fail(error);
+                                telemetry?.Invalidate(error);
+                            };
+                            framer.Invalidated += framingLost;
+                            var session = new ElmSession(framer, _wakeup, timeProvider: _clock);
                             await session.InitializeAndLockAsync(init.Token).ConfigureAwait(false);
                             detection = await VehicleResolver.ResolveAsync(session, _profiles, init.Token).ConfigureAwait(false);
                             init.Token.ThrowIfCancellationRequested();
@@ -191,6 +201,7 @@ public sealed class VehicleConnection : IAsyncDisposable, IConnectionStateSource
                 { loss = ex; }
                 finally
                 {
+                    if (framer is not null) framer.Invalidated -= framingLost;
                     lock (_gate) { _current = null; generation?.End(loss); Pulse(); }
                     if (loss is not null) SetState(ConnectionState.Reconnecting);
                     // Invalidate I/O first, then join consumers, then release physical resources.

@@ -13,11 +13,11 @@ namespace ObdInsight.Tests.Elm327;
 public class ResilienceTests
 {
     [Test]
-    public async Task RetryPolicy_TransientIoException_RetriesThenSucceeds(CancellationToken token)
+    public async Task RetryPolicy_RejectedReadWithExplicitPermission_RetriesThenSucceeds(CancellationToken token)
     {
         var inner = new FlakySession(2);
         var session = new RetryingElmSession(inner,
-            new QueryRetryOptions { MaxAttempts = 3, RetryDelay = TimeSpan.FromMilliseconds(1) });
+            new QueryRetryOptions { MaxAttempts = 3, RetryDelay = TimeSpan.FromMilliseconds(1), RetrySafeCommands = ["2101"] });
 
         var lines = await session.QueryAsync("2101", token);
 
@@ -30,7 +30,7 @@ public class ResilienceTests
     {
         var inner = new FlakySession(99);
         var session = new RetryingElmSession(inner,
-            new QueryRetryOptions { MaxAttempts = 3, RetryDelay = TimeSpan.FromMilliseconds(1) });
+            new QueryRetryOptions { MaxAttempts = 3, RetryDelay = TimeSpan.FromMilliseconds(1), RetrySafeCommands = ["2101"] });
 
         await Assert.That(async () => await session.QueryAsync("2101", token))
             .Throws<IOException>();
@@ -42,7 +42,7 @@ public class ResilienceTests
     {
         var inner = new FlakySession(0) { ThrowOce = true };
         var session = new RetryingElmSession(inner,
-            new QueryRetryOptions { MaxAttempts = 3, RetryDelay = TimeSpan.FromMilliseconds(1) });
+            new QueryRetryOptions { MaxAttempts = 3, RetryDelay = TimeSpan.FromMilliseconds(1), RetrySafeCommands = ["2101"] });
 
         await Assert.That(async () => await session.QueryAsync("2101", token))
             .Throws<OperationCanceledException>();
@@ -63,7 +63,6 @@ public class ResilienceTests
         public TimeSpan CommandTimeout { get; set; } = TimeSpan.FromSeconds(4);
         public EcuCommunicationMode CurrentMode => EcuCommunicationMode.RequestResponse;
         public bool EnableDebugLogging { get; set; }
-        public int MaxConsecutiveFailures { get; set; } = 3;
         public TimeSpan ProtocolDetectionTimeout { get; set; } = TimeSpan.FromSeconds(30);
         public MonitoringEndReason LastMonitoringEndReason => MonitoringEndReason.None;
 
@@ -77,7 +76,7 @@ public class ResilienceTests
 
             if (Attempts <= _failuresBeforeSuccess)
             {
-                throw new IOException("flaky");
+                throw new ElmQueryRejectedException(obdCommand);
             }
 
             return ValueTask.FromResult(new[] { "OK" });
