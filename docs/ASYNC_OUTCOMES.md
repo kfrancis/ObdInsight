@@ -75,12 +75,11 @@ has no measurements". Preserve recorded batches and the failure; decide separate
 whether to establish a new diagnostic connection/run. This contract does not claim
 gap-free recording, new acquisition timestamps, or freshness across reconnect.
 
-This only propagates failures that reach the framing/facade boundary. Existing Leaf
-BMS and VIN capabilities still catch non-cancellation exceptions and can return
-missing data before telemetry sees an error. The reconnecting byte-transport decorator
-can also hide a link interruption while replacing its connection. Therefore this
-tranche does not guarantee that every physical BLE loss faults a TestDrive run;
-that requires the owned diagnostic recovery boundary, not another telemetry catch.
+The subsequent [owned-recovery migration](RESILIENCE_DESIGN.md) adds
+`VehicleConnection`, which independently observes physical loss and terminates the
+entire old telemetry generation even if a Leaf capability catches its I/O error.
+Direct low-level compositions still only propagate exceptions that reach this facade.
+Acquisition freshness within a generation remains separate from connection recovery.
 
 ```csharp
 await telemetry.StartAsync(ct);

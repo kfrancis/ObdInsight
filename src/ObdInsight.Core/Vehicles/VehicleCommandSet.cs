@@ -1,6 +1,6 @@
 namespace ObdInsight.Core.Vehicles;
 
-public interface IVehicleCommandSet
+public interface IVehicleCommandSet : IAsyncDisposable
 {
     IReadOnlyCollection<Type> Capabilities { get; }
 
@@ -9,6 +9,9 @@ public interface IVehicleCommandSet
 
 public abstract class VehicleCommandSet : IVehicleCommandSet
 {
+    /// <summary>Releases resources owned by this command set, not its supplied session/transport.</summary>
+    public virtual ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private readonly Dictionary<Type, IVehicleCapability> _caps = new();
 
     public IReadOnlyCollection<Type> Capabilities => _caps.Keys.ToArray();

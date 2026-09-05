@@ -42,6 +42,13 @@ await foreach (var sample in telemetry.Stream(Signals.StateOfCharge, ct))
 
 Develop without hardware using `ObdInsight.Simulation`.
 
+Use `VehicleConnection` to own the complete adapter/vehicle graph and its recovery.
+Pass a fresh-transport factory and explicit vehicle profiles, then await `OpenAsync`.
+Each ready generation supplies `Detection`, `Telemetry`, `Number`, and `Ended`.
+Loss ends the old generation; await a newer one and explicitly start a new recording
+segment. No interrupted operation is replayed and no cached data crosses generations.
+See [owned recovery](https://github.com/kfrancis/ObdInsight/blob/main/docs/RESILIENCE_DESIGN.md).
+
 Each run exposes `Completion`. I/O and unexpected producer failures fault this task
 and all batch/typed streams; expected query timeouts remain missing samples. Stop
 joins the producer, and canceling a stop only cancels the wait. Await stop again before

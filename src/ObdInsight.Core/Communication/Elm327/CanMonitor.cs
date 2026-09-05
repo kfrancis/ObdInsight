@@ -35,6 +35,8 @@ namespace ObdInsight.Core.Communication.Elm327
         private readonly ICanFrameSource? _source;
         private readonly List<Subscription> _subscriptions = [];
         private bool _ended;
+        private volatile bool _disposed;
+        private Task? _disposeTask;
         private CancellationTokenSource? _keepAliveCts;
         private Task? _keepAliveTask;
 
@@ -113,7 +115,16 @@ namespace ObdInsight.Core.Communication.Elm327
         /// </summary>
         public IReadOnlyList<CanFilterWindow> FilterRotation { get; set; } = [];
 
-        public async ValueTask DisposeAsync()
+        public ValueTask DisposeAsync()
+        {
+            lock (_lock)
+            {
+                _disposed = true;
+                return new ValueTask(_disposeTask ??= Task.Run(DisposeCoreAsync));
+            }
+        }
+
+        private async Task DisposeCoreAsync()
         {
             try
             {
@@ -125,6 +136,12 @@ namespace ObdInsight.Core.Communication.Elm327
             }
 
             _keepAliveCts?.Cancel();
+            if (_keepAliveTask is not null)
+            {
+                try { await _keepAliveTask.ConfigureAwait(false); }
+                catch (OperationCanceledException) { }
+            }
+            _latest.Clear();
             _loopCts?.Dispose();
             _keepAliveCts?.Dispose();
         }
@@ -137,6 +154,7 @@ namespace ObdInsight.Core.Communication.Elm327
         /// </summary>
         public async ValueTask StartAsync(CancellationToken ct)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             if (IsRunning)
             {
                 return;
@@ -167,6 +185,7 @@ namespace ObdInsight.Core.Communication.Elm327
 
         private async ValueTask StartCoreAsync(CancellationToken ct)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             // With a filter rotation the loop enters monitoring itself, once per window.
             if (FilterRotation.Count == 0)
             {
@@ -318,6 +337,7 @@ namespace ObdInsight.Core.Communication.Elm327
         /// <summary>Latest frame seen for a CAN ID, if any. O(1), no I/O.</summary>
         public bool TryGetLatest(int canId, out RawCanFrame frame)
         {
+            if (_disposed) { frame = default!; return false; }
             return _latest.TryGetValue(canId, out frame);
         }
 

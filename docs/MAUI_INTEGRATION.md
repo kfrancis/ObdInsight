@@ -6,8 +6,9 @@
 **Current lifecycle contract:** see [terminal asynchronous outcomes](ASYNC_OUTCOMES.md).
 Each telemetry run has `Completion`; unexpected producer failures fault it and its
 streams. Canceling a stop does not abandon the producer. Await stop before restart
-and use new subscriptions. Transparent byte-level reconnect is not yet an owned,
-reinitialized diagnostic session; do not assume uninterrupted recording after BLE loss.
+and use new subscriptions. `VehicleConnection` owns reinitialization and fresh
+generations after loss; recording explicitly starts a new segment, never an
+uninterrupted subscription across physical connections.
 
 ## Packages to reference
 
@@ -40,47 +41,20 @@ safe. (A device-based AOT publish smoke test remains pending; it needs a Mac bui
 ## Wiring sketch
 
 ```csharp
-// MauiProgram.cs
-builder.Services.AddSingleton<IConnectionFactory, ObdConnectionFactory>();
-
-public sealed class ObdConnection : IAsyncDisposable
-{
-    public ITelemetrySession Telemetry { get; }
-    public VehicleDetectionResult Detection { get; }
-    // owns: transport → ElmFramer → ElmSession → command set (incl. CanMonitor)
-}
-
-public sealed class ObdConnectionFactory : IConnectionFactory
-{
-    public async Task<ObdConnection> ConnectAsync(Guid bleDeviceId, CancellationToken ct)
-    {
-        // Resilient composition (docs/RESILIENCE_DESIGN.md): the reconnecting decorator
-        // owns a transport FACTORY — a BLE drop in a moving car is a data gap, not a
-        // teardown. For development without hardware swap the factory for
-        // () => new SimulatedLeafAze0Transport(timeScale: 1).
-        var transport = new ReconnectingElmTransport(
-            () => new PluginBleElmTransport(CrossBluetoothLE.Current.Adapter, bleDeviceId));
-        await transport.OpenAsync(ct);
-
-        var session = new ElmSession(new ElmFramer(transport), new LeafBmsWakeupStrategy());
-        await session.InitializeAndLockAsync(ct);
-
-        // Per-request retry (≤3 attempts); composes inside the monitor arbitration.
-        var retrying = new RetryingElmSession(session);
-
-        var detection = await VehicleResolver.ResolveAsync(retrying, ct: ct);
-        if (detection.Status != VehicleDetectionStatus.Detected)
-        {
-            // Surface detection.Status / detection.Vin to the UI — never throws.
-        }
-
-        // connectionState wires ITelemetrySession.ConnectionState / ConnectionStateChanged
-        // (Connecting/Connected/Reconnecting/Lost) for direct UI binding.
-        var telemetry = TelemetrySession.Create(detection.Commands!, connectionState: transport);
-        return new ObdConnection(transport, session, detection, telemetry);
-    }
-}
+await using var connection = new VehicleConnection(
+    () => new PluginBleElmTransport(CrossBluetoothLE.Current.Adapter, bleDeviceId),
+    [new NissanLeaf()],
+    wakeupStrategy: new LeafBmsWakeupStrategy());
+// Development: use () => new SimulatedLeafAze0Transport(timeScale: 1).
+var generation = await connection.OpenAsync(ct);
+var telemetry = generation.Telemetry;
+var detection = generation.Detection;
 ```
+
+The connection owns the graph. On loss, finish the old recording segment and await
+`connection.WaitForReadyAsync(generation.Number, ct)`; explicitly start its telemetry
+and create new subscriptions. Do not redirect old subscriptions or snapshots to a
+replacement vehicle/session. See [owned recovery](RESILIENCE_DESIGN.md).
 
 Drive flow: `GetSnapshotAsync` (pre-check) → `StartAsync` + bind `Batches()` /
 `BatchAvailable` + `Availability` → `StopAsync` → `GetSnapshotAsync` (post-check).

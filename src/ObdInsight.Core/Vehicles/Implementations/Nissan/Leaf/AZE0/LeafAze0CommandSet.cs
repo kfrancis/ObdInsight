@@ -52,11 +52,13 @@ public sealed class LeafAze0CommandSet : VehicleCommandSet
     }
 
     /// <summary>
-    ///     The shared broadcast monitor. Owned by this command set's creator: stop/dispose it when
-    ///     the session ends. Also usable directly for typed streams
+    ///     The shared broadcast monitor. Disposed with this command set; lower-level callers
+    ///     may stop it independently. Also usable directly for typed streams
     ///     (<c>Monitor.Subscribe&lt;BatteryFrame_1DB_AZE0&gt;()</c> etc.).
     /// </summary>
     public CanMonitor Monitor { get; }
+
+    public override ValueTask DisposeAsync() => Monitor.DisposeAsync();
 
     private void AddBroadcastCapabilities()
     {

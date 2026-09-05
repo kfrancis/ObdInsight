@@ -6,110 +6,12 @@ using ObdInsight.Simulation;
 namespace ObdInsight.Tests.Elm327;
 
 /// <summary>
-///     Roadmap B10 (docs/RESILIENCE_DESIGN.md): reconnecting transport decorator +
-///     per-request retry policy.
+///     Expert opt-in per-request retry policy. Owned physical recovery is protected
+///     by VehicleConnectionTests, not by replaying operations on a new byte stream.
 /// </summary>
 [Timeout(30_000)]
 public class ResilienceTests
 {
-    private static readonly ReconnectOptions FastReconnect = new()
-    {
-        MaxAttempts = 3, InitialDelay = TimeSpan.FromMilliseconds(1), MaxDelay = TimeSpan.FromMilliseconds(5)
-    };
-
-    [Test]
-    public async Task Reconnect_TransportDies_IoResumesOnReplacement(CancellationToken token)
-    {
-        var transports = new List<ReplayElmTransport>();
-
-        ReplayElmTransport Factory()
-        {
-            var t = new ReplayElmTransport();
-            t.AutoRespond("ATI", "ELM327 v1.5\r\r>");
-            transports.Add(t);
-            return t;
-        }
-
-        var states = new List<ConnectionState>();
-        var resilient = new ReconnectingElmTransport(Factory, FastReconnect);
-        resilient.StateChanged += (_, e) =>
-        {
-            lock (states)
-            {
-                states.Add(e.NewState);
-            }
-        };
-
-        await resilient.OpenAsync(token);
-        await Assert.That(resilient.State).IsEqualTo(ConnectionState.Connected);
-
-        // Round-trip through transport #1.
-        var framer = new ElmFramer(resilient);
-        var reply = await framer.SendAndReadFrameAsync("ATI", TimeSpan.FromSeconds(2), token);
-        await Assert.That(reply).Contains("ELM327");
-
-        // Kill #1 — the proactive ConnectionLost event triggers reconnection.
-        transports[0].SimulateConnectionLost();
-
-        // I/O issued during/after the outage completes against transport #2.
-        var reply2 = await framer.SendAndReadFrameAsync("ATI", TimeSpan.FromSeconds(5), token);
-        await Assert.That(reply2).Contains("ELM327");
-        await Assert.That(transports.Count).IsEqualTo(2);
-        await Assert.That(transports[1].SentCommands).Contains("ATI");
-
-        // State transitions observed in order.
-        List<ConnectionState> snapshot;
-        lock (states) snapshot = [.. states];
-        await Assert.That(snapshot).Contains(ConnectionState.Reconnecting);
-        await Assert.That(snapshot.Last()).IsEqualTo(ConnectionState.Connected);
-        await Assert.That(snapshot.IndexOf(ConnectionState.Reconnecting))
-            .IsLessThan(snapshot.LastIndexOf(ConnectionState.Connected));
-
-        await resilient.DisposeAsync();
-    }
-
-    [Test]
-    public async Task Reconnect_FactoryKeepsFailing_EndsLost_IoThrows(CancellationToken token)
-    {
-        var first = new ReplayElmTransport();
-        var callCount = 0;
-
-        IElmTransport Factory()
-        {
-            callCount++;
-            if (callCount == 1)
-            {
-                return first;
-            }
-
-            throw new IOException("no adapter in range");
-        }
-
-        var resilient = new ReconnectingElmTransport(Factory, FastReconnect);
-        var sawLost = new TaskCompletionSource();
-        resilient.StateChanged += (_, e) =>
-        {
-            if (e.NewState == ConnectionState.Lost)
-            {
-                sawLost.TrySetResult();
-            }
-        };
-
-        await resilient.OpenAsync(token);
-        first.SimulateConnectionLost();
-
-        await sawLost.Task.WaitAsync(token);
-        await Assert.That(resilient.State).IsEqualTo(ConnectionState.Lost);
-        // 1 initial + 3 reconnect attempts.
-        await Assert.That(callCount).IsEqualTo(4);
-
-        var buffer = new byte[8];
-        await Assert.That(async () => await resilient.ReadAsync(buffer, token))
-            .Throws<IOException>();
-
-        await resilient.DisposeAsync();
-    }
-
     [Test]
     public async Task RetryPolicy_TransientIoException_RetriesThenSucceeds(CancellationToken token)
     {

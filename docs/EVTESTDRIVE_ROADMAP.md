@@ -191,25 +191,14 @@ Milestones: **M-A** pre-check · **M-B** live drive · **M-C** post-check/report
   every probe rule + UUID forms + chunking); 93/93. **Hardware check pending:** real
   iCar Pro connect on Android/iOS. *Unblocked:* M-B transport path.
 
-- [x] **B10 — Resilience layer.** (L) — **DONE 2026-07-19**
-  (design doc `docs/RESILIENCE_DESIGN.md`).
-  (a) `ConnectionState` (`Connecting/Connected/Reconnecting/Lost` — `Degraded` folded
-  into `Reconnecting`) + `IConnectionStateSource`, re-exposed on `ITelemetrySession`
-  (`ConnectionState` + `ConnectionStateChanged`) for UI binding. (b)
-  `ReconnectingElmTransport`: transport-factory decorator — reconnect on inner
-  `ConnectionLost` or link-level `IOException`, exponential backoff ≤ MaxAttempts,
-  I/O **blocks** during the outage so the session/monitor/capability graph never tears
-  down; monitor continuity falls out of the existing filter rotation (re-enters
-  monitoring every dwell window — no `CanMonitor` change needed; documented in the
-  design doc). Exhausted → `Lost`, I/O throws. (c) `RetryingElmSession` decorator:
-  per-query retry ≤3 on `IOException` only (OCE never retried), composing inside the
-  monitor-suspension wrapper. `ReplayElmTransport` gained `SimulateConnectionLost()`
-  failure injection (shippable — EvTestDrive's own tests can use it).
-  Tests: `ResilienceTests` (reconnect I/O resumption + state ordering, give-up →
-  Lost + throw, retry success/exhaustion/OCE) and `TelemetryResilienceTests` —
-  the acceptance scenario: transport killed mid-drive over the fully composed stack,
-  same batch subscription resumes, `Reconnecting → Connected` surfaces through the
-  telemetry session. 99/99 ×6 Debug + Release. *Unblocked:* M-B in a moving car.
+- [x] **B10 — Resilience layer.** Original July byte-decorator design superseded
+  by the pre-1.0 owned-recovery migration. `VehicleConnection` (Telemetry) rebuilds
+  framing, initializes ELM, detects the same VIN, and publishes a fresh generation.
+  Interrupted operations are not replayed; old telemetry ends and recording must
+  explicitly start a new segment. Disposal joins supervision, candidates, telemetry,
+  command sets, monitors, and transport I/O. `ReconnectingElmTransport` was removed.
+  `RetryingElmSession` remains expert opt-in, not in the consumer owner.
+  See [current design](RESILIENCE_DESIGN.md) and `VehicleConnectionTests`.
 
 - [ ] **B11 — Speed factor verification.** (S; hardware)
   One driving capture; confirm 0x284 speed factor ×0.01 vs OVMS ~/98; lock with captured

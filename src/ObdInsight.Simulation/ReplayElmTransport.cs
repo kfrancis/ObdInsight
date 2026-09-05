@@ -134,8 +134,8 @@ public sealed class ReplayElmTransport : IConnectionAwareTransport
     ///     Failure injection (roadmap B10): marks the link dead — every subsequent read
     ///     and write throws <see cref="IOException" />, blocked readers wake to observe the
     ///     failure, and <see cref="ConnectionLost" /> fires once. A
-    ///     <c>ReconnectingElmTransport</c> reacts by disposing this instance and asking
-    ///     its factory for a replacement.
+    ///     vehicle connection owner reacts by ending this generation, joining its graph,
+    ///     and asking its factory for a fresh connection to initialize.
     /// </summary>
     public void SimulateConnectionLost()
     {

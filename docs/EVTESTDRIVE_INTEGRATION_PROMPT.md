@@ -31,25 +31,15 @@ using ObdInsight.Simulation;
 using ObdInsight.Telemetry;
 using ObdInsight.Transports.Ble;
 
-// Resilient transport owns a FACTORY: a BLE drop mid-drive reconnects with backoff
-// while the whole object graph above stays alive (samples pause, then resume).
-var transport = new ReconnectingElmTransport(
-    () => new PluginBleElmTransport(CrossBluetoothLE.Current.Adapter, bleDeviceId));
-// Development flavor (no hardware): swap the factory for
-//   () => new SimulatedLeafAze0Transport(timeScale: 1)
-await transport.OpenAsync(ct);
-
-var session = new ElmSession(new ElmFramer(transport), new LeafBmsWakeupStrategy());
-await session.InitializeAndLockAsync(ct);
-
-var retrying = new RetryingElmSession(session); // per-query retry ≤3 on IOException
-
-var detection = await VehicleResolver.ResolveAsync(retrying, ct: ct);
-// detection.Status: Detected | VinUnreadable | UnsupportedVehicle | VariantUnsupported
-// Never throws — surface non-Detected statuses in the UI with detection.Vin.
-
-await using var telemetry = TelemetrySession.Create(
-    detection.Commands!, connectionState: transport);
+// The owner rebuilds the complete diagnostic graph after physical loss.
+await using var connection = new VehicleConnection(
+    () => new PluginBleElmTransport(CrossBluetoothLE.Current.Adapter, bleDeviceId),
+    [new NissanLeaf()], wakeupStrategy: new LeafBmsWakeupStrategy());
+var generation = await connection.OpenAsync(ct);
+var telemetry = generation.Telemetry;
+// On generation.Ended, close the old recording segment and wait for a newer ready
+// generation. Start its telemetry explicitly with new subscriptions.
+// See docs/RESILIENCE_DESIGN.md; do not transparently resume old operations.
 ```
 
 **Lifetime rules (important):** `ElmSession`, the command set, and `TelemetrySession`

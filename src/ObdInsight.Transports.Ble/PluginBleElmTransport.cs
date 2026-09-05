@@ -133,10 +133,13 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
 
     public async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct)
     {
+        if (buffer.Length == 0) return 0;
         while (true)
         {
+            ct.ThrowIfCancellationRequested();
             lock (_gate)
             {
+                if (!IsOpen) throw new IOException("BLE connection is closed.");
                 if (_rx.Count > 0)
                 {
                     var n = 0;
@@ -194,7 +197,9 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
             }
         }
 
-        _dataSignal.Dispose();
+        // A reader or late callback may still be waking. This managed semaphore has no
+        // allocated wait handle; leave reclamation to GC rather than racing Release/Wait.
+        _dataSignal.Release();
     }
 
     public event Action<BleProbeReport>? ProbeCompleted;
@@ -254,6 +259,7 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
 
         lock (_gate)
         {
+            if (!IsOpen || !ReferenceEquals(e.Characteristic, _notifyCharacteristic)) return;
             foreach (var b in value)
             {
                 _rx.Enqueue(b);
@@ -272,7 +278,7 @@ public sealed class PluginBleElmTransport : IConnectionAwareTransport
 
         IsOpen = false;
         _logger.LogWarning("BLE connection lost to {DeviceId}", _deviceId);
-        ConnectionLost?.Invoke(this, EventArgs.Empty);
         _dataSignal.Release(); // wake a blocked reader so it can observe the loss
+        ConnectionLost?.Invoke(this, EventArgs.Empty);
     }
 }

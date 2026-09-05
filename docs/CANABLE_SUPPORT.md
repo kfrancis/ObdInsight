@@ -85,4 +85,4 @@ for the other bus time out on cold cache as they do today. Leaf buses are all 50
 4. **Real-bus checkpoint:** frame rates and per-ID coverage on CAR-CAN and EV-CAN, FD frame
    count (expect 0 on the Leaf), cross-check 0x1DB against the BMS 2101 values from the BLE path.
 5. **Reconnect layer:** `SlcanFrameSource` ends with `TransportError` on unplug; nothing yet
-   re-opens the port the way `ReconnectingElmTransport` does for BLE.
+   re-opens the port. `VehicleConnection` currently owns ELM vehicle recovery, not raw SLCAN recovery.

@@ -33,6 +33,7 @@ public sealed class TelemetrySession : ITelemetrySession
     private TaskCompletionSource _started = NewCompletion();
     private TaskCompletionSource _completion = NewCompletion();
     private Exception? _terminalError;
+    private Exception? _forcedError;
     private bool _disposed;
     private Task? _disposeTask;
 
@@ -172,7 +173,11 @@ public sealed class TelemetrySession : ITelemetrySession
         }
         catch (OperationCanceledException) when (runCts.IsCancellationRequested)
         {
-            _started.TrySetCanceled(runCts.Token);
+            lock (_stateLock)
+            {
+                if (_forcedError is not null) _started.TrySetException(_forcedError);
+                else _started.TrySetCanceled(runCts.Token);
+            }
         }
         catch (OperationCanceledException) when (!_started.Task.IsCompleted && startupToken.IsCancellationRequested)
         {
@@ -187,6 +192,7 @@ public sealed class TelemetrySession : ITelemetrySession
         {
             lock (_stateLock)
             {
+                error ??= _forcedError;
                 _terminalError = error;
                 CompleteSubscribers(error);
                 if (error is null) _completion.TrySetResult();
@@ -295,6 +301,7 @@ public sealed class TelemetrySession : ITelemetrySession
                 }
             }
 
+            lock (_stateLock) { if (_forcedError is not null) throw _forcedError; }
             return new TelemetrySnapshot
             {
                 TimestampUtc = DateTimeOffset.UtcNow,
@@ -331,6 +338,18 @@ public sealed class TelemetrySession : ITelemetrySession
             _disposed = true;
             return new ValueTask(_disposeTask ??= Task.Run(DisposeCoreAsync));
         }
+    }
+
+    // The connection owner invalidates the whole generation, including cache-only providers.
+    internal ValueTask TerminateAsync(Exception error)
+    {
+        lock (_stateLock)
+        {
+            _forcedError ??= error;
+            _disposed = true;
+            if (_loopTask is null) CompleteSubscribers(error);
+        }
+        return DisposeAsync();
     }
 
     private async Task DisposeCoreAsync()
@@ -511,6 +530,7 @@ public sealed class TelemetrySession : ITelemetrySession
         {
             ct.ThrowIfCancellationRequested();
             var values = await provider.ReadAsync(wanted, effectiveCt).ConfigureAwait(false);
+            lock (_stateLock) { if (_forcedError is not null) throw _forcedError; }
             ct.ThrowIfCancellationRequested();
             return values;
         }

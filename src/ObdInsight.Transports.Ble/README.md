@@ -9,13 +9,14 @@ Cross-platform BLE ELM327 transport for ObdInsight on
   and generic write/notify fallbacks for clone variance; 16-bit and 128-bit UUID
   forms both match. Force a profile when you know better.
 - **Notification-fed reads** (no busy-polling) and MTU-sized write chunking.
-- **`ConnectionLost` signal** — pair with `ReconnectingElmTransport` from
-  `ObdInsight.Core` so a BLE drop in a moving car is a data gap, not a teardown.
+- **`ConnectionLost` signal** — use `VehicleConnection` from
+  `ObdInsight.Telemetry` to rebuild and initialize a fresh diagnostic generation after loss.
 
 ```csharp
-var transport = new ReconnectingElmTransport(
-    () => new PluginBleElmTransport(CrossBluetoothLE.Current.Adapter, bleDeviceId));
-await transport.OpenAsync(ct);
+await using var connection = new VehicleConnection(
+    () => new PluginBleElmTransport(CrossBluetoothLE.Current.Adapter, bleDeviceId),
+    [new NissanLeaf()]);
+var generation = await connection.OpenAsync(ct);
 ```
 
 Android needs `BLUETOOTH_SCAN`/`BLUETOOTH_CONNECT` runtime permissions; iOS needs

@@ -1,18 +1,18 @@
 namespace ObdInsight.Core.Communication.Elm327;
 
-/// <summary>Link state of a resilient transport (docs/RESILIENCE_DESIGN.md).</summary>
+/// <summary>Connection lifecycle state. VehicleConnection reports diagnostic readiness, not merely an open link.</summary>
 public enum ConnectionState
 {
     /// <summary>Initial open in progress (or not yet opened).</summary>
     Connecting,
 
-    /// <summary>Link up; I/O flows.</summary>
+    /// <summary>Connected; for VehicleConnection, ELM initialization and vehicle detection have succeeded.</summary>
     Connected,
 
-    /// <summary>Link dropped; automatic reconnection in progress. I/O blocks.</summary>
+    /// <summary>Connection dropped; the previous generation ended and a fresh graph is being established.</summary>
     Reconnecting,
 
-    /// <summary>Reconnection exhausted; I/O throws until an explicit re-open.</summary>
+    /// <summary>Connection ended, recovery exhausted, or owner disposed.</summary>
     Lost
 }
 

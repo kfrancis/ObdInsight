@@ -64,6 +64,13 @@ Never hand-edit `*.verified.cs`.
 
 ## Architecture (bottom-up)
 
+Consumer recovery now uses `VehicleConnection` in Telemetry (see
+`docs/RESILIENCE_DESIGN.md`). It owns fresh transport/framing/initialized ELM/detected
+command-set/telemetry generations. `ReconnectingElmTransport` was removed: interrupted
+I/O is never redirected to a replacement. `IVehicleCommandSet` is async-disposable;
+Leaf command-set disposal owns monitor disposal. Recording explicitly starts new
+subscriptions after a generation ends. Lower-level expert composition remains available.
+
 ```
 IElmTransport            byte I/O (BLE impls in Transports.WindowsBle/Ble, SerialElmTransport in
                          Transports.Serial; ReplayElmTransport in Simulation for tests)

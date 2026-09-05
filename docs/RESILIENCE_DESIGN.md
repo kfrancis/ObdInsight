@@ -1,100 +1,125 @@
-# Resilience Layer Design (roadmap B10)
+# Owned diagnostic recovery
 
-**Status:** Draft for review; implementation proceeding per Phase 2.
-**Date:** 2026-07-19
+This design supersedes the earlier B10 byte-reconnection design. Transparent
+`ReconnectingElmTransport` and `ReconnectOptions` were removed before 1.0:
+replacing the byte stream cannot preserve a partially executed diagnostic transaction.
 
-## 1. Problem
+## Boundary and dependency direction
 
-Bluetooth in a moving car drops. Today a dead link surfaces as timed-out reads →
-`IOException` after one recover-retry; there is no reconnect (recovery re-runs AT
-commands over the same dead transport), no connection-state signal for the UI, and
-per-request retry is fixed at recover-then-retry-once. The caller's only option is to
-rebuild the entire object graph (what the console `SessionRetryService` does — app-side
-only).
-
-## 2. Shape — three composable pieces, no rebuild
+`VehicleConnection` lives in Telemetry because it owns the consumer graph, including
+telemetry. Core does not depend on Telemetry or a platform transport. Its command-set
+contract now includes async disposal; the Leaf command set owns its monitor.
 
 ```
-ReconnectingElmTransport   IElmTransport decorator, owns a transport FACTORY:
-  states: Connecting → Connected → Reconnecting → (Connected | Lost)
-  - reacts to IConnectionAwareTransport.ConnectionLost AND to read/write failures
-  - reconnect loop: dispose dead inner, factory() → OpenAsync, backoff, ≤ MaxAttempts
-  - reads/writes during an outage BLOCK until reconnected (bounded), then resume —
-    the session/monitor objects above never get torn down
-  - implements IConnectionStateSource (event + current state) for UI binding
-
-RetryingElmSession         IElmSession decorator: per-request retry ≤ MaxAttempts with
-  delay, wrapping the session's existing recover-then-retry-once. Composes INSIDE
-  MonitorSuspendingElmSession (one suspension, N attempts).
-
-Monitor continuity        NO CanMonitor change needed: reads/writes block during an
-  outage, and the production Leaf monitor runs hardware-filter rotation — it re-enters
-  monitoring every dwell window (~600 ms) by design, which re-establishes ATMA on the
-  fresh adapter right after reconnect. If the adapter also lost protocol lock, the next
-  UDS tick's failure walks the existing L0-L3 recovery ladder (baseline re-init +
-  protocol reapply). Continuity emerges from composition — no new session machinery.
-  (A silence watchdog for non-rotating monitors was considered and deferred — nothing
-  in the shipped path needs it.)
+TestDrive → VehicleConnection (Telemetry)
+              ├─ factory → platform IElmTransport
+              └─ each ready generation
+                   ├─ private non-replacing transport guard
+                   ├─ fresh ElmFramer → initialized ElmSession
+                   ├─ VehicleResolver + explicit profiles → owned command set/monitor
+                   └─ fresh TelemetrySession
+Telemetry → Core ← platform transports
 ```
 
-### Connection-state surface
+No reflection discovery, DI container, generic plugin system, or new package is
+needed. Expert applications may still compose ElmSession, raw CAN, command sets,
+and monitors themselves. Disposing a command set does not dispose its supplied
+session/transport; the connection owner disposes the entire graph in order.
+
+## Consumer contract
 
 ```csharp
-public enum ConnectionState { Connecting, Connected, Reconnecting, Lost }
+await using var connection = new VehicleConnection(
+    () => new PluginBleElmTransport(adapter, deviceId),
+    [new NissanLeaf()],
+    wakeupStrategy: new LeafBmsWakeupStrategy());
 
-public interface IConnectionStateSource
-{
-    ConnectionState State { get; }
-    event EventHandler<ConnectionStateChangedEventArgs>? StateChanged;
-}
+var generation = await connection.OpenAsync(ct);
+var pre = await generation.Telemetry.GetSnapshotAsync(ct);
+await generation.Telemetry.StartAsync(ct);
+// Record batches concurrently with the drive controller.
+// Tag persisted batches with generation.Number.
 ```
 
-`TelemetrySession` accepts an optional `IConnectionStateSource` and re-exposes it
-(`ConnectionState` + event) so the app binds one object. `Degraded` from the roadmap
-sketch is folded into `Reconnecting` (distinct UI treatment wasn't justified; can be
-added later without breaking).
-
-### Wiring (consumer)
+A generation is borrowed, not independently owned. Its telemetry/capabilities must
+not be retained across `Ended`. The owner does not automatically start recording:
+after loss, finish/drain the old reader, preserve its error and buffered evidence,
+then explicitly acquire a newer ready generation:
 
 ```csharp
-var transport = new ReconnectingElmTransport(
-    () => new PluginBleElmTransport(adapter, deviceId), options);
-var session = new ElmSession(new ElmFramer(transport), new LeafBmsWakeupStrategy());
-var retrying = new RetryingElmSession(session, retryOptions);
-var detection = await VehicleResolver.ResolveAsync(retrying, ct);
-var telemetry = TelemetrySession.Create(detection.Commands!, connectionState: transport);
+Exception? loss = await generation.Ended.WaitAsync(ct);
+var next = await connection.WaitForReadyAsync(generation.Number, ct);
+await next.Telemetry.StartAsync(ct);
+// Create a NEW stream and record a NEW segment tagged with next.Number.
 ```
 
-## 3. Semantics
+`Ended` signals invalidation (error on loss; null on owner shutdown), not completion
+of teardown. A replacement is not published until teardown has joined the old graph
+and a new graph has initialized and identified the same VIN. The first VIN pins the
+owner to that vehicle; a different VIN is fatal, requiring an explicit new owner.
 
-- **Reconnect triggers:** `ConnectionLost` event (proactive, BLE stack told us) or an
-  exception from inner read/write/open (reactive). First trigger wins; concurrent
-  callers wait on the same reconnect attempt.
-- **Backoff:** `InitialDelay × 2^attempt`, capped (defaults 500 ms → 8 s, 6 attempts).
-  Exhausted → state `Lost`; pending and subsequent I/O throws `IOException`; a later
-  explicit `OpenAsync` may start over.
-- **State event ordering guarantee:** events fire in transition order from a single
-  supervisor loop; no concurrent duplicate transitions.
-- **Retry policy:** retries only `QueryAsync` (both overloads) on `IOException`;
-  cancellation and other exceptions propagate untouched. Defaults: 3 attempts, 250 ms
-  between.
-- **Watchdog:** `SilenceRestartTimeout` default null (off) — opt-in, because scripted
-  replay tests legitimately go silent. The MAUI wiring recommendation is ~5 s.
+`OpenAsync` is single-flight and starts one supervisor. Its token cancels only the
+caller's wait; dispose the owner to cancel opening/recovery. `WaitForReadyAsync`
+does not start supervision. It throws on a disposed/exhausted owner. `Completion`
+faults on exhausted/fatal recovery or teardown failure and completes normally on
+intentional shutdown. Disposing joins it without rethrowing its recorded fault.
+An exhausted owner is not reusable; create another owner explicitly.
 
-## 4. Test plan (replay, no hardware)
+State events are ordered by the single supervisor. `Connected` means ELM initialized
+and vehicle detected, not just GATT connected. `Reconnecting` means the previous
+generation has ended; its I/O is never redirected. `Lost` is terminal, including
+disposal. Handlers are synchronous, individually exception-isolated, and must not
+block on owner disposal/completion; marshal UI notifications in the application.
 
-- `ReplayElmTransport` gains failure injection: `SimulateConnectionLost()` (raises the
-  event + makes I/O throw until "repaired") — shipped in Simulation, useful to
-  EvTestDrive's own tests.
-- Reconnect: scripted transport #1 dies mid-session → factory returns scripted
-  transport #2 → decorator reconnects, state events observed in order
-  (Connected → Reconnecting → Connected); a query issued during the outage completes
-  after reconnect.
-- Give-up: factory keeps failing → Lost after MaxAttempts; I/O throws IOException.
-- Retry policy: unit — first N-1 attempts throw IOException, Nth succeeds; OCE never
-  retried; attempts capped.
-- Watchdog: monitor running on a transport that goes silent → restart observed
-  (re-entered monitoring), frames resume after the transport "recovers".
-- Telemetry continuity: TelemetrySession over the composed stack; kill + repair the
-  transport mid-stream; batches pause and resume without resubscribing;
-  `ConnectionState` transitions surface through the session.
+## Recovery and ownership invariants
+
+- Every factory result is fresh and exclusively transferred to the owner. Do not
+  reuse a transport instance or share it with another consumer.
+- Physical ConnectionLost, I/O failure (including flush), or nonempty read returning
+  EOF ends that physical generation. No read/write/flush is retried on a replacement.
+- Invalidation stops admission and cancels pending physical operations. A result
+  arriving after invalidation is rejected. The guard joins outstanding operations
+  before disposing the transport; no abandoned task can reuse a returned read buffer.
+- Teardown invalidates transport I/O, terminates/disposes telemetry (including active
+  snapshots), disposes the command set/monitor, then disposes the transport.
+  Leaf monitor disposal joins keep-alive work and removes cached frames.
+- Telemetry is terminated even when a vehicle capability catches an I/O error and
+  returns missing data. The owner observes physical loss independently.
+- Every candidate is disposed on failed open, initialization, detection, cancellation,
+  or VIN mismatch. Late open success cannot be adopted after shutdown.
+- Recovery uses a fixed configurable delay and an initialization deadline. Defaults:
+  six retries after the initial attempt, 500 ms delay, 60 s initialization deadline.
+  A successful ready generation resets the retry budget.
+- Fresh framing/context/monitor caches are constructed every time. A stale callback
+  is tied only to its old guard; it cannot adopt or invalidate a replacement.
+
+Cancellation remains cooperative. A transport/profile ignoring cancellation can delay
+shutdown; the owner joins it rather than pretending it is gone. Expert users must
+not concurrently operate a borrowed command set during owner teardown. Use the
+generation's telemetry facade for the supported snapshot/recording workflow.
+
+## Deliberate limits
+
+This is not gap-free recording: buffered batches still belong to the old generation.
+Publication timestamps are not acquisition timestamps; freshness/quality within a
+generation remains a separate measurement-contract concern.
+
+A quiet link is not evidence of disconnection. A framer timeout without physical loss
+does not trigger replacement; partial-timeout resynchronization and operation-specific
+retry safety are not redesigned here. Existing `RetryingElmSession` remains an
+expert opt-in API, not part of VehicleConnection. Core's existing adapter-response
+recovery also remains; it must not be interpreted as permission to replay arbitrary
+state-changing diagnostic commands.
+
+Failed detection currently surfaces as an IOException with its detection status in the
+message (available as the inner failure of a failed open); the owner publishes only
+fully detected supported generations. Specialist unsupported-vehicle diagnostics
+can still use the lower-level resolver directly.
+
+## Validation
+
+Deterministic owner tests cover fresh-generation recovery, pending streams, failed
+open/init disposal, late success during shutdown, single-flight open, canceled waits,
+backoff shutdown, uncertain-write non-replay, EOF, stale callbacks, and VIN mismatch.
+BLE proxy tests verify pending readers terminate on loss/disposal. These are not
+physical Android/iOS disconnect or suspend/resume tests.

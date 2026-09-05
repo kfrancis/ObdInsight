@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using ObdInsight.Transports.Ble;
 using Plugin.BLE.Abstractions.Contracts;
+using Plugin.BLE.Abstractions.EventArgs;
 
 namespace ObdInsight.Tests.Transports;
 
@@ -245,8 +246,16 @@ public sealed class BleProbeReportTests
     private static PluginBleElmTransport CreateTransport(
         IReadOnlyList<IService> services,
         Exception? connectionFailure = null,
-        Exception? serviceDiscoveryFailure = null)
+        Exception? serviceDiscoveryFailure = null,
+        Action<Action>? captureLoss = null)
     {
+        EventHandler<DeviceErrorEventArgs>? lost = null;
+        object? Register(object? handler, bool add)
+        {
+            if (add) lost += (EventHandler<DeviceErrorEventArgs>)handler!;
+            else lost -= (EventHandler<DeviceErrorEventArgs>)handler!;
+            return null;
+        }
         var device = CreateProxy<IDevice>((method, _) =>
             method.Name switch
             {
@@ -258,18 +267,43 @@ public sealed class BleProbeReportTests
                 _ => throw Unexpected(method)
             });
 
-        var adapter = CreateProxy<IAdapter>((method, _) =>
+        var adapter = CreateProxy<IAdapter>((method, args) =>
             method.Name switch
             {
                 "ConnectToKnownDeviceAsync" when connectionFailure is not null =>
                     Task.FromException<IDevice>(connectionFailure),
                 "ConnectToKnownDeviceAsync" => Task.FromResult(device),
-                "add_DeviceDisconnected" or "remove_DeviceDisconnected" or
-                    "add_DeviceConnectionLost" or "remove_DeviceConnectionLost" => null,
+                "add_DeviceConnectionLost" => Register(args![0], true),
+                "remove_DeviceConnectionLost" => Register(args![0], false),
+                "add_DeviceDisconnected" or "remove_DeviceDisconnected" => null,
                 _ => throw Unexpected(method)
             });
 
+        captureLoss?.Invoke(() => lost?.Invoke(adapter, new DeviceErrorEventArgs { Device = device }));
         return new PluginBleElmTransport(adapter, DeviceId);
+    }
+
+    [Test]
+    public async Task PendingRead_ObservesDisconnectWithoutCallerCancellation(CancellationToken ct)
+    {
+        Action lose = null!;
+        var characteristic = CreateCharacteristic(Ffe1, true, true);
+        await using var transport = CreateTransport([CreateService(Ffe0, [characteristic])], captureLoss: action => lose = action);
+        await transport.OpenAsync(ct);
+        var read = transport.ReadAsync(new byte[8], ct).AsTask();
+        lose();
+        await Assert.That(async () => await read).Throws<IOException>();
+    }
+
+    [Test]
+    public async Task PendingRead_ObservesDisposalWithoutDisposedSemaphoreRace(CancellationToken ct)
+    {
+        var characteristic = CreateCharacteristic(Ffe1, true, true);
+        var transport = CreateTransport([CreateService(Ffe0, [characteristic])]);
+        await transport.OpenAsync(ct);
+        var read = transport.ReadAsync(new byte[8], ct).AsTask();
+        await transport.DisposeAsync();
+        await Assert.That(async () => await read).Throws<IOException>();
     }
 
     private static IService CreateService(

@@ -14,8 +14,9 @@ Core OBD-II / CAN communication for EVs over ELM327-family adapters:
   Battery `StateOfHealthPercent` is not a proxy for Nissan Hx; Leaf currently leaves it null.
 - **`VehicleResolver`** — VIN-driven vehicle/variant detection and command-set
   construction (Nissan Leaf AZE0 fully wired; profiles are pluggable).
-- **Resilience** — `ReconnectingElmTransport` (transport-factory reconnect with
-  backoff and connection-state events) and `RetryingElmSession` (per-query retry).
+- **Expert retry policy** — `RetryingElmSession` is opt-in per-query retry.
+  Consumer reconnection is owned by `VehicleConnection` in Telemetry: fresh framing,
+  initialization, detection and capabilities, never transparent byte replay.
 
 Bring a transport: `ObdInsight.Transports.Ble` (Android/iOS), your own
 `IElmTransport`, or `ObdInsight.Simulation` for hardware-free development. Most apps
