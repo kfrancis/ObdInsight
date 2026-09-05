@@ -42,6 +42,16 @@ await foreach (var sample in telemetry.Stream(Signals.StateOfCharge, ct))
 
 Develop without hardware using `ObdInsight.Simulation`.
 
+Each run exposes `Completion`. I/O and unexpected producer failures fault this task
+and all batch/typed streams; expected query timeouts remain missing samples. Stop
+joins the producer, and canceling a stop only cancels the wait. Await stop again before
+restarting and create new subscriptions. Disposal joins active work but does not
+dispose supplied capabilities or the connection graph. Event handlers run synchronously;
+their exceptions are isolated and logged.
+
+See [terminal outcomes](https://github.com/kfrancis/ObdInsight/blob/main/docs/ASYNC_OUTCOMES.md)
+for startup cancellation, failure, restart, and ownership contracts.
+
 Docs: [MAUI integration](https://github.com/kfrancis/ObdInsight/blob/main/docs/MAUI_INTEGRATION.md) ·
 [design](https://github.com/kfrancis/ObdInsight/blob/main/docs/TELEMETRY_SESSION_DESIGN.md) ·
 [repository](https://github.com/kfrancis/ObdInsight)

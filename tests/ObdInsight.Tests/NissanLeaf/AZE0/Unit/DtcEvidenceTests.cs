@@ -120,16 +120,22 @@ public class DtcEvidenceTests
     }
 
     [Test]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task InternalDeadline_IsNotCallerCancellation(bool cancellationException)
+    public async Task InternalDeadline_IsNotCallerCancellation()
     {
-        var session = new QuerySession((_, _) => throw (cancellationException
-            ? new OperationCanceledException() : new TimeoutException()));
+        var session = new QuerySession((_, _) => throw new TimeoutException());
         var result = await new ObdDtcReader(session, ObdDtcReader.FunctionalContext).GetDtcsAsync();
         await Assert.That(result.Stored.Status).IsEqualTo(DtcReadStatus.Timeout);
         await Assert.That(result.Pending.Status).IsEqualTo(DtcReadStatus.Timeout);
         await Assert.That(session.Calls).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task UnexpectedCancellation_IsNotReclassifiedAsTimeout()
+    {
+        var session = new QuerySession((_, _) => throw new OperationCanceledException());
+        var reader = new ObdDtcReader(session, ObdDtcReader.FunctionalContext);
+        await Assert.That(async () => await reader.GetDtcsAsync()).Throws<OperationCanceledException>();
+        await Assert.That(session.Calls).IsEqualTo(1);
     }
 
     [Test]

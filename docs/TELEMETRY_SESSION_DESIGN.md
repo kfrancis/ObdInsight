@@ -133,7 +133,8 @@ until B13/B14/B5).
 - Ticks are sequential (session is single-writer). If a tick overruns its period, the
   next occurrence is scheduled from *completion* time — no backlog, no burst.
 - A tier's batch always contains one sample per subscribed signal of that tier; unknown
-  values are null-valued samples (UI binds "—"), never omissions, never exceptions.
+  values are null-valued samples (UI binds "—"), never omissions. Unexpected provider
+  errors terminate the run; see [terminal outcomes and lifecycle](ASYNC_OUTCOMES.md).
 - Cache-only provider reads are bounded by `CacheReadTimeout` via a linked CTS: an
   internal timeout maps to null values; caller cancellation rethrows OCE.
 - UDS providers ride the existing `MonitorSuspendingElmSession` arbitration — the monitor
@@ -143,7 +144,7 @@ until B13/B14/B5).
 
 Probed once during `StartAsync` (each provider read once; UDS = one real query). Non-null
 → `Available`; null from a cache-only provider → `Unknown` (may warm up while driving —
-scheduler keeps reading, flips to `Available` on first data); null/throw from a UDS
+scheduler keeps reading, flips to `Available` on first data); null/query timeout from a UDS
 provider → `Unavailable`. Signals with no provider (Odometer, ChargeCycleCount today) →
 `Unavailable`. The dictionary updates live; the app binds it for graceful degradation.
 
@@ -165,7 +166,8 @@ reflection (iOS AOT hostile).
 2. **Snapshot:** pre-check shape — all BMS fields + VIN populated, decimal units correct
    (361.78 V, 41.92 %, cells in V).
 3. **Degradation:** no 0x5A9 in replay → range sample null, availability not `Available`,
-   no throw; BMS-throw path mapped to null (until B7 lands the no-throw contract).
+   no throw; expected query timeout maps to null, while I/O/programming failures fault
+   run completion and streams.
 4. **Validation:** injected implausible value → null sample.
 
 ## 5. Consequences

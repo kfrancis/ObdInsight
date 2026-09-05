@@ -18,8 +18,6 @@ namespace ObdInsight.Core.Communication.Elm327
     /// </remarks>
     public sealed class ElmFramer
     {
-        private const byte Prompt = (byte)'>';
-
         // Bytes read from the transport beyond a frame delimiter, preserved for the next read.
         // Single transport read can span a delimiter (e.g. one BLE notification carrying two
         // monitoring lines); without this carry-over the trailing bytes would be lost.
@@ -34,7 +32,7 @@ namespace ObdInsight.Core.Communication.Elm327
         /// <param name="logger">Optional logger; defaults to a no-op logger.</param>
         public ElmFramer(IElmTransport transport, ILogger<ElmFramer>? logger = null)
         {
-            _transport = transport;
+            _transport = transport ?? throw new ArgumentNullException(nameof(transport));
             _logger = logger ?? NullLogger<ElmFramer>.Instance;
         }
 
@@ -44,106 +42,34 @@ namespace ObdInsight.Core.Communication.Elm327
         public bool EnableDebugLogging { get; set; }
 
         /// <summary>
-        ///     Gets or sets the duration of inactivity to wait before considering data as idle.
+        ///     Sends a command and returns only a prompt-terminated response.
+        ///     The deadline covers write, flush, and read. Partial data is never returned.
         /// </summary>
-        /// <remarks>
-        ///     The default value is 1500 milliseconds. Adjust this property to optimize
-        ///     responsiveness or resource usage based on application requirements.
-        /// </remarks>
-        public TimeSpan DataIdleTimeout { get; set; } = TimeSpan.FromMilliseconds(1500);
-
+        /// <exception cref="TimeoutException">The deadline expired before the prompt.</exception>
+        /// <exception cref="EndOfStreamException">The transport ended before the prompt.</exception>
+        /// <exception cref="OperationCanceledException">The caller canceled the operation.</exception>
         public async ValueTask<string> SendAndReadFrameAsync(
-            string command,
-            TimeSpan timeout,
-            CancellationToken ct)
+            string command, TimeSpan timeout, CancellationToken ct)
         {
-            Log($">>> FRAME SEND: '{command}' (timeout: {timeout.TotalSeconds:F1}s)");
-
-            // ELM expects CR-terminated commands.
-            var bytes = Encoding.ASCII.GetBytes(command + "\r");
-            await _transport.WriteAsync(bytes, ct);
-            await _transport.FlushAsync(ct);
-
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(timeout);
-            var sb = new StringBuilder(256);
-            var buf = ArrayPool<byte>.Shared.Rent(256);
-            var startTime = DateTime.UtcNow;
-            var lastDataTime = DateTime.UtcNow;
-            var hasReceivedData = false;
-
+            ArgumentNullException.ThrowIfNull(command);
+            ct.ThrowIfCancellationRequested();
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(timeout);
             try
             {
-                while (true)
-                {
-                    // Check for data-idle timeout: if we have data and haven't received anything for a while,
-                    // treat it as end of response (handles missing > prompt after multi-frame responses)
-                    if (hasReceivedData && sb.Length > 0)
-                    {
-                        var idleTime = DateTime.UtcNow - lastDataTime;
-                        if (idleTime > DataIdleTimeout)
-                        {
-                            var response = sb.ToString();
-                            var elapsed = DateTime.UtcNow - startTime;
-                            var escaped = response.Replace("\r", "\\r").Replace("\n", "\\n");
-                            Log(
-                                $"<<< FRAME RECV (idle): {elapsed.TotalMilliseconds:F0}ms, {response.Length} bytes: '{escaped}'");
-                            return response;
-                        }
-                    }
-
-                    var n = await ReadChunkAsync(buf, cts.Token);
-                    if (n <= 0)
-                    {
-                        continue;
-                    }
-
-                    hasReceivedData = true;
-                    lastDataTime = DateTime.UtcNow;
-
-                    for (var i = 0; i < n; i++)
-                    {
-                        var b = buf[i];
-                        if (b == 0x00)
-                        {
-                            continue; // defensive: drop rare NULLs
-                        }
-
-                        if (b == Prompt)
-                        {
-                            StashRemainder(buf, i + 1, n);
-                            var response = sb.ToString();
-                            var elapsed = DateTime.UtcNow - startTime;
-                            var escaped = response.Replace("\r", "\\r").Replace("\n", "\\n");
-                            Log(
-                                $"<<< FRAME RECV: {elapsed.TotalMilliseconds:F0}ms, {response.Length} bytes: '{escaped}'");
-                            return response;
-                        }
-
-                        sb.Append((char)b);
-                    }
-                }
+                Log($">>> FRAME SEND: '{command}'");
+                await WriteAsync(command + "\r", deadline.Token).ConfigureAwait(false);
+                var response = await ReadUntilAsync(">", Timeout.InfiniteTimeSpan, deadline.Token).ConfigureAwait(false);
+                Log($"<<< FRAME RECV: {response.Length} bytes");
+                return response;
             }
-            catch (OperationCanceledException) when (cts.IsCancellationRequested && !ct.IsCancellationRequested)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                // On timeout, if we have partial data, return it instead of throwing
-                if (sb.Length > 0)
-                {
-                    var response = sb.ToString();
-                    var elapsed = DateTime.UtcNow - startTime;
-                    var escaped = response.Replace("\r", "\\r").Replace("\n", "\\n");
-                    Log(
-                        $"<<< FRAME RECV (timeout with data): {elapsed.TotalMilliseconds:F0}ms, {response.Length} bytes: '{escaped}'");
-                    return response;
-                }
-
-                Log(
-                    $"<<< FRAME TIMEOUT: {(DateTime.UtcNow - startTime).TotalMilliseconds:F0}ms for '{command}'. No data received.");
-                throw;
+                throw new OperationCanceledException(ct);
             }
-            finally
+            catch (OperationCanceledException ex) when (deadline.IsCancellationRequested)
             {
-                ArrayPool<byte>.Shared.Return(buf);
+                throw new TimeoutException($"Timeout waiting for response to '{command}'.", ex);
             }
         }
 
@@ -153,9 +79,12 @@ namespace ObdInsight.Core.Communication.Elm327
         /// </summary>
         public async ValueTask WriteAsync(string text, CancellationToken ct)
         {
+            ct.ThrowIfCancellationRequested();
             var bytes = Encoding.ASCII.GetBytes(text);
-            await _transport.WriteAsync(bytes, ct);
-            await _transport.FlushAsync(ct);
+            await _transport.WriteAsync(bytes, ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            await _transport.FlushAsync(ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
         }
 
         /// <summary>
@@ -164,6 +93,7 @@ namespace ObdInsight.Core.Communication.Elm327
         /// </summary>
         public async ValueTask<string> ReadUntilAsync(string delimiter, TimeSpan timeout, CancellationToken ct)
         {
+            ArgumentException.ThrowIfNullOrEmpty(delimiter);
             // Check for already-cancelled token before starting
             ct.ThrowIfCancellationRequested();
 
@@ -179,13 +109,14 @@ namespace ObdInsight.Core.Communication.Elm327
                 {
                     ct.ThrowIfCancellationRequested();
 
-                    var n = await ReadChunkAsync(buf, cts.Token);
+                    var n = await ReadChunkAsync(buf, cts.Token).ConfigureAwait(false);
 
-                    // If we got 0 bytes and cancellation is pending, exit
+                    cts.Token.ThrowIfCancellationRequested();
+                    // A nonempty read returning zero is EOF, never a quiet polling result.
                     if (n <= 0)
                     {
                         ct.ThrowIfCancellationRequested();
-                        continue;
+                        throw new EndOfStreamException("Transport ended before the frame delimiter.");
                     }
 
                     for (var i = 0; i < n; i++)
@@ -204,11 +135,17 @@ namespace ObdInsight.Core.Communication.Elm327
                             continue;
                         }
 
-                        var end = sb.ToString()[^delimiter.Length..];
-                        if (end == delimiter)
+                        var matches = true;
+                        for (var d = 0; d < delimiter.Length; d++)
+                        {
+                            if (sb[sb.Length - delimiter.Length + d] == delimiter[d]) continue;
+                            matches = false;
+                            break;
+                        }
+                        if (matches)
                         {
                             StashRemainder(buf, i + 1, n);
-                            return sb.ToString()[..^delimiter.Length];
+                            return sb.ToString(0, sb.Length - delimiter.Length);
                         }
                     }
                 }
@@ -217,7 +154,11 @@ namespace ObdInsight.Core.Communication.Elm327
 
                 throw new TimeoutException($"Timeout reading until '{delimiter}'");
             }
-            catch (OperationCanceledException) when (cts.IsCancellationRequested && !ct.IsCancellationRequested)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(ct);
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
             {
                 throw new TimeoutException($"Timeout reading until '{delimiter}'");
             }
@@ -253,7 +194,7 @@ namespace ObdInsight.Core.Communication.Elm327
                 return n;
             }
 
-            return await _transport.ReadAsync(buf.AsMemory(0, buf.Length), ct);
+            return await _transport.ReadAsync(buf.AsMemory(0, buf.Length), ct).ConfigureAwait(false);
         }
 
         /// <summary>

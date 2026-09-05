@@ -22,6 +22,11 @@ public interface ITelemetryProvider
     ///     Reads the requested subset of <see cref="Signals" />. Data absence yields
     ///     <see cref="TelemetryValue.Empty" /> entries — implementations must not throw for
     ///     missing data; cancellation propagates as <see cref="OperationCanceledException" />.
+    ///     Query TimeoutException is treated as missing data. IOException and unexpected
+    ///     exceptions terminate a telemetry run (and propagate from snapshots). An
+    ///     OperationCanceledException without cancellation of the supplied token is a
+    ///     provider failure, not a timeout. Providers must cooperate with cancellation;
+    ///     stop/disposal joins outstanding reads rather than abandoning hardware work.
     /// </summary>
     ValueTask<IReadOnlyDictionary<TelemetrySignal, TelemetryValue>> ReadAsync(
         IReadOnlySet<TelemetrySignal> requested, CancellationToken ct);

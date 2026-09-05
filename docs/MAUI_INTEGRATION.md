@@ -3,6 +3,12 @@
 **Date:** 2026-07-19 (roadmap B12/B15). How to consume ObdInsight from a .NET MAUI app
 (Android + iOS), including the lifetime rules that matter.
 
+**Current lifecycle contract:** see [terminal asynchronous outcomes](ASYNC_OUTCOMES.md).
+Each telemetry run has `Completion`; unexpected producer failures fault it and its
+streams. Canceling a stop does not abandon the producer. Await stop before restart
+and use new subscriptions. Transparent byte-level reconnect is not yet an owned,
+reinitialized diagnostic session; do not assume uninterrupted recording after BLE loss.
+
 ## Packages to reference
 
 NuGet packages (see `docs/RELEASING.md`; project references work identically):

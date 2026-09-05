@@ -51,11 +51,6 @@ public sealed class ObdDtcReader : IDiagnosticTroubleCodes
             ct.ThrowIfCancellationRequested();
             return Parse(lines, mode, responseSid);
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            // Current ELM framing uses cancellation for its internal deadline.
-            return DtcModeResult.Failed(DtcReadStatus.Timeout);
-        }
         catch (TimeoutException)
         {
             ct.ThrowIfCancellationRequested();

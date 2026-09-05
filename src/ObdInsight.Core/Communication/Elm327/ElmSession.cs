@@ -601,7 +601,7 @@ namespace ObdInsight.Core.Communication.Elm327
                     Log($"Keep-alive '{context.KeepAliveCommand}' sent (ok={ok})");
                     return ok;
                 }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                catch (TimeoutException) when (!ct.IsCancellationRequested)
                 {
                     // No response — expected for suppress-positive-response keep-alives.
                     Log($"Keep-alive '{context.KeepAliveCommand}' sent (no response, as expected)");

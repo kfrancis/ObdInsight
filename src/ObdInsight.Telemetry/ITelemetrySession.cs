@@ -10,6 +10,14 @@ namespace ObdInsight.Telemetry;
 public interface ITelemetrySession : IAsyncDisposable
 {
     /// <summary>
+    /// Completion of the current/most recent run (already complete before the first start).
+    /// Capture after StartAsync. Intentional stop completes normally; producer failure faults
+    /// this task and all run streams, including unexpected cancellation from a provider.
+    /// A subsequent start creates a new completion task and requires new subscriptions.
+    /// </summary>
+    Task Completion { get; }
+
+    /// <summary>
     ///     Live per-signal availability for the subscribed set. Updated as data appears
     ///     (broadcast signals may flip Unknown → Available once the vehicle is driving).
     /// </summary>
@@ -22,25 +30,33 @@ public interface ITelemetrySession : IAsyncDisposable
     ConnectionState? ConnectionState { get; }
 
     /// <summary>
-    ///     Probes signal availability and starts the cadence scheduler. Idempotent.
+    ///     Probes signal availability and starts the cadence scheduler. Concurrent calls
+    ///     share startup. The initiating token cancels probing, not the running scheduler;
+    ///     other callers cancel only their wait. Restart while stopping is rejected.
     /// </summary>
     ValueTask StartAsync(CancellationToken ct = default);
 
-    /// <summary>Stops the scheduler. Safe to restart.</summary>
+    /// <summary>
+    /// Requests stop and joins the producer. Cancellation cancels only this wait;
+    /// await a subsequent StopAsync before restarting. Producer errors are reported by
+    /// Completion and streams, not rethrown by StopAsync or DisposeAsync.
+    /// </summary>
     ValueTask StopAsync(CancellationToken ct = default);
 
     /// <summary>
     ///     Streams sample batches. Each caller gets an independent bounded buffer; slow
     ///     consumers drop oldest batches. Registration happens when this is called, not on first
     ///     enumeration, so batches produced before the consumer starts iterating are buffered
-    ///     rather than lost.
+    ///     rather than lost. Buffered batches drain before termination or failure.
+    ///     Subscribing after termination observes that terminal outcome; start a new run first
+    ///     to subscribe to it. Streams registered before the first start belong to that run.
     /// </summary>
     IAsyncEnumerable<TelemetrySampleBatch> Batches(CancellationToken ct = default);
 
     /// <summary>
     ///     Streams one signal as its own type: <c>Stream(Signals.StateOfCharge)</c> yields
     ///     <c>TelemetrySample&lt;decimal&gt;</c>, <c>Stream(Signals.CellVoltages)</c> yields
-    ///     <c>TelemetrySample&lt;IReadOnlyList&lt;decimal&gt;&gt;</c> — no enum switch and no
+    ///     <c>TelemetrySample&lt;IReadOnlyList&lt;decimal?&gt;&gt;</c> — no enum switch and no
     ///     unpacking of <see cref="TelemetryValue" /> at the call site.
     /// </summary>
     /// <remarks>
@@ -53,7 +69,11 @@ public interface ITelemetrySession : IAsyncDisposable
     /// <param name="ct">Stops the stream.</param>
     IAsyncEnumerable<TelemetrySample<T>> Stream<T>(TelemetrySignal<T> signal, CancellationToken ct = default);
 
-    /// <summary>Raised for every produced batch (UI-binding convenience).</summary>
+    /// <summary>
+    /// Raised synchronously on the producer (no UI dispatch). Exceptions from individual
+    /// handlers are logged and isolated. Handlers must be short and must not synchronously
+    /// wait for StopAsync or DisposeAsync. Use streams for asynchronous processing.
+    /// </summary>
     event EventHandler<TelemetrySampleBatch>? BatchAvailable;
 
     /// <summary>
@@ -64,7 +84,8 @@ public interface ITelemetrySession : IAsyncDisposable
 
     /// <summary>
     ///     Re-exposed link-state transitions for UI binding (B10). Never fires
-    ///     when no state source was wired.
+    ///     when no state source was wired. Handler exceptions are isolated and logged;
+    ///     callbacks run synchronously without UI dispatch, as with BatchAvailable.
     /// </summary>
     event EventHandler<ConnectionStateChangedEventArgs>? ConnectionStateChanged;
 }

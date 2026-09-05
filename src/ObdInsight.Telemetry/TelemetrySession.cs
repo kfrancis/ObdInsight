@@ -29,6 +29,20 @@ public sealed class TelemetrySession : ITelemetrySession
 
     private CancellationTokenSource? _loopCts;
     private Task? _loopTask;
+    private Task? _cancellationTask;
+    private TaskCompletionSource _started = NewCompletion();
+    private TaskCompletionSource _completion = NewCompletion();
+    private Exception? _terminalError;
+    private bool _disposed;
+    private Task? _disposeTask;
+
+    private static TaskCompletionSource NewCompletion() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public Task Completion
+    {
+        get { lock (_stateLock) { return _loopTask is null ? Task.CompletedTask : _completion.Task; } }
+    }
 
     public TelemetrySession(
         IReadOnlyList<ITelemetryProvider> providers,
@@ -79,69 +93,114 @@ public sealed class TelemetrySession : ITelemetrySession
 
     public async ValueTask StartAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+        Task started;
         lock (_stateLock)
         {
-            if (_loopTask is not null)
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_loopTask is null || _completion.Task.IsCompleted)
             {
-                return;
+                if (_cancellationTask is { IsCompleted: false })
+                    throw new InvalidOperationException("Cancellation callbacks are still running. Await StopAsync before restarting.");
+                _loopCts?.Dispose();
+                _cancellationTask = null;
+                _loopCts = new CancellationTokenSource();
+                _started = NewCompletion();
+                _completion = NewCompletion();
+                _terminalError = null;
+                // Reserve ownership before any provider code executes. The initiating
+                // caller token applies to the probe only, never to the running scheduler.
+                var runCts = _loopCts;
+                _loopTask = Task.Run(() => RunAsync(runCts, ct), CancellationToken.None);
             }
-        }
-
-        // Availability probe: read every subscribed provider once. Cache-only providers
-        // are time-bounded; a UDS provider costs one real query.
-        var subscribed = _subscription.Map.Keys.ToHashSet();
-        foreach (var provider in _providers)
-        {
-            var wanted = provider.Signals.Where(subscribed.Contains).ToHashSet();
-            if (wanted.Count == 0)
+            else if (_loopCts!.IsCancellationRequested)
             {
-                continue;
+                throw new InvalidOperationException("The previous telemetry run is still stopping. Await StopAsync before restarting.");
             }
 
-            var values = await ReadProviderAsync(provider, wanted, ct);
-            UpdateAvailability(values, true, provider.IsCacheOnly);
+            started = _started.Task;
         }
 
-        var cts = new CancellationTokenSource();
-        lock (_stateLock)
-        {
-            _loopCts = cts;
-            _loopTask = Task.Run(() => RunLoopAsync(cts.Token), CancellationToken.None);
-        }
+        await started.WaitAsync(ct).ConfigureAwait(false);
     }
 
     public async ValueTask StopAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         Task? loop;
+        Task cancellation;
         lock (_stateLock)
         {
-            _loopCts?.Cancel();
             loop = _loopTask;
-            _loopCts = null;
-            _loopTask = null;
+            cancellation = _cancellationTask ??= _loopCts?.CancelAsync() ?? Task.CompletedTask;
+            if (loop is null)
+            {
+                CompleteSubscribers(null);
+            }
         }
 
-        if (loop is not null)
+        // Cancellation of this wait does not release ownership of the producer.
+        // A later stop/dispose still joins both producer and cancellation callbacks.
+        await Task.WhenAll(loop ?? Task.CompletedTask, cancellation).WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    private async Task RunAsync(CancellationTokenSource runCts, CancellationToken startupToken)
+    {
+        Exception? error = null;
+        try
         {
-            try
+            using (var probeCts = CancellationTokenSource.CreateLinkedTokenSource(runCts.Token, startupToken))
             {
-                await loop.WaitAsync(ct);
+                await _busGate.WaitAsync(probeCts.Token).ConfigureAwait(false);
+                try
+                {
+                    var subscribed = _subscription.Map.Keys.ToHashSet();
+                    foreach (var provider in _providers)
+                    {
+                        var wanted = provider.Signals.Where(subscribed.Contains).ToHashSet();
+                        if (wanted.Count == 0) continue;
+                        var values = await ReadProviderAsync(provider, wanted, probeCts.Token).ConfigureAwait(false);
+                        UpdateAvailability(values, true, provider.IsCacheOnly);
+                    }
+                    probeCts.Token.ThrowIfCancellationRequested();
+                }
+                finally { _busGate.Release(); }
             }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            {
-                // Loop cancellation surfacing through the await — expected on stop.
-            }
-        }
 
-        lock (_stateLock)
+            _started.TrySetResult();
+            await RunLoopAsync(runCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (runCts.IsCancellationRequested)
         {
-            foreach (var channel in _subscribers)
-            {
-                channel.Writer.TryComplete();
-            }
-
-            _subscribers.Clear();
+            _started.TrySetCanceled(runCts.Token);
         }
+        catch (OperationCanceledException) when (!_started.Task.IsCompleted && startupToken.IsCancellationRequested)
+        {
+            _started.TrySetCanceled(startupToken);
+        }
+        catch (Exception ex)
+        {
+            error = ex;
+            _started.TrySetException(ex);
+        }
+        finally
+        {
+            lock (_stateLock)
+            {
+                _terminalError = error;
+                CompleteSubscribers(error);
+                if (error is null) _completion.TrySetResult();
+                else _completion.TrySetException(error);
+                // Keep the worker task until it actually completes; never clear it in StopAsync.
+            }
+        }
+    }
+
+    // Caller holds _stateLock.
+    private void CompleteSubscribers(Exception? error)
+    {
+        foreach (var channel in _subscribers) channel.Writer.TryComplete(error);
+        _subscribers.Clear();
     }
 
     public IAsyncEnumerable<TelemetrySampleBatch> Batches(CancellationToken ct = default)
@@ -156,7 +215,11 @@ public sealed class TelemetrySession : ITelemetrySession
         // the first MoveNext, and every batch produced in between would be lost.
         lock (_stateLock)
         {
-            _subscribers.Add(channel);
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_loopTask is not null && _completion.Task.IsCompleted)
+                channel.Writer.TryComplete(_terminalError);
+            else
+                _subscribers.Add(channel);
         }
 
         return ReadBatchesAsync(channel, ct);
@@ -174,9 +237,11 @@ public sealed class TelemetrySession : ITelemetrySession
 
     public async ValueTask<TelemetrySnapshot> GetSnapshotAsync(CancellationToken ct = default)
     {
-        await _busGate.WaitAsync(ct);
+        lock (_stateLock) { ObjectDisposedException.ThrowIf(_disposed, this); }
+        await _busGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            lock (_stateLock) { ObjectDisposedException.ThrowIf(_disposed, this); }
             var all = new Dictionary<TelemetrySignal, TelemetryValue>();
             foreach (var provider in _providers)
             {
@@ -259,15 +324,32 @@ public sealed class TelemetrySession : ITelemetrySession
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        await StopAsync(CancellationToken.None);
-        if (_connectionState is not null)
+        lock (_stateLock)
         {
-            _connectionState.StateChanged -= OnConnectionStateChanged;
+            _disposed = true;
+            return new ValueTask(_disposeTask ??= Task.Run(DisposeCoreAsync));
         }
+    }
 
-        _busGate.Dispose();
+    private async Task DisposeCoreAsync()
+    {
+        try { await StopAsync().ConfigureAwait(false); }
+        finally
+        {
+            if (_connectionState is not null)
+                _connectionState.StateChanged -= OnConnectionStateChanged;
+            // Join any snapshot already inside the gate. Keep the managed semaphore
+            // undisposed so queued snapshot callers can safely observe disposal.
+            await _busGate.WaitAsync().ConfigureAwait(false);
+            _busGate.Release();
+            lock (_stateLock)
+            {
+                _loopCts?.Dispose();
+                _loopCts = null;
+            }
+        }
     }
 
     /// <summary>
@@ -292,8 +374,21 @@ public sealed class TelemetrySession : ITelemetrySession
             logger);
     }
 
-    private void OnConnectionStateChanged(object? sender, ConnectionStateChangedEventArgs e) =>
-        ConnectionStateChanged?.Invoke(this, e);
+    private void OnConnectionStateChanged(object? sender, ConnectionStateChangedEventArgs e)
+    {
+        lock (_stateLock) { if (_disposed) return; }
+        NotifyHandlers(ConnectionStateChanged, e);
+    }
+
+    private void NotifyHandlers<T>(EventHandler<T>? handlers, T args)
+    {
+        if (handlers is null) return;
+        foreach (EventHandler<T> handler in handlers.GetInvocationList())
+        {
+            try { handler(this, args); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Telemetry event subscriber failed"); }
+        }
+    }
 
     private static async IAsyncEnumerable<TelemetrySample<T>> ProjectAsync<T>(
         IAsyncEnumerable<TelemetrySampleBatch> batches,
@@ -339,34 +434,15 @@ public sealed class TelemetrySession : ITelemetrySession
             [CadenceTier.High] = 0, [CadenceTier.Medium] = 0, [CadenceTier.Low] = 0
         };
 
-        try
+        while (true)
         {
-            while (!ct.IsCancellationRequested)
-            {
-                var now = Environment.TickCount64;
-                var next = due.MinBy(kv => kv.Value);
-                var wait = next.Value - now;
-                if (wait > 0)
-                {
-                    await Task.Delay((int)wait, ct);
-                }
-
-                var tier = next.Key;
-                await TickAsync(tier, ct);
-
-                // Schedule from completion, not from the previous due time — an overrun
-                // must not produce a catch-up burst.
-                due[tier] = Environment.TickCount64 +
-                            (long)_options.PeriodFor(tier).TotalMilliseconds;
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Stop requested.
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Telemetry scheduler loop died");
+            ct.ThrowIfCancellationRequested();
+            var now = Environment.TickCount64;
+            var next = due.MinBy(kv => kv.Value);
+            var wait = next.Value - now;
+            if (wait > 0) await Task.Delay(TimeSpan.FromMilliseconds(wait), ct).ConfigureAwait(false);
+            await TickAsync(next.Key, ct).ConfigureAwait(false);
+            due[next.Key] = Environment.TickCount64 + (long)_options.PeriodFor(next.Key).TotalMilliseconds;
         }
     }
 
@@ -433,7 +509,10 @@ public sealed class TelemetrySession : ITelemetrySession
 
         try
         {
-            return await provider.ReadAsync(wanted, effectiveCt);
+            ct.ThrowIfCancellationRequested();
+            var values = await provider.ReadAsync(wanted, effectiveCt).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            return values;
         }
         catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true &&
                                                  !ct.IsCancellationRequested)
@@ -445,8 +524,9 @@ public sealed class TelemetrySession : ITelemetrySession
         {
             throw;
         }
-        catch (Exception ex)
+        catch (TimeoutException ex)
         {
+            ct.ThrowIfCancellationRequested();
             _logger.LogDebug(ex, "Telemetry provider {Provider} read failed", provider.GetType().Name);
             return wanted.ToDictionary(s => s, _ => TelemetryValue.Empty);
         }
@@ -488,7 +568,7 @@ public sealed class TelemetrySession : ITelemetrySession
             }
         }
 
-        BatchAvailable?.Invoke(this, batch);
+        NotifyHandlers(BatchAvailable, batch);
     }
 
     private bool HasProviderFor(TelemetrySignal signal) =>

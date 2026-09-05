@@ -47,7 +47,9 @@ both modes because the snapshot cannot recover its intermediate evidence. Progra
 and lifecycle errors propagate instead of being relabeled as missing capability.
 
 Caller cancellation is checked before each mode and after queries, and stops the
-second query. Internal deadline cancellation from current ELM framing maps to Timeout.
+second query. Explicit framing `TimeoutException` maps to Timeout. Unrelated
+`OperationCanceledException` now propagates rather than being guessed to be a deadline;
+see [terminal asynchronous outcomes](ASYNC_OUTCOMES.md).
 No new retry, lock, background task, ownership rule, or physical-query concurrency is
 introduced. The existing arbitrated session remains the Leaf execution path.
 
