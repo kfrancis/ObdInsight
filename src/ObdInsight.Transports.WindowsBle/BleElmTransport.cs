@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ObdInsight.Transports.WindowsBle
 {
-    public sealed class BleElmTransport : IElmTransport
+    public sealed class BleElmTransport : IConnectionAwareTransport
     {
         private static readonly Guid s_notifyCharacteristicUuid = new("0000fff1-0000-1000-8000-00805f9b34fb");
         private static readonly Guid s_serialServiceUuid = new("0000fff0-0000-1000-8000-00805f9b34fb");
@@ -20,6 +20,9 @@ namespace ObdInsight.Transports.WindowsBle
         private GattCharacteristic? _notifyCharacteristic;
         private GattDeviceService? _serialService;
         private GattCharacteristic? _writeCharacteristic;
+        private int _connectionLost;
+
+        public event EventHandler? ConnectionLost;
 
         public BleElmTransport(string deviceId, ILogger<BleElmTransport>? logger = null)
         {
@@ -46,6 +49,8 @@ namespace ObdInsight.Transports.WindowsBle
 
         public async ValueTask OpenAsync(CancellationToken ct)
         {
+            ct.ThrowIfCancellationRequested();
+            if (Volatile.Read(ref _connectionLost) != 0) throw new IOException("Create a fresh BLE transport after loss or disposal.");
             if (IsOpen) return;
 
             if (EnableDebugLogging)
@@ -236,29 +241,30 @@ namespace ObdInsight.Transports.WindowsBle
             }
 
             IsOpen = true;
+            _device.ConnectionStatusChanged += OnLinkStatusChanged;
+            OnLinkStatusChanged(_device, EventArgs.Empty);
         }
 
         public async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct)
         {
-            var timeout = TimeSpan.FromMilliseconds(250);
-            var deadline = DateTime.UtcNow + timeout;
-
-            while (_receiveBuffer.Count == 0 && DateTime.UtcNow < deadline)
+            if (buffer.IsEmpty) return 0;
+            while (true)
             {
+                ct.ThrowIfCancellationRequested();
+                if (Volatile.Read(ref _connectionLost) != 0) throw new IOException("BLE connection ended.");
+                await _bufferLock.WaitAsync(ct);
+                try
+                {
+                    var count = Math.Min(buffer.Length, _receiveBuffer.Count);
+                    if (count > 0)
+                    {
+                        for (var i = 0; i < count; i++) buffer.Span[i] = _receiveBuffer.Dequeue();
+                        return count;
+                    }
+                }
+                finally { _bufferLock.Release(); }
+                // Quiet is not EOF. No queue access outside the buffer lock.
                 await Task.Delay(10, ct);
-            }
-
-            await _bufferLock.WaitAsync(ct);
-            try
-            {
-                var count = Math.Min(buffer.Length, _receiveBuffer.Count);
-                for (var i = 0; i < count; i++)
-                    buffer.Span[i] = _receiveBuffer.Dequeue();
-                return count;
-            }
-            finally
-            {
-                _bufferLock.Release();
             }
         }
 
@@ -267,10 +273,11 @@ namespace ObdInsight.Transports.WindowsBle
             if (_writeCharacteristic == null)
                 throw new IOException("Transport not open");
 
-            var writer = new DataWriter();
+            ct.ThrowIfCancellationRequested();
+            using var writer = new DataWriter();
             writer.WriteBytes(data.ToArray());
             var status =
-                await _writeCharacteristic.WriteValueAsync(writer.DetachBuffer(), GattWriteOption.WriteWithoutResponse);
+                await _writeCharacteristic.WriteValueAsync(writer.DetachBuffer(), GattWriteOption.WriteWithoutResponse).AsTask(ct);
             if (status != GattCommunicationStatus.Success)
                 throw new IOException("Write failed");
         }
@@ -293,6 +300,8 @@ namespace ObdInsight.Transports.WindowsBle
 
         private async Task CleanupAsync()
         {
+            Interlocked.Exchange(ref _connectionLost, 1);
+            if (_device is { } device) device.ConnectionStatusChanged -= OnLinkStatusChanged;
             try
             {
                 if (_notifyCharacteristic != null)
@@ -312,6 +321,8 @@ namespace ObdInsight.Transports.WindowsBle
                 _device?.Dispose();
                 _serialService = null;
                 _device = null;
+                _writeCharacteristic = null;
+                _notifyCharacteristic = null;
                 IsOpen = false;
                 ClearBuffer();
             }
@@ -319,19 +330,33 @@ namespace ObdInsight.Transports.WindowsBle
 
         private void OnNotifyValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
         {
-            var reader = DataReader.FromBuffer(args.CharacteristicValue);
+            using var reader = DataReader.FromBuffer(args.CharacteristicValue);
             var bytes = new byte[reader.UnconsumedBufferLength];
             reader.ReadBytes(bytes);
 
             _bufferLock.Wait();
             try
             {
+                if (Volatile.Read(ref _connectionLost) != 0 || !ReferenceEquals(sender, _notifyCharacteristic)) return;
                 foreach (var b in bytes)
                     _receiveBuffer.Enqueue(b);
             }
             finally
             {
                 _bufferLock.Release();
+            }
+        }
+
+        private void OnLinkStatusChanged(BluetoothLEDevice sender, object args)
+        {
+            if (!ReferenceEquals(sender, _device) || sender.ConnectionStatus != BluetoothConnectionStatus.Disconnected ||
+                Interlocked.Exchange(ref _connectionLost, 1) != 0) return;
+            IsOpen = false;
+            if (ConnectionLost is not { } handlers) return;
+            foreach (EventHandler handler in handlers.GetInvocationList())
+            {
+                try { handler(this, EventArgs.Empty); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Connection loss subscriber failed"); }
             }
         }
     }

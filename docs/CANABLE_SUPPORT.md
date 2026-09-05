@@ -6,6 +6,11 @@ ElmüSoft slcan 2.5 (`Slcan: 105`). No vehicle attached yet.
 
 ## What works
 
+For the bounded, sanitized TestDrive consumer-path run, use the
+[hardware smoke guide](HARDWARE_SMOKE_TEST.md). Its SLCAN mode rejects `--tx` and
+records telemetry snapshots/batches as well as raw-ID coverage. The legacy command
+below remains an expert diagnostic tool and can emit raw hardware identifiers.
+
 ```
 SerialElmTransport (Transports.Serial)   COM port bytes; sync reads on a pool thread
   └─ SlcanFrameSource (Core/Slcan)        C → V (probe) → S6 → open sequence per dialect

@@ -224,6 +224,12 @@ namespace ObdInsight
 
         private static async Task Main(string[] args)
         {
+            if (args.Any(a => a.StartsWith("--smoke", StringComparison.Ordinal)))
+            {
+                Environment.ExitCode = await Application.HardwareSmokeCommand.RunAsync(args);
+                return;
+            }
+
             // Configure Serilog for file logging - create unique log file per run
             // Use the application's directory (bin\Debug\...\Logs) for easier debugging
             var logDir = Path.Combine(AppContext.BaseDirectory, "Logs");

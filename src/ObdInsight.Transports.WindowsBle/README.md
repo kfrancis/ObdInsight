@@ -1,7 +1,7 @@
 # ObdInsight.Transports.WindowsBle
 
 Windows BLE transport for [ObdInsight](https://github.com/kfrancis/ObdInsight): an
-`IElmTransport` and an `IBleScanner` built directly on WinRT
+`IConnectionAwareTransport` and an `IBleScanner` built directly on WinRT
 (`Windows.Devices.Bluetooth`), for ELM327-family BLE OBD-II adapters.
 
 Sibling of `ObdInsight.Transports.Ble`, which covers Android/iOS through Plugin.BLE.
@@ -31,6 +31,12 @@ service UUID or device name. `logger` is an optional `ILogger<BleElmTransport>`;
 and the transport logs nothing.
 
 ## Notes
+
+- Quiet reads wait until bytes, cancellation, or link loss; they do not return false EOF.
+  Physical disconnect raises `ConnectionLost` once. Use a fresh transport after loss or
+  disposal, normally through `VehicleConnection` in `ObdInsight.Telemetry`.
+- The repository's [stationary smoke guide](../../docs/HARDWARE_SMOKE_TEST.md) exercises
+  owner-managed recovery and snapshots without the legacy console orchestration.
 
 - Targets `net10.0-windows10.0.19041.0`; minimum supported OS is Windows 10 1809
   (`10.0.17763.0`).

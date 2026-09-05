@@ -20,6 +20,10 @@ Measurements before drawing pre/post health conclusions.
 
 ## Packages to reference
 
+Before building the mobile UI, the [Windows hardware smoke runner](HARDWARE_SMOKE_TEST.md)
+exercises this owner/telemetry lifecycle on simulation or hardware. Its WinRT BLE
+transport is not a substitute for Plugin.BLE testing on published Android/iOS builds.
+
 NuGet packages (see `docs/RELEASING.md`; project references work identically):
 
 | Package | Why |
