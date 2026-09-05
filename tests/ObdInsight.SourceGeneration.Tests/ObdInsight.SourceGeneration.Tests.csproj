@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -16,7 +16,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\ObdInsight.SourceGeneration\ObdInsight.SourceGeneration.csproj" />
+    <ProjectReference Include="..\..\src\ObdInsight.SourceGeneration\ObdInsight.SourceGeneration.csproj" Aliases="Generator" />
+    <ProjectReference Include="..\..\src\ObdInsight.Core\ObdInsight.Core.csproj" />
   </ItemGroup>
 
 </Project>

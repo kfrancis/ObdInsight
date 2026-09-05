@@ -755,8 +755,8 @@ namespace ObdInsight
                             var cells = await bms.GetCellVoltagesAsync(ct);
                             if (cells != null)
                             {
-                                AnsiConsole.MarkupLine($"[green]✓[/] Cells: {cells.CellCount} cells, " +
-                                                       $"Min: {cells.MinVoltageMv}mV, Max: {cells.MaxVoltageMv}mV, Delta: {cells.DeltaVoltageMv}mV");
+                                AnsiConsole.MarkupLine($"Cells: {cells.ValidCellCount}/{cells.CellCount} valid, " +
+                                                       $"Min: {cells.MinVoltageMv?.ToString() ?? "—"}mV, Max: {cells.MaxVoltageMv?.ToString() ?? "—"}mV, Delta: {cells.DeltaVoltageMv?.ToString() ?? "—"}mV");
 
                                 Log.Information(
                                     "Cell voltages: Count={CellCount}, Min={Min}mV, Max={Max}mV, Avg={Avg}mV, Delta={Delta}mV",
@@ -768,12 +768,11 @@ namespace ObdInsight
 
                                 successfulQueries++; // Track for session stats
 
-                                // Note: 21 cells is partial - Leaf has 96 cell pairs, may need multiple Group 02 queries
-                                if (cells.CellCount < 96)
+                                if (!cells.IsComplete)
                                 {
                                     AnsiConsole.MarkupLine(
-                                        $"[yellow]⚠[/] Note: Only {cells.CellCount}/96 cells returned (partial response)");
-                                    Log.Warning("Partial cell data: {CellCount}/96 cells", cells.CellCount);
+                                        "[yellow]⚠[/] Invalid cell readings retain their indexes; pack-wide statistics are unavailable.");
+                                    Log.Warning("Incomplete cell data: {ValidCellCount}/{CellCount} valid", cells.ValidCellCount, cells.CellCount);
                                 }
                             }
                             else

@@ -10,6 +10,10 @@ partial reads are not empty clean lists. Leaf Group 01 Hx no longer populates SO
 SOH remains null until a validated source is wired in. See
 [Diagnostic evidence](DIAGNOSTIC_EVIDENCE.md) for the current contract and migration.
 
+**Strict-decoding update:** cell vectors now preserve `decimal?` entries at physical
+indexes; `CellVoltageData` is immutable and pack-wide statistics require a complete
+set. See [diagnostic decoding](DIAGNOSTIC_DECODING.md).
+
 ## 1. Problem
 
 EvTestDrive (MAUI consumer app) needs "give me these N signals at these cadences and raise
@@ -103,7 +107,7 @@ public interface ITelemetrySession : IAsyncDisposable
 ```
 
 `TelemetrySnapshot` is a flat record of nullable normalized fields (SOC %, pack V/A/kW,
-pack °C, SoH %, cell stats + full `IReadOnlyList<decimal>` in V, speed, range km, cabin °C,
+pack °C, SoH %, cell stats + indexed `IReadOnlyList<decimal?>` in V, speed, range km, cabin °C,
 HVAC bool, odometer km, cycle counts, `Vin`, `DiagnosticTroubleCodes` — the last three null
 until B13/B14/B5).
 

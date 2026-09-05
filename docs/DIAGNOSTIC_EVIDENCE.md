@@ -61,9 +61,9 @@ Odd hex, invalid bytes, orphan/duplicate/out-of-order frames, and unknown text c
 silently disappear into a clean result. This does not add 29-bit, headerless, or
 adapter-numbered payload support by heuristic inference.
 
-The strict validator is deliberately local to DTC reading. Other ISO-TP paths and
-generated UDS decoders still need the separate strict-reassembly migration; this
-tranche does not certify their data integrity.
+The subsequent [strict-decoding tranche](DIAGNOSTIC_DECODING.md) consolidates this
+validator with the other runtime ISO-TP paths. DTC-specific SID/count/padding checks
+and the mode/responder outcome contract remain separate from transport reassembly.
 
 ## Nissan Hx is not state of health
 

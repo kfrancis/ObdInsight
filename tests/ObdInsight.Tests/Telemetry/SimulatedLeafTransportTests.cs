@@ -44,7 +44,7 @@ public class SimulatedLeafTransportTests
         commands.TryGet<IBatteryManagementSystem>(out var bms);
         var cells = await bms.GetCellVoltagesAsync(token);
         await Assert.That(cells).IsNotNull();
-        await Assert.That(cells!.CellVoltagesMv.Length).IsEqualTo(96);
+        await Assert.That(cells!.CellVoltagesMv.Count).IsEqualTo(96);
     }
 
     [Test]

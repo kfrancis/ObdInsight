@@ -35,7 +35,7 @@ public sealed record TelemetrySnapshot
     public decimal? CapacityAh { get; init; }
 
     /// <summary>Full per-cell voltage set (V).</summary>
-    public IReadOnlyList<decimal>? CellVoltagesV { get; init; }
+    public IReadOnlyList<decimal?>? CellVoltagesV { get; init; }
 
     /// <summary>Minimum cell voltage (V).</summary>
     public decimal? CellVoltageMinV { get; init; }

@@ -2,294 +2,210 @@ using System.Globalization;
 
 namespace ObdInsight.Core.Protocols;
 
+/// <summary>Why an observed ISO-TP response could not be trusted.</summary>
+public enum IsoTpError
+{
+    None,
+    InvalidFrame,
+    UnexpectedFrame,
+    SequenceMismatch,
+    Incomplete
+}
+
+/// <summary>An observed classical CAN responder. Failed responses expose no partial payload.</summary>
+public sealed class IsoTpResponse
+{
+    internal IsoTpResponse(int canId, int? expectedLength, IsoTpError error, byte[] payload)
+    {
+        CanId = canId;
+        ExpectedLength = expectedLength;
+        Error = error;
+        Payload = payload;
+    }
+
+    public int CanId { get; }
+    public int? ExpectedLength { get; }
+    public IsoTpError Error { get; }
+    /// <summary>Owned, unpooled payload; empty unless Error is None. Do not mutate its backing storage.</summary>
+    public ReadOnlyMemory<byte> Payload { get; }
+}
+
+/// <summary>All observed responders plus corruption that could not be assigned to an ECU.</summary>
+public sealed class IsoTpParseResult
+{
+    internal IsoTpParseResult(IsoTpResponse[] responses, bool hasInvalidData)
+    {
+        Responses = Array.AsReadOnly(responses);
+        HasUnattributedErrors = hasInvalidData;
+    }
+
+    public IReadOnlyList<IsoTpResponse> Responses { get; }
+    /// <summary>Invalid evidence outside individual responder outcomes; also check each response's Error.</summary>
+    public bool HasUnattributedErrors { get; }
+}
+
 /// <summary>
-///     Utilities for parsing ISO-TP (ISO 15765-2) responses from ELM327.
+///     Strict ELM line decoding for classical 11-bit CAN with ISO-TP PCI bytes.
+///     Supports spaced lines and fixed-width concatenated full frames. No raw-hex,
+///     headerless, odd-nibble, or damaged-frame repair heuristics are applied.
 /// </summary>
-/// <remarks>
-///     Expects unspaced output ("AT S0", which <c>ElmSession</c> sets during baseline init and
-///     restores when leaving monitoring). Spaced output ("AT S1") is not parsed - the hex reader
-///     stops at the first space and the response is dropped.
-/// </remarks>
 public static class IsoTpParser
 {
-    /// <summary>Width of one frame in unspaced ELM327 output: 3-char CAN ID + 8 data bytes.</summary>
-    private const int UnspacedFrameLength = 19;
-
     /// <summary>
-    ///     Parse an ISO-TP response, reassembling multi-frame messages and trimming the result to
-    ///     the length the first frame declares. Frames may arrive one per line or run together on
-    ///     a single line (e.g. "7BB25...7BB26...").
+    ///     Parses independently by responder. Unknown text is invalid evidence; only
+    ///     blank lines, prompts, SEARCHING..., and the explicitly supplied command echo
+    ///     are ignored. NO DATA alone means no responders, not successful empty data.
     /// </summary>
-    public static List<byte> ParseIsoTpResponse(string response)
+    public static IsoTpParseResult ParseResponses(IEnumerable<string> lines, string? commandEcho = null)
     {
-        var bytes = new List<byte>();
-
-        if (string.IsNullOrWhiteSpace(response))
+        ArgumentNullException.ThrowIfNull(lines);
+        var states = new Dictionary<int, AssemblyState>();
+        var invalid = false;
+        var noData = false;
+        foreach (var raw in lines)
         {
-            return bytes;
-        }
-
-        var cleaned = response
-            .Replace("\r", "\n")
-            .Replace(">", "")
-            .Trim();
-
-        var lines = cleaned.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-
-        // Adapters may run several frames together on one line. ELM327 output with spaces off has
-        // fixed geometry - a 3-char CAN ID plus 8 data bytes, 19 chars per frame - and every frame
-        // of a response carries the same responder ID, so split on that geometry. Scanning for
-        // anything CAN-ID-shaped instead corrupts payloads: response hex routinely spells a valid
-        // looking ID (e.g. "7BB27676BE7F10D46D8" contains "7F1" followed by '0'). See
-        // IsoTpParserPropertyTests.
-        var allFrames = new List<string>();
-        foreach (var line in lines)
-        {
-            var trimmed = line.Trim();
-            if (trimmed.Length < 6)
+            if (raw is null) { invalid = true; continue; }
+            foreach (var part in raw.Replace('\r', '\n').Split('\n'))
             {
-                continue;
-            }
-
-            if (!IsCanIdPrefixForIsoTp(trimmed))
-            {
-                continue;
-            }
-
-            allFrames.AddRange(SplitRunTogetherFrames(trimmed));
-        }
-
-        var frameSequence = new List<(int Type, int Seq, byte[] Data, int TotalLen)>();
-        var expectedTotalLength = 0;
-
-        foreach (var frame in allFrames)
-        {
-            if (frame.Length < 6)
-            {
-                continue;
-            }
-
-            if (!IsCanIdPrefixForIsoTp(frame))
-            {
-                continue;
-            }
-
-            var frameHex = frame[3..];
-
-            if (frameHex.Length < 2)
-            {
-                continue;
-            }
-
-            if (!byte.TryParse(frameHex[..2], NumberStyles.HexNumber, null, out var frameTypeByte))
-            {
-                continue;
-            }
-
-            var frameType = (frameTypeByte & 0xF0) >> 4;
-            var frameInfo = frameTypeByte & 0x0F;
-
-            byte[] frameData;
-
-            switch (frameType)
-            {
-                case 0: // Single Frame
-                    var sfLen = frameInfo;
-                    var sfDataHex = frameHex[2..];
-                    frameData = ParseHexString(sfDataHex);
-                    if (frameData.Length > sfLen)
-                    {
-                        frameData = frameData[..sfLen];
-                    }
-
-                    frameSequence.Add((0, 0, frameData, sfLen));
-                    break;
-
-                case 1: // First Frame
-                    if (frameHex.Length < 4)
-                    {
-                        continue;
-                    }
-
-                    if (!byte.TryParse(frameHex[2..4], NumberStyles.HexNumber, null, out var lenLowByte))
-                    {
-                        continue;
-                    }
-
-                    expectedTotalLength = (frameInfo << 8) | lenLowByte;
-                    var ffDataHex = frameHex[4..];
-                    frameData = ParseHexString(ffDataHex);
-                    frameSequence.Add((1, 0, frameData, expectedTotalLength));
-                    break;
-
-                case 2: // Consecutive Frame
-                    var seqNum = frameInfo;
-                    var cfDataHex = frameHex[2..];
-                    frameData = ParseHexString(cfDataHex);
-                    frameSequence.Add((2, seqNum, frameData, 0));
-                    break;
-
-                default:
-                    frameData = ParseHexString(frameHex);
-                    if (frameData.Length > 0)
-                    {
-                        frameSequence.Add((-1, 0, frameData, 0));
-                    }
-
-                    break;
-            }
-        }
-
-        // Add first frame or single frame
-        var firstFrame = frameSequence.FirstOrDefault(f => f.Type == 0 || f.Type == 1);
-        if (firstFrame.Data != null)
-        {
-            bytes.AddRange(firstFrame.Data);
-            expectedTotalLength = firstFrame.TotalLen;
-        }
-
-        // Add consecutive frames
-        var consecutiveFrames = frameSequence.Where(f => f.Type == 2).ToList();
-        foreach (var cf in consecutiveFrames)
-        {
-            bytes.AddRange(cf.Data);
-        }
-
-        // Trim to expected length
-        if (expectedTotalLength > 0 && bytes.Count > expectedTotalLength)
-        {
-            bytes = bytes.Take(expectedTotalLength).ToList();
-        }
-
-        // Fallback: parse as raw hex
-        if (bytes.Count == 0)
-        {
-            foreach (var line in lines)
-            {
-                var trimmed = line.Trim();
-                if (trimmed.All(Uri.IsHexDigit))
+                var line = part.Replace(" ", "").Trim();
+                if (line.Length == 0 || line == ">" || line == "SEARCHING..." || line == commandEcho)
+                    continue;
+                // A final prompt is a framing delimiter, not payload data.
+                if (line.EndsWith('>')) line = line[..^1];
+                if (line == "NODATA") { noData = true; continue; }
+                if (line.Length > 19 && line.Length % 19 == 0)
                 {
-                    bytes.AddRange(ParseHexString(trimmed));
+                    for (var offset = 0; offset < line.Length; offset += 19)
+                        AddFrame(line.AsSpan(offset, 19), states, ref invalid);
                 }
+                else
+                    AddFrame(line, states, ref invalid);
             }
         }
 
-        return bytes;
+        return new IsoTpParseResult(states.Select(entry => entry.Value.Finish(entry.Key)).ToArray(),
+            invalid || (noData && states.Count > 0));
     }
 
     /// <summary>
-    ///     Splits a line that carries more than one frame run together, using the fixed unspaced
-    ///     ELM327 frame width and the responder ID established by the line's first frame.
+    ///     Gets a copied payload only when exactly one responder succeeded and no other
+    ///     evidence was invalid. An optional expected responder must be an exact 3-digit
+    ///     hex CAN ID, not a wildcard filter. Ambiguity and wrong responders fail closed.
     /// </summary>
-    /// <remarks>
-    ///     Returns the line unchanged when it does not fit that geometry, so an unrecognised layout
-    ///     degrades to "one frame per line" rather than to a mis-split payload.
-    /// </remarks>
-    private static List<string> SplitRunTogetherFrames(string line)
+    public static bool TryReadPayload(IEnumerable<string> lines, out byte[] payload,
+        string? expectedResponder = null, string? commandEcho = null)
     {
-        var canId = line[..3];
-
-        // Whole multiples of the frame width, every frame carrying the same responder ID.
-        if (line.Length % UnspacedFrameLength == 0 && StartsEveryFrame(line, canId))
-        {
-            return SplitOnFrameWidth(line, 0);
-        }
-
-        // First frame shortened (adapter trimmed padding); the rest still end on the width grid.
-        for (var i = 4; i <= line.Length - 6; i++)
-        {
-            if ((line.Length - i) % UnspacedFrameLength != 0)
-            {
-                continue;
-            }
-
-            if (string.CompareOrdinal(line, i, canId, 0, 3) != 0)
-            {
-                continue;
-            }
-
-            if (!StartsEveryFrame(line[i..], canId))
-            {
-                continue;
-            }
-
-            var frames = SplitOnFrameWidth(line, i);
-            frames.Insert(0, line[..i]);
-            return frames;
-        }
-
-        return [line];
-    }
-
-    /// <summary>Cuts <paramref name="line" /> from <paramref name="start" /> into frame-width pieces.</summary>
-    private static List<string> SplitOnFrameWidth(string line, int start)
-    {
-        var frames = new List<string>((line.Length - start) / UnspacedFrameLength);
-        for (var i = start; i < line.Length; i += UnspacedFrameLength)
-        {
-            frames.Add(line.Substring(i, UnspacedFrameLength));
-        }
-
-        return frames;
-    }
-
-    /// <summary>True when every frame-width position in <paramref name="s" /> starts with <paramref name="canId" />.</summary>
-    private static bool StartsEveryFrame(string s, string canId)
-    {
-        for (var i = 0; i < s.Length; i += UnspacedFrameLength)
-        {
-            if (i + 3 > s.Length || string.CompareOrdinal(s, i, canId, 0, 3) != 0)
-            {
-                return false;
-            }
-        }
-
+        payload = [];
+        var result = ParseResponses(lines, commandEcho);
+        if (result.HasUnattributedErrors || result.Responses.Count != 1) return false;
+        var response = result.Responses[0];
+        if (response.Error != IsoTpError.None) return false;
+        if (expectedResponder is not null &&
+            (expectedResponder.Length != 3 ||
+             !int.TryParse(expectedResponder, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var id) ||
+             id != response.CanId))
+            return false;
+        payload = response.Payload.ToArray();
         return true;
     }
 
-    /// <summary>
-    ///     Checks if a string starts with a valid CAN ID prefix for ISO-TP frames.
-    /// </summary>
-    private static bool IsCanIdPrefixForIsoTp(string s)
-    {
-        if (s.Length < 3)
-        {
-            return false;
-        }
+    /// <summary>Compatibility convenience: returns no bytes for invalid or ambiguous responses.</summary>
+    public static List<byte> ParseIsoTpResponse(string response) =>
+        TryReadPayload([response], out var payload) ? [.. payload] : [];
 
-        var prefix = s[..3];
-        if (!prefix.All(Uri.IsHexDigit))
-        {
-            return false;
-        }
-
-        if (!int.TryParse(prefix, NumberStyles.HexNumber, null, out var id))
-        {
-            return false;
-        }
-
-        // Accept standard OBD-II and Nissan Leaf extended ranges
-        return id is >= 0x700 and <= 0x7FF or >= 0x790 and <= 0x79F;
-    }
-
-    /// <summary>
-    ///     Parse hex string to byte array
-    /// </summary>
+    /// <summary>Strict raw hex utility: malformed input returns no bytes, never a valid prefix.</summary>
     public static byte[] ParseHexString(string hex)
     {
-        var result = new List<byte>();
-        for (var i = 0; i + 1 < hex.Length; i += 2)
+        if (hex is null || hex.Length % 2 != 0) return [];
+        var bytes = new byte[hex.Length / 2];
+        for (var i = 0; i < bytes.Length; i++)
+            if (!byte.TryParse(hex.AsSpan(i * 2, 2), NumberStyles.AllowHexSpecifier,
+                    CultureInfo.InvariantCulture, out bytes[i]))
+                return [];
+        return bytes;
+    }
+
+    private static void AddFrame(ReadOnlySpan<char> line, Dictionary<int, AssemblyState> states, ref bool invalid)
+    {
+        if (line.Length < 3 || !int.TryParse(line[..3], NumberStyles.AllowHexSpecifier,
+                CultureInfo.InvariantCulture, out var id) || id > 0x7FF)
         {
-            if (byte.TryParse(hex.Substring(i, 2), NumberStyles.HexNumber, null, out var b))
+            invalid = true;
+            return;
+        }
+        if (!states.TryGetValue(id, out var state)) states.Add(id, state = new AssemblyState());
+        if (line.Length is < 5 or > 19 || (line.Length - 3) % 2 != 0)
+        {
+            state.Fail(IsoTpError.InvalidFrame);
+            return;
+        }
+        Span<byte> bytes = stackalloc byte[8];
+        var length = (line.Length - 3) / 2;
+        for (var i = 0; i < length; i++)
+        {
+            if (!byte.TryParse(line.Slice(3 + i * 2, 2), NumberStyles.AllowHexSpecifier,
+                    CultureInfo.InvariantCulture, out bytes[i]))
             {
-                result.Add(b);
+                state.Fail(IsoTpError.InvalidFrame);
+                return;
             }
-            else
+        }
+        state.Add(bytes[..length]);
+    }
+
+    private sealed class AssemblyState
+    {
+        private readonly List<byte> _data = [];
+        private int _expected;
+        private int _nextSequence = 1;
+        private IsoTpError _error;
+
+        public void Fail(IsoTpError error)
+        {
+            if (_error == IsoTpError.None) _error = error;
+        }
+
+        public void Add(ReadOnlySpan<byte> bytes)
+        {
+            if (_error != IsoTpError.None) return;
+            switch (bytes[0] >> 4)
             {
-                break;
+                case 0 when _expected == 0:
+                    _expected = bytes[0] & 15;
+                    if (_expected is < 1 or > 7 || bytes.Length < _expected + 1)
+                    { Fail(IsoTpError.InvalidFrame); return; }
+                    Append(bytes.Slice(1, _expected));
+                    break;
+                case 1 when _expected == 0 && bytes.Length == 8:
+                    _expected = ((bytes[0] & 15) << 8) | bytes[1];
+                    if (_expected <= 7) { Fail(IsoTpError.InvalidFrame); return; }
+                    Append(bytes[2..]);
+                    break;
+                case 2 when _expected > 7 && _data.Count < _expected:
+                    if ((bytes[0] & 15) != _nextSequence)
+                    { Fail(IsoTpError.SequenceMismatch); return; }
+                    var count = Math.Min(7, _expected - _data.Count);
+                    if (bytes.Length < count + 1) { Fail(IsoTpError.InvalidFrame); return; }
+                    Append(bytes.Slice(1, count));
+                    _nextSequence = (_nextSequence + 1) & 15;
+                    break;
+                default:
+                    Fail(IsoTpError.UnexpectedFrame);
+                    break;
             }
         }
 
-        return result.ToArray();
+        private void Append(ReadOnlySpan<byte> bytes)
+        {
+            foreach (var value in bytes) _data.Add(value);
+        }
+
+        public IsoTpResponse Finish(int canId)
+        {
+            if (_error == IsoTpError.None && (_expected == 0 || _data.Count != _expected))
+                Fail(IsoTpError.Incomplete);
+            return new(canId, _expected == 0 ? null : _expected, _error,
+                _error == IsoTpError.None ? _data.ToArray() : []);
+        }
     }
 }

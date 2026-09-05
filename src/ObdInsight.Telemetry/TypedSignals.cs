@@ -72,7 +72,7 @@ public static class Signals
     public static TelemetrySignal<decimal> CellVoltageAverage { get; } = Scalar(TelemetrySignal.CellVoltageAverage);
 
     /// <summary>Full per-cell voltage set (V).</summary>
-    public static TelemetrySignal<IReadOnlyList<decimal>> CellVoltages { get; } =
+    public static TelemetrySignal<IReadOnlyList<decimal?>> CellVoltages { get; } =
         new(TelemetrySignal.CellVoltages, v => (v.Vector is not null, v.Vector!));
 
     /// <summary>Vehicle speed (km/h).</summary>

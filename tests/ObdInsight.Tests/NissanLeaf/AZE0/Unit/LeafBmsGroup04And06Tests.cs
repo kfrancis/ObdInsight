@@ -75,7 +75,7 @@ public class LeafBmsGroup04And06Tests
         // Shunt bytes: 0F 0E 0E 0E 0F 0A 07 ... 06 0E 06 06 0E 0F.
         // OVMS convention: balancing = wire bit CLEAR.
         await Assert.That(cells.BalancingCells).IsNotNull();
-        await Assert.That(cells.BalancingCells!.Length).IsEqualTo(96);
+        await Assert.That(cells.BalancingCells!.Count).IsEqualTo(96);
         await Assert.That(cells.BalancingCells[0]).IsFalse(); // byte0 0x0F: all bits set
         await Assert.That(cells.BalancingCells[3]).IsFalse();
         await Assert.That(cells.BalancingCells[7]).IsTrue(); // byte1 0x0E: 0x01 clear => cell 7

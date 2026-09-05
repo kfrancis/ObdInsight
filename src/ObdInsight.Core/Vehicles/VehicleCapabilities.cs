@@ -272,22 +272,33 @@ public sealed record BatteryStatus
 /// <summary>
 ///     Individual cell voltage data - not all vehicles support this.
 /// </summary>
-public sealed record CellVoltageData
+public sealed class CellVoltageData
 {
-    public required int[] CellVoltagesMv { get; init; }
-    public int CellCount => CellVoltagesMv.Length;
-    public int MinVoltageMv { get; init; }
-    public int MaxVoltageMv { get; init; }
-    public int AvgVoltageMv { get; init; }
-    public int DeltaVoltageMv => MaxVoltageMv - MinVoltageMv;
+    public CellVoltageData(IEnumerable<int?> cellVoltagesMv, IEnumerable<bool>? balancingCells = null)
+    {
+        ArgumentNullException.ThrowIfNull(cellVoltagesMv);
+        var cells = cellVoltagesMv.ToArray();
+        var balancing = balancingCells?.ToArray();
+        if (balancing is not null && balancing.Length != cells.Length)
+            throw new ArgumentException("Balancing flags must match the physical cell count.", nameof(balancingCells));
+        CellVoltagesMv = Array.AsReadOnly(cells);
+        BalancingCells = balancing is null ? null : Array.AsReadOnly(balancing);
+    }
 
-    /// <summary>
-    ///     Per-cell balancing flags, parallel to <see cref="CellVoltagesMv" />;
-    ///     null when the vehicle doesn't report shunt states.
-    /// </summary>
-    public bool[]? BalancingCells { get; init; }
+    /// <summary>Physical cell order; a null slot is invalid/missing, never removed.</summary>
+    public IReadOnlyList<int?> CellVoltagesMv { get; }
+    public int CellCount => CellVoltagesMv.Count;
+    public int ValidCellCount => CellVoltagesMv.Count(v => v.HasValue);
+    /// <summary>All slots were supplied as non-null; producers remain responsible for measurement validity.</summary>
+    public bool IsComplete => CellCount > 0 && ValidCellCount == CellCount;
+    /// <summary>Pack-wide statistics are unavailable for incomplete cell sets.</summary>
+    public int? MinVoltageMv => IsComplete ? CellVoltagesMv.Min() : null;
+    public int? MaxVoltageMv => IsComplete ? CellVoltagesMv.Max() : null;
+    public int? AvgVoltageMv => IsComplete ? (int?)CellVoltagesMv.Average() : null;
+    public int? DeltaVoltageMv => MaxVoltageMv - MinVoltageMv;
 
-    /// <summary>Number of cells currently balancing, or null when unreported.</summary>
+    /// <summary>Balancing flags in the same physical order, or null when unreported.</summary>
+    public IReadOnlyList<bool>? BalancingCells { get; }
     public int? BalancingCellCount => BalancingCells?.Count(b => b);
 }
 

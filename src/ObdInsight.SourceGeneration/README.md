@@ -10,6 +10,13 @@ Roslyn incremental generators for ObdInsight (analyzer-only package):
   `Query{Name}Async` methods with ISO-TP reassembly and response-variant field
   selection.
 
+UDS authoring also requires `ObdInsight.Core`: emitted queries use its strict ISO-TP
+parser and the exact `_context.RxFilter`. Response lengths exclude the two-byte
+SID/PID header; variants require exact lengths. Malformed input never becomes a
+partial decoded response. Nullable arrays preserve invalid elements as null slots;
+nonnullable invalid elements fail the response. `OBDUDS001` diagnoses unsupported
+or inconsistent schemas. Custom parsing helper methods are no longer required.
+
 Reference alongside **`ObdInsight.Annotations`** (the attribute types) when defining
 your own frames:
 

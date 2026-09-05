@@ -30,7 +30,8 @@ public sealed class UdsArrayFieldAttribute : Attribute
 
     /// <summary>
     ///     Optional: Valid range for each element in format "min..max".
-    ///     Elements outside this range will be skipped.
+    ///     For nullable element types, invalid elements remain null at their original
+    ///     index. For nonnullable element types, an invalid element fails the response.
     /// </summary>
     public string? ValidRange { get; set; }
 }

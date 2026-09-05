@@ -10,6 +10,7 @@ public class UdsGeneratorTests
                      using System.Threading;
                      using System.Threading.Tasks;
                      using System.Collections.Generic;
+                     using System.Linq;
 
                      namespace TestNamespace
                      {
@@ -18,7 +19,7 @@ public class UdsGeneratorTests
                              Task<string[]> QueryAsync(string command, object context, CancellationToken ct);
                          }
 
-                         public class EcuContext { }
+                         public class EcuContext { public string RxFilter => "7BB"; }
 
                          [UdsService(0x21, EcuType = "BMS")]
                          public partial class TestDiagnostics
@@ -26,8 +27,6 @@ public class UdsGeneratorTests
                              private readonly IElmSession _session;
                              private readonly EcuContext _context;
 
-                             public static List<(int FrameType, int SeqOrLen, byte[] Data)> ParseIsoTpFrames(string[] lines) => new();
-                             public static byte[] ReassembleIsoTpPayload(List<(int FrameType, int SeqOrLen, byte[] Data)> frames) => [];
 
                              [UdsPid(0x01, Name = "Status")]
                              [UdsResponse(MinLength = 10, MaxLength = 50)]
@@ -60,6 +59,7 @@ public class UdsGeneratorTests
                      using System.Threading;
                      using System.Threading.Tasks;
                      using System.Collections.Generic;
+                     using System.Linq;
 
                      namespace TestNamespace
                      {
@@ -68,7 +68,7 @@ public class UdsGeneratorTests
                              Task<string[]> QueryAsync(string command, object context, CancellationToken ct);
                          }
 
-                         public class EcuContext { }
+                         public class EcuContext { public string RxFilter => "7BB"; }
 
                          [UdsService(0x21)]
                          public partial class CellDiagnostics
@@ -76,8 +76,6 @@ public class UdsGeneratorTests
                              private readonly IElmSession _session;
                              private readonly EcuContext _context;
 
-                             public static List<(int FrameType, int SeqOrLen, byte[] Data)> ParseIsoTpFrames(string[] lines) => new();
-                             public static byte[] ReassembleIsoTpPayload(List<(int FrameType, int SeqOrLen, byte[] Data)> frames) => [];
 
                              [UdsPid(0x02)]
                              public partial class CellVoltagesResponse
@@ -104,6 +102,7 @@ public class UdsGeneratorTests
                      using System.Threading;
                      using System.Threading.Tasks;
                      using System.Collections.Generic;
+                     using System.Linq;
 
                      namespace TestNamespace
                      {
@@ -112,7 +111,7 @@ public class UdsGeneratorTests
                              Task<string[]> QueryAsync(string command, object context, CancellationToken ct);
                          }
 
-                         public class EcuContext { }
+                         public class EcuContext { public string RxFilter => "7BB"; }
 
                          [UdsService(0x21)]
                          public partial class VariantDiagnostics
@@ -120,8 +119,6 @@ public class UdsGeneratorTests
                              private readonly IElmSession _session;
                              private readonly EcuContext _context;
 
-                             public static List<(int FrameType, int SeqOrLen, byte[] Data)> ParseIsoTpFrames(string[] lines) => new();
-                             public static byte[] ReassembleIsoTpPayload(List<(int FrameType, int SeqOrLen, byte[] Data)> frames) => [];
 
                              [UdsPid(0x01)]
                              [UdsResponseVariant(Length = 39, Model = "24kWh")]
@@ -152,6 +149,7 @@ public class UdsGeneratorTests
                      using System.Threading;
                      using System.Threading.Tasks;
                      using System.Collections.Generic;
+                     using System.Linq;
 
                      namespace TestNamespace
                      {
@@ -160,7 +158,7 @@ public class UdsGeneratorTests
                              Task<string[]> QueryAsync(string command, object context, CancellationToken ct);
                          }
 
-                         public class EcuContext { }
+                         public class EcuContext { public string RxFilter => "7BB"; }
 
                          [UdsService(0x21)]
                          public partial class FrameSourceDiagnostics
@@ -168,8 +166,6 @@ public class UdsGeneratorTests
                              private readonly IElmSession _session;
                              private readonly EcuContext _context;
 
-                             public static List<(int FrameType, int SeqOrLen, byte[] Data)> ParseIsoTpFrames(string[] lines) => new();
-                             public static byte[] ReassembleIsoTpPayload(List<(int FrameType, int SeqOrLen, byte[] Data)> frames) => [];
 
                              [UdsPid(0x01)]
                              public partial class StatusResponse
@@ -185,7 +181,7 @@ public class UdsGeneratorTests
         var result = GeneratorTestHelper.RunGenerator<UdsGenerator>(source);
 
         var generated = GeneratorTestHelper.GetGeneratedSource(result);
-        await Assert.That(generated).Contains("f.FrameType == 2 && f.SeqOrLen == 3");
+        await Assert.That(generated).Contains("payload.AsSpan(20, System.Math.Min(7, payload.Length - 20))");
 
         await Verify(result);
     }
@@ -198,6 +194,7 @@ public class UdsGeneratorTests
                      using System.Threading;
                      using System.Threading.Tasks;
                      using System.Collections.Generic;
+                     using System.Linq;
 
                      namespace TestNamespace
                      {
@@ -206,7 +203,7 @@ public class UdsGeneratorTests
                              Task<string[]> QueryAsync(string command, object context, CancellationToken ct);
                          }
 
-                         public class EcuContext { }
+                         public class EcuContext { public string RxFilter => "7BB"; }
 
                          [UdsService(0x21)]
                          public partial class CurrentDiagnostics
@@ -214,8 +211,6 @@ public class UdsGeneratorTests
                              private readonly IElmSession _session;
                              private readonly EcuContext _context;
 
-                             public static List<(int FrameType, int SeqOrLen, byte[] Data)> ParseIsoTpFrames(string[] lines) => new();
-                             public static byte[] ReassembleIsoTpPayload(List<(int FrameType, int SeqOrLen, byte[] Data)> frames) => [];
 
                              [UdsPid(0x01)]
                              public partial class StatusResponse

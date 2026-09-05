@@ -18,6 +18,7 @@ public class DtcEvidenceTests
     [Arguments("7E81008430301430196")]
     [Arguments("7E8210A800000000000")]
     [Arguments("7E80243GG")]
+    [Arguments("130024300")]
     [Arguments("unrecognized adapter reply")]
     public async Task InvalidReply_CannotMeanClean(string line)
     {

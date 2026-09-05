@@ -1,4 +1,3 @@
-using System.Globalization;
 using ObdInsight.Core.Communication.Elm327;
 using ObdInsight.Core.Protocols;
 using ObdInsight.SourceGeneration.Attributes;
@@ -19,111 +18,6 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
         {
             _session = session;
             _context = context;
-        }
-
-        // ISO-TP parsing methods - shared with LeafAze0Charger
-        public static List<(int FrameType, int SeqOrLen, byte[] Data)> ParseIsoTpFrames(string[] lines) =>
-            ParseIsoTpFramesImpl(lines);
-
-        public static byte[] ReassembleIsoTpPayload(List<(int FrameType, int SeqOrLen, byte[] Data)> frames) =>
-            ReassembleIsoTpPayloadImpl(frames);
-
-        // ISO-TP parsing implementation (needed by generated code and LeafAze0Charger)
-        private static List<(int FrameType, int SeqOrLen, byte[] Data)> ParseIsoTpFramesImpl(string[] lines)
-        {
-            var frames = new List<(int FrameType, int SeqOrLen, byte[] Data)>();
-
-            foreach (var line in lines)
-            {
-                var trimmed = line.Trim();
-                if (trimmed.Length < 5) continue;
-
-                var canIdHex = trimmed[..3];
-                if (!int.TryParse(canIdHex, NumberStyles.HexNumber, null, out var canId))
-                    continue;
-                if (canId < 0x700 || canId > 0x7FF)
-                    continue;
-
-                var frameHex = trimmed[3..];
-                if (frameHex.Length < 2) continue;
-
-                frameHex = frameHex.Replace("H", "48");
-
-                var frameBytes = new List<byte>();
-                for (var i = 0; i + 1 < frameHex.Length; i += 2)
-                {
-                    if (byte.TryParse(frameHex.AsSpan(i, 2), NumberStyles.HexNumber, null, out var b))
-                        frameBytes.Add(b);
-                    else
-                        break;
-                }
-
-                if (frameBytes.Count == 0) continue;
-
-                var pci = frameBytes[0];
-                var frameType = (pci >> 4) & 0x0F;
-                var frameInfo = pci & 0x0F;
-
-                switch (frameType)
-                {
-                    case 0:
-                        frames.Add((0, frameInfo, frameBytes.Skip(1).ToArray()));
-                        break;
-
-                    case 1:
-                        if (frameBytes.Count >= 2)
-                        {
-                            var totalLen = (frameInfo << 8) | frameBytes[1];
-                            frames.Add((1, totalLen, frameBytes.Skip(2).ToArray()));
-                        }
-
-                        break;
-
-                    case 2:
-                        frames.Add((2, frameInfo, frameBytes.Skip(1).ToArray()));
-                        break;
-                }
-            }
-
-            return frames;
-        }
-
-        private static byte[] ReassembleIsoTpPayloadImpl(List<(int FrameType, int SeqOrLen, byte[] Data)> frames)
-        {
-            var payload = new List<byte>();
-            var expectedLength = 0;
-
-            var (frameType, seqOrLen, data) = frames.FirstOrDefault(f => f.FrameType == 0 || f.FrameType == 1);
-            if (data == null)
-                return [];
-
-            if (frameType == 0)
-            {
-                expectedLength = seqOrLen;
-                var dataLen = Math.Min(expectedLength, data.Length);
-                payload.AddRange(data.Take(dataLen));
-            }
-            else
-            {
-                expectedLength = seqOrLen;
-                payload.AddRange(data);
-
-                var consecutiveFrames = frames
-                    .Where(f => f.FrameType == 2)
-                    .ToList();
-
-                foreach (var (_, _, cfData) in consecutiveFrames)
-                {
-                    payload.AddRange(cfData);
-                    if (payload.Count >= expectedLength)
-                        break;
-                }
-            }
-
-            if (expectedLength > 0 && payload.Count > expectedLength)
-                return [.. payload.Take(expectedLength)];
-
-            return [.. payload];
         }
 
         /// <summary>
@@ -185,7 +79,7 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
         ///     1.9/2.4/—/1.3 °C, integer bytes 2/3/—/2 — formula and bytes agree.
         /// </summary>
         [UdsPid(0x04, Name = "Group04")]
-        [UdsResponse(MinLength = 14, MaxLength = 29)]
+        [UdsResponse(MinLength = 14, MaxLength = 14)]
         public class Group04Response
         {
             [UdsField(Offset = 0, Length = 2, Type = UdsFieldType.UInt16BE)]
@@ -242,7 +136,7 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
         ///     and the OVMS-convention view are exposed.
         /// </summary>
         [UdsPid(0x06, Name = "Group06")]
-        [UdsResponse(MinLength = 24)]
+        [UdsResponse(MinLength = 24, MaxLength = 24)]
         public class Group06Response
         {
             [UdsArrayField(Offset = 0, ElementCount = 24, ElementLength = 1,
@@ -271,18 +165,15 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Frames
         ///     Nissan Leaf has 96 cell pairs, each reported as 2 bytes in millivolts.
         /// </summary>
         [UdsPid(0x02, Name = "Group02")]
-        [UdsResponse(MinLength = 192)] // 96 cells × 2 bytes
+        [UdsResponse(MinLength = 192, MaxLength = 196)] // 96 cells × 2 bytes
         public class Group02Response
         {
-            [UdsComputed] public int AvgVoltageMv => CellVoltagesMv.Length > 0 ? (int)CellVoltagesMv.Average() : 0;
 
             [UdsArrayField(Offset = 0, ElementCount = 96, ElementLength = 2,
                 Type = UdsFieldType.UInt16BE, ValidRange = "2500..4500")]
-            public int[] CellVoltagesMv { get; set; } = [];
+            public int?[] CellVoltagesMv { get; set; } = [];
 
-            [UdsComputed] public int MaxVoltageMv => CellVoltagesMv.Length > 0 ? CellVoltagesMv.Max() : 0;
 
-            [UdsComputed] public int MinVoltageMv => CellVoltagesMv.Length > 0 ? CellVoltagesMv.Min() : 0;
         }
     }
 }

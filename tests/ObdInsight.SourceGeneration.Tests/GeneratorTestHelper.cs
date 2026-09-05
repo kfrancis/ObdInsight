@@ -13,7 +13,7 @@ public static class GeneratorTestHelper
     /// <summary>
     ///     Creates a compilation with the necessary references for testing CAN frame generation
     /// </summary>
-    public static CSharpCompilation CreateCompilation(string source)
+    public static CSharpCompilation CreateCompilation(string source, bool includeCore = false)
     {
         var syntaxTree = CSharpSyntaxTree.ParseText(source);
 
@@ -25,6 +25,10 @@ public static class GeneratorTestHelper
             MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location), // System.Linq
             MetadataReference.CreateFromFile(typeof(Attribute).Assembly.Location) // System.Runtime
         };
+
+        if (includeCore)
+            references.Add(MetadataReference.CreateFromFile(typeof(ObdInsight.Core.Protocols.IsoTpParser).Assembly.Location));
+        references.Add(MetadataReference.CreateFromFile(Assembly.Load("System.Collections").Location));
 
         // Add System.Runtime if it's not already included
         try
@@ -95,7 +99,7 @@ public static class GeneratorTestHelper
     public static GeneratorDriverRunResult RunGenerator<TGenerator>(string source)
         where TGenerator : IIncrementalGenerator, new()
     {
-        var compilation = CreateCompilation(source);
+        var compilation = CreateCompilation(source, includeCore: typeof(TGenerator) == typeof(UdsGenerator));
         var generator = new TGenerator();
 
         var driver = CSharpGeneratorDriver.Create(generator);
@@ -104,6 +108,12 @@ public static class GeneratorTestHelper
             out var outputCompilation,
             out var diagnostics);
 
+        if (typeof(TGenerator) == typeof(UdsGenerator) && !diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
+        {
+            var errors = outputCompilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+            if (errors.Length > 0)
+                throw new InvalidOperationException("Generated UDS code did not compile:\\n" + string.Join("\\n", errors.Select(e => e.ToString())));
+        }
         return driver.GetRunResult();
     }
 

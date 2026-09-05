@@ -5,6 +5,10 @@ Diagnostic snapshots retain per-mode DTC outcomes and responding-ECU evidence in
 reads are not clean results, and success covers only observed responders. Leaf
 Group 01 Hx is not SOH; `StateOfHealthPercent` is currently null for that provider.
 
+Cell vectors and typed cell streams use `IReadOnlyList<decimal?>`: missing readings
+retain their physical indexes. Pack-wide cell statistics are null for incomplete
+sets; do not filter missing cells out and renumber the remaining entries.
+
 The consumer telemetry facade for ObdInsight — the only surface an app needs during a
 drive:
 

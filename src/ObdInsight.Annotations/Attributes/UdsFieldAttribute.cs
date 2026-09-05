@@ -45,7 +45,8 @@ public sealed class UdsFieldAttribute : Attribute
     public string? AppliesTo { get; set; }
 
     /// <summary>
-    ///     If FrameType is ConsecutiveFrame, which CF sequence number to use.
+    ///     If FrameType is ConsecutiveFrame, the first occurrence of this sequence
+    ///     number (1..15, then 0) in a validated classical CAN ISO-TP response.
     /// </summary>
     public int FrameSequence { get; set; }
 
@@ -76,7 +77,8 @@ public sealed class UdsFieldAttribute : Attribute
 
     /// <summary>
     ///     Optional: Valid range in format "min..max" (e.g., "10..100").
-    ///     If value is outside range, it will be ignored.
+    ///     Outside-range values are null for nullable properties and fail the response
+    ///     for nonnullable properties. Missing field bytes always fail the response.
     /// </summary>
     public string? ValidRange { get; set; }
 }

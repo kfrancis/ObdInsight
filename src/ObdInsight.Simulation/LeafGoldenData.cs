@@ -100,7 +100,7 @@ public static class LeafGoldenData
         "79A10156181314E3441", // FF: len=0x15 (21), [61 81] + "1N4A"
         "79A215A304350374843", // CF1: "Z0CP7HC"
         "79A2230303030303100", // CF2: "308656" + 00 padding
-        "79A230000000000000" // CF3: padding
+        "79A2300000000000000" // CF3: one final payload byte, then padding (8-byte CAN frame)
     ];
 
     /// <summary>Joins golden lines into a raw ELM327 frame ending with the prompt.</summary>

@@ -10,7 +10,8 @@ namespace ObdInsight.SourceGeneration.Attributes;
 public sealed class UdsResponseVariantAttribute : Attribute
 {
     /// <summary>
-    ///     Expected payload length for this variant.
+    ///     Exact data length after the two-byte service/PID header. No nearest-length
+    ///     fallback is permitted; unknown lengths fail decoding.
     /// </summary>
     public int Length { get; set; }
 

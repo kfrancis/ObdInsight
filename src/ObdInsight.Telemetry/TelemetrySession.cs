@@ -497,7 +497,7 @@ public sealed class TelemetrySession : ITelemetrySession
     private static decimal? Scalar(Dictionary<TelemetrySignal, TelemetryValue> all, TelemetrySignal s) =>
         all.GetValueOrDefault(s).Scalar;
 
-    private static IReadOnlyList<decimal>? Vector(Dictionary<TelemetrySignal, TelemetryValue> all, TelemetrySignal s) =>
+    private static IReadOnlyList<decimal?>? Vector(Dictionary<TelemetrySignal, TelemetryValue> all, TelemetrySignal s) =>
         all.GetValueOrDefault(s).Vector;
 
     private static bool? Boolean(Dictionary<TelemetrySignal, TelemetryValue> all, TelemetrySignal s) =>

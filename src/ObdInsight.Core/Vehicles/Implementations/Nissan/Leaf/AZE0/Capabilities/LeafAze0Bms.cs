@@ -44,14 +44,7 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
                 // Group unsupported / transient adapter noise — voltages alone are still valid.
             }
 
-            return new CellVoltageData
-            {
-                CellVoltagesMv = response!.CellVoltagesMv,
-                MinVoltageMv = response.MinVoltageMv,
-                MaxVoltageMv = response.MaxVoltageMv,
-                AvgVoltageMv = response.AvgVoltageMv,
-                BalancingCells = shunts?.GetBalancingCells()
-            };
+            return new CellVoltageData(response!.CellVoltagesMv, shunts?.GetBalancingCells());
         }
 
         public async ValueTask<BatteryStatus> GetStatusAsync(CancellationToken ct = default)
@@ -98,16 +91,5 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
             };
         }
 
-        /// <summary>
-        ///     Parses ISO-TP frames - exposed for LeafAze0Charger compatibility.
-        /// </summary>
-        internal static List<(int FrameType, int SeqOrLen, byte[] Data)> ParseIsoTpFrames(string[] lines) =>
-            LeafBmsDiagnostics.ParseIsoTpFrames(lines);
-
-        /// <summary>
-        ///     Reassembles ISO-TP payload - exposed for LeafAze0Charger compatibility.
-        /// </summary>
-        internal static byte[] ReassembleIsoTpPayload(List<(int FrameType, int SeqOrLen, byte[] Data)> frames) =>
-            LeafBmsDiagnostics.ReassembleIsoTpPayload(frames);
     }
 }

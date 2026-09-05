@@ -44,22 +44,13 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         ///     Parses VIN from ELM327 response lines containing ISO-TP frames.
         ///     Expected format: Mode 21 PID 81 response with header [61 81] followed by VIN ASCII bytes.
         /// </summary>
-        private static string? ParseNissanVin(string[] lines)
+        private string? ParseNissanVin(string[] lines)
         {
             if (lines == null || lines.Length == 0)
                 return null;
 
-            // Parse ISO-TP frames (reuse existing method from LeafAze0Bms)
-            var frames = LeafAze0Bms.ParseIsoTpFrames(lines);
-            if (frames.Count == 0)
-            {
-                Log("[VehicleID VIN] No valid ISO-TP frames");
+            if (!IsoTpParser.TryReadPayload(lines, out var payload, expectedResponder: _context.RxFilter, commandEcho: "2181"))
                 return null;
-            }
-
-            // Reassemble payload
-            var payload = LeafAze0Bms.ReassembleIsoTpPayload(frames);
-            Log($"[VehicleID VIN] Reassembled {payload.Length} bytes: {Convert.ToHexString(payload)}");
 
             // Validate response header (61 81 = positive response to Mode 21 PID 81)
             if (payload.Length < 3 || payload[0] != 0x61 || payload[1] != 0x81)
@@ -69,36 +60,20 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
                 return null;
             }
 
-            // VIN data starts at byte 2, typically 17 ASCII characters
-            var vinBytes = payload.AsSpan(2);
+            // Never filter bytes into a different identity. Accept exactly 17 VIN
+            // characters and optional zero terminators inside the validated payload.
+            if (payload.Length < 19) return null;
             Span<char> vinChars = stackalloc char[17];
-            var vinLen = 0;
-
-            foreach (var b in vinBytes)
+            for (var i = 0; i < vinChars.Length; i++)
             {
-                if (b == 0x00)
-                    break;
-
-                // Captured data sometimes contains spurious non-ASCII bytes (e.g., 0xE3).
-                // VINs are restricted to 0-9 and A-Z (excluding I/O/Q), so filter to that set.
-                if (b >= (byte)'0' && b <= (byte)'9')
-                {
-                    vinChars[vinLen++] = (char)b;
-                }
-                else if (b >= (byte)'A' && b <= (byte)'Z' && b != (byte)'I' && b != (byte)'O' && b != (byte)'Q')
-                {
-                    vinChars[vinLen++] = (char)b;
-                }
-
-                if (vinLen == vinChars.Length)
-                    break;
+                var b = payload[i + 2];
+                if (!(b is >= (byte)'0' and <= (byte)'9' ||
+                      b is >= (byte)'A' and <= (byte)'Z' && b is not ((byte)'I') and not ((byte)'O') and not ((byte)'Q')))
+                    return null;
+                vinChars[i] = (char)b;
             }
-
-            if (vinLen != vinChars.Length)
-            {
-                Log($"[VehicleID VIN] Invalid length: {vinLen} (expected 17)");
-                return null;
-            }
+            foreach (var trailing in payload.AsSpan(19))
+                if (trailing != 0) return null;
 
             var vin = new string(vinChars);
             Log($"[VehicleID VIN] Parsed: {vin}");

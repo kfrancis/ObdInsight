@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Globalization;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -41,192 +42,168 @@ public class UdsGenerator : IIncrementalGenerator
         {
             if (service is null) return;
 
+            var error = ValidateService(service);
+            if (error is not null)
+            {
+                spc.ReportDiagnostic(Diagnostic.Create(InvalidSchema, Location.None, error));
+                return;
+            }
             var source = GenerateServiceCode(service);
             spc.AddSource($"{service.ClassName}.g.cs", SourceText.From(source, Encoding.UTF8));
         });
     }
 
-    private static void GenerateArrayFieldExtraction(StringBuilder sb, UdsFieldModel field)
+    private static readonly DiagnosticDescriptor InvalidSchema = new(
+        "OBDUDS001", "Invalid UDS schema", "{0}", "ObdInsight", DiagnosticSeverity.Error, true);
+
+    private static int Width(string type) => type switch
     {
-        sb.AppendLine(
-            $"        var {field.PropertyName.ToLower()}List = new System.Collections.Generic.List<{GetElementType(field.PropertyType)}>();");
-        sb.AppendLine(
-            $"        for (int i = {field.Offset}; i + {field.ElementLength - 1} < data.Length && {field.PropertyName.ToLower()}List.Count < {field.ElementCount}; i += {field.ElementLength})");
-        sb.AppendLine("        {");
+        "UInt8" => 1, "UInt16BE" => 2, "UInt24BE" => 3,
+        "UInt32BE" or "Int32BE" => 4, _ => 0
+    };
 
-        // Generate element extraction based on type
-        switch (field.FieldType)
+    private static string? ValidateService(UdsServiceModel service)
+    {
+        foreach (var pid in service.Pids)
         {
-            case "UInt8":
-                sb.AppendLine("            var value = data[i];");
-                break;
-
-            case "UInt16BE":
-                sb.AppendLine("            var value = (data[i] << 8) | data[i + 1];");
-                break;
-
-            case "UInt24BE":
-                sb.AppendLine("            var value = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];");
-                break;
-
-            case "UInt32BE":
-                sb.AppendLine(
-                    "            var value = ((uint)data[i] << 24) | ((uint)data[i + 1] << 16) | ((uint)data[i + 2] << 8) | data[i + 3];");
-                break;
-
-            default:
-                sb.AppendLine($"            // TODO: Unsupported array element type '{field.FieldType}'");
-                sb.AppendLine("            var value = 0;");
-                break;
-        }
-
-        // Apply range validation if specified
-        if (!string.IsNullOrEmpty(field.ValidRange))
-        {
-            var parts = field.ValidRange!.Split([".."], StringSplitOptions.None);
-            if (parts.Length == 2)
+            if (pid.MinLength is < 0 or > 4093 || pid.MaxLength is < 0 or > 4093 ||
+                (pid.MaxLength != 0 && pid.MaxLength < pid.MinLength))
+                return $"{pid.ClassName}: invalid response bounds.";
+            if (pid.Variants.GroupBy(v => v.Length).Any(g => g.Count() > 1) ||
+                pid.Variants.Any(v => v.Length < pid.MinLength ||
+                    (pid.MaxLength > 0 && v.Length > pid.MaxLength) || string.IsNullOrWhiteSpace(v.Model)))
+                return $"{pid.ClassName}: ambiguous or out-of-bounds variants.";
+            foreach (var group in pid.Fields.Where(f => !f.IsComputed && !f.IsArray && !f.PropertyType.EndsWith("?")).GroupBy(f => f.PropertyName))
             {
-                sb.AppendLine($"            if (value >= {parts[0]} && value <= {parts[1]})");
-                sb.AppendLine($"                {field.PropertyName.ToLower()}List.Add(value);");
+                if (group.All(f => !string.IsNullOrEmpty(f.AppliesTo)) &&
+                    pid.Variants.Any(v => !group.Any(f => f.AppliesTo!.Split(',').Any(a => a.Trim() == v.Model))))
+                    return $"{pid.ClassName}.{group.Key}: variant-optional fields must be nullable.";
+            }
+            foreach (var field in pid.Fields.Where(f => !f.IsComputed))
+            {
+                var valueType = (field.IsArray ? GetElementType(field.PropertyType) : field.PropertyType).TrimEnd('?');
+                if (valueType is not ("byte" or "sbyte" or "short" or "ushort" or "int" or "uint" or "long" or "ulong" or "float" or "double" or "decimal"))
+                    return $"{pid.ClassName}.{field.PropertyName}: unsupported numeric property type.";
+                var width = Width(field.FieldType);
+                if (width == 0 || (field.IsArray && field.FieldType == "Int32BE"))
+                    return $"{pid.ClassName}.{field.PropertyName}: unsupported field type {field.FieldType}.";
+                if (field.Offset < 0 || (field.IsArray
+                    ? field.ElementLength != width || field.ElementCount <= 0 ||
+                      (long)field.Offset + (long)field.ElementCount * width > 4093
+                    : field.Length != width || (long)field.Offset + width > 4093))
+                    return $"{pid.ClassName}.{field.PropertyName}: invalid field geometry.";
+                if (field.FrameSource is not ("Payload" or "FirstFrame" or "ConsecutiveFrame") ||
+                    (field.FrameSource == "ConsecutiveFrame" && field.FrameSequence is < 0 or > 15) ||
+                    (field.FrameSource != "Payload" && field.Offset + width >
+                        (field.FrameSource == "FirstFrame" ? 6 : 7)))
+                    return $"{pid.ClassName}.{field.PropertyName}: unsupported frame source geometry.";
+                if (double.IsNaN(field.Scale) || double.IsInfinity(field.Scale))
+                    return $"{pid.ClassName}.{field.PropertyName}: scale must be finite.";
+                if (!string.IsNullOrEmpty(field.ValidRange) && !TryRange(field.ValidRange!, out _, out _))
+                    return $"{pid.ClassName}.{field.PropertyName}: invalid numeric range.";
+                if (!string.IsNullOrEmpty(field.AppliesTo) &&
+                    field.AppliesTo!.Split(',').Any(v => !pid.Variants.Any(p => p.Model == v.Trim())))
+                    return $"{pid.ClassName}.{field.PropertyName}: unknown variant.";
             }
         }
-        else
-        {
-            sb.AppendLine($"            {field.PropertyName.ToLower()}List.Add(value);");
-        }
+        return null;
+    }
 
+    private static bool TryRange(string range, out double min, out double max)
+    {
+        var parts = range.Split(new[] { ".." }, StringSplitOptions.None);
+        min = max = 0;
+        return parts.Length == 2 &&
+            double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out min) &&
+            double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out max) &&
+            !double.IsNaN(min) && !double.IsInfinity(min) &&
+            !double.IsNaN(max) && !double.IsInfinity(max) && min <= max;
+    }
+
+    private static void GenerateArrayFieldExtraction(StringBuilder sb, UdsFieldModel field)
+    {
+        var elementType = GetElementType(field.PropertyType);
+        var name = field.PropertyName.ToLowerInvariant() + "Values";
+        sb.AppendLine($"        if (data.Length < {field.Offset + field.ElementCount * field.ElementLength}) return null;");
+        sb.AppendLine($"        var {name} = new {elementType}[{field.ElementCount}];");
+        sb.AppendLine($"        for (int index = 0; index < {field.ElementCount}; index++)");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            int i = {field.Offset} + index * {field.ElementLength};");
+        var expression = field.FieldType switch
+        {
+            "UInt8" => "data[i]",
+            "UInt16BE" => "(data[i] << 8) | data[i + 1]",
+            "UInt24BE" => "(data[i] << 16) | (data[i + 1] << 8) | data[i + 2]",
+            _ => "((uint)data[i] << 24) | ((uint)data[i + 1] << 16) | ((uint)data[i + 2] << 8) | data[i + 3]"
+        };
+        sb.AppendLine($"            var value = {expression};");
+        if (!string.IsNullOrEmpty(field.ValidRange))
+        {
+            TryRange(field.ValidRange!, out var min, out var max);
+            sb.AppendLine($"            if (value < {min.ToString("R", CultureInfo.InvariantCulture)}d || value > {max.ToString("R", CultureInfo.InvariantCulture)}d)");
+            sb.AppendLine(elementType.EndsWith("?") ? "                continue; // Preserve this index as missing." : "                return null;");
+        }
+        var numericType = elementType.TrimEnd('?');
+        sb.AppendLine($"            if ((double)value < (double){numericType}.MinValue || (double)value > (double){numericType}.MaxValue) return null;");
+        sb.AppendLine($"            {name}[index] = ({elementType})value;");
         sb.AppendLine("        }");
-        sb.AppendLine($"        response.{field.PropertyName} = {field.PropertyName.ToLower()}List.ToArray();");
+        sb.AppendLine($"        response.{field.PropertyName} = {name};");
         sb.AppendLine();
     }
 
     private static void GenerateFieldExtraction(StringBuilder sb, UdsFieldModel field, bool hasVariants)
     {
-        // Check variant applicability
+        // A separate scope also permits several fields from the same frame.
         if (!string.IsNullOrEmpty(field.AppliesTo) && hasVariants)
         {
-            var variants = field.AppliesTo!.Split(',').Select(v => v.Trim());
-            var condition = string.Join(" || ", variants.Select(v => $"variant == \"{v}\""));
+            var condition = string.Join(" || ", field.AppliesTo!.Split(',').Select(v => $"variant == \"{v.Trim()}\""));
             sb.AppendLine($"        if ({condition})");
-            sb.AppendLine("        {");
         }
-
-        // Check data availability based on frame source
-        if (field.FrameSource == "ConsecutiveFrame")
+        sb.AppendLine("        {");
+        var source = "data";
+        if (field.FrameSource != "Payload")
         {
-            sb.AppendLine(
-                $"        var cf{field.FrameSequence} = frames.FirstOrDefault(f => f.FrameType == 2 && f.SeqOrLen == {field.FrameSequence}).Data;");
-            sb.AppendLine($"        if (cf{field.FrameSequence}?.Length >= {field.Offset + field.Length})");
-            sb.AppendLine("        {");
-            GenerateValueExtraction(sb, field, $"cf{field.FrameSequence}", "            ");
-            sb.AppendLine("        }");
+            var start = field.FrameSource == "FirstFrame" ? 0 : 6 + ((field.FrameSequence == 0 ? 16 : field.FrameSequence) - 1) * 7;
+            sb.AppendLine($"            if (payload.Length <= 7 || payload.Length < {start + field.Offset + field.Length}) return null;");
+            sb.AppendLine($"            var frameData = payload.AsSpan({start}, System.Math.Min({(field.FrameSource == "FirstFrame" ? 6 : 7)}, payload.Length - {start}));");
+            source = "frameData";
         }
-        else
-        {
-            sb.AppendLine($"        if (data.Length >= {field.Offset + field.Length})");
-            sb.AppendLine("        {");
-            GenerateValueExtraction(sb, field, "data", "            ");
-            sb.AppendLine("        }");
-        }
-
-        if (!string.IsNullOrEmpty(field.AppliesTo) && hasVariants)
-        {
-            sb.AppendLine("        }");
-        }
-
+        sb.AppendLine($"            if ({source}.Length < {field.Offset + field.Length}) return null;");
+        GenerateValueExtraction(sb, field, source, "            ");
+        sb.AppendLine("        }");
         sb.AppendLine();
     }
 
     private static void GenerateQueryMethod(StringBuilder sb, UdsServiceModel service, UdsPidModel pid)
     {
-        var methodName = $"Query{pid.MethodName}Async";
-
-        sb.AppendLine(
-            $"    public async System.Threading.Tasks.Task<{pid.ClassName}?> {methodName}(System.Threading.CancellationToken ct = default)");
+        sb.AppendLine($"    public async System.Threading.Tasks.Task<{pid.ClassName}?> Query{pid.MethodName}Async(System.Threading.CancellationToken ct = default)");
         sb.AppendLine("    {");
-
-        // Send UDS request
-        sb.AppendLine(
-            $"        var lines = await _session.QueryAsync(\"{service.ServiceId:X2}{pid.PidId:X2}\", _context, ct);");
-        sb.AppendLine();
-
-        // Parse ISO-TP frames
-        sb.AppendLine("        var frames = ParseIsoTpFrames(lines);");
-        sb.AppendLine("        if (frames.Count == 0) return null;");
-        sb.AppendLine();
-
-        // Reassemble payload
-        sb.AppendLine("        var payload = ReassembleIsoTpPayload(frames);");
-        sb.AppendLine();
-
-        // Validate header
-        var expectedResponse = service.ServiceId + 0x40;
-        sb.AppendLine(
-            $"        if (payload.Length < 2 || payload[0] != 0x{expectedResponse:X2} || payload[1] != 0x{pid.PidId:X2})");
-        sb.AppendLine("            return null;");
-        sb.AppendLine();
-
-        // Detect variant if applicable
+        sb.AppendLine("        ct.ThrowIfCancellationRequested();");
+        sb.AppendLine($"        var lines = await _session.QueryAsync(\"{service.ServiceId:X2}{pid.PidId:X2}\", _context, ct).ConfigureAwait(false);");
+        sb.AppendLine("        ct.ThrowIfCancellationRequested();");
+        sb.AppendLine($"        if (!global::ObdInsight.Core.Protocols.IsoTpParser.TryReadPayload(lines, out var payload, _context.RxFilter, \"{service.ServiceId:X2}{pid.PidId:X2}\")) return null;");
+        sb.AppendLine($"        if (payload.Length < 2 || payload[0] != 0x{service.ServiceId + 0x40:X2} || payload[1] != 0x{pid.PidId:X2}) return null;");
+        sb.AppendLine("        var data = payload.AsSpan(2);");
+        if (pid.MinLength > 0) sb.AppendLine($"        if (data.Length < {pid.MinLength}) return null;");
+        if (pid.MaxLength > 0) sb.AppendLine($"        if (data.Length > {pid.MaxLength}) return null;");
         if (pid.Variants.Count > 0)
         {
-            sb.AppendLine("        var data = payload.AsSpan(2);");
-            sb.AppendLine("        string? variant = null;");
-            sb.AppendLine();
-            sb.AppendLine("        // Try exact match first");
-            sb.AppendLine("        variant = data.Length switch");
+            sb.AppendLine("        string? variant = data.Length switch");
             sb.AppendLine("        {");
             foreach (var variant in pid.Variants)
-            {
                 sb.AppendLine($"            {variant.Length} => \"{variant.Model}\",");
-            }
-
             sb.AppendLine("            _ => null");
             sb.AppendLine("        };");
-            sb.AppendLine();
-            sb.AppendLine("        // If no exact match, find closest variant within tolerance (±5 bytes)");
-            if (pid.Variants.Count > 0)
-            {
-                var minLen = pid.Variants.Min(v => v.Length);
-                var maxLen = pid.Variants.Max(v => v.Length);
-                sb.AppendLine($"        if (variant == null && data.Length >= {minLen - 5})");
-                sb.AppendLine("        {");
-                sb.AppendLine("            int bestDistance = int.MaxValue;");
-                sb.AppendLine("            string? bestVariant = null;");
-                foreach (var v in pid.Variants)
-                {
-                    sb.AppendLine(
-                        $"            if (System.Math.Abs({v.Length} - data.Length) < bestDistance) {{ bestDistance = System.Math.Abs({v.Length} - data.Length); bestVariant = \"{v.Model}\"; }}");
-                }
-
-                sb.AppendLine("            variant = bestVariant;");
-                sb.AppendLine("        }");
-            }
-
-            sb.AppendLine();
+            sb.AppendLine("        if (variant is null) return null;");
         }
-        else
-        {
-            sb.AppendLine("        var data = payload.AsSpan(2);");
-            sb.AppendLine("        string? variant = null;");
-            sb.AppendLine();
-        }
-
         sb.AppendLine($"        var response = new {pid.ClassName}();");
-        sb.AppendLine();
-
-        // Generate field extraction code
+        foreach (var name in pid.Fields.Where(f => !f.IsComputed && !f.IsArray && f.PropertyType.EndsWith("?")).Select(f => f.PropertyName).Distinct())
+            sb.AppendLine($"        response.{name} = null;");
         foreach (var field in pid.Fields.Where(f => !f.IsComputed))
         {
-            if (field.IsArray)
-            {
-                GenerateArrayFieldExtraction(sb, field);
-            }
-            else
-            {
-                GenerateFieldExtraction(sb, field, pid.Variants.Count > 0);
-            }
+            if (field.IsArray) GenerateArrayFieldExtraction(sb, field);
+            else GenerateFieldExtraction(sb, field, pid.Variants.Count > 0);
         }
-
         sb.AppendLine("        return response;");
         sb.AppendLine("    }");
         sb.AppendLine();
@@ -238,6 +215,7 @@ public class UdsGenerator : IIncrementalGenerator
 
         sb.AppendLine("// <auto-generated />");
         sb.AppendLine("#nullable enable");
+        sb.AppendLine("using System;");
         sb.AppendLine();
         sb.AppendLine($"namespace {model.Namespace};");
         sb.AppendLine();
@@ -257,7 +235,7 @@ public class UdsGenerator : IIncrementalGenerator
     private static void GenerateValueExtraction(StringBuilder sb, UdsFieldModel field, string dataVar, string indent)
     {
         var offset = field.Offset;
-        var rawVarName = $"{field.PropertyName.ToLower()}Raw";
+        var rawVarName = $"{field.PropertyName.ToLowerInvariant()}Raw";
 
         // Generate extraction based on type
         switch (field.FieldType)
@@ -287,43 +265,43 @@ public class UdsGenerator : IIncrementalGenerator
                 break;
 
             default:
-                // Fallback - generate a comment for debugging
-                sb.AppendLine($"{indent}// TODO: Unsupported field type '{field.FieldType}' for {field.PropertyName}");
-                sb.AppendLine($"{indent}var {rawVarName} = 0;");
-                break;
+                throw new InvalidOperationException("Unsupported field passed schema validation.");
         }
 
         // Apply scaling
         var isNullable = field.PropertyType.EndsWith("?");
-        if (Math.Abs(field.Scale - 1.0) > 0.0001)
+        if (field.Scale != 1.0)
         {
-            sb.AppendLine($"{indent}var value = {rawVarName} * {field.Scale};");
+            sb.AppendLine($"{indent}var value = {rawVarName} * {field.Scale.ToString("R", CultureInfo.InvariantCulture)}d;");
         }
         else
         {
-            sb.AppendLine($"{indent}var value = ({field.PropertyType.TrimEnd('?')}){rawVarName};");
+            sb.AppendLine($"{indent}var value = (double){rawVarName};");
         }
 
-        // Apply range validation if specified
+        var targetType = field.PropertyType.TrimEnd('?');
+        sb.AppendLine($"{indent}if (!double.IsFinite(value) || value < (double){targetType}.MinValue || value > (double){targetType}.MaxValue) return null;");
+        sb.AppendLine($"{indent}{targetType} converted;");
+        sb.AppendLine($"{indent}try {{ converted = checked(({targetType})value); }}");
+        sb.AppendLine($"{indent}catch (System.OverflowException) {{ return null; }}");
         if (!string.IsNullOrEmpty(field.ValidRange))
         {
-            var parts = field.ValidRange!.Split([".."], StringSplitOptions.None);
-            if (parts.Length == 2)
-            {
-                sb.AppendLine($"{indent}if (value >= {parts[0]} && value <= {parts[1]})");
-                sb.AppendLine($"{indent}    response.{field.PropertyName} = value;");
-            }
+            TryRange(field.ValidRange!, out var min, out var max);
+            sb.AppendLine($"{indent}if (value >= {min.ToString("R", CultureInfo.InvariantCulture)}d && value <= {max.ToString("R", CultureInfo.InvariantCulture)}d)");
+            sb.AppendLine($"{indent}    response.{field.PropertyName} = converted;");
+            if (!isNullable) sb.AppendLine($"{indent}else return null;");
         }
         else
         {
-            sb.AppendLine($"{indent}response.{field.PropertyName} = value;");
+            sb.AppendLine($"{indent}response.{field.PropertyName} = converted;");
         }
     }
 
     private static string GetElementType(string arrayType)
     {
         // Extract element type from array type (e.g., "int[]" -> "int")
-        return arrayType.Replace("[]", "").Replace("System.", "");
+        var type = arrayType.EndsWith("[]?") ? arrayType.Substring(0, arrayType.Length - 1) : arrayType;
+        return type.Replace("[]", "").Replace("System.", "");
     }
 
     private static UdsServiceModel? GetServiceModel(GeneratorSyntaxContext context)
@@ -491,7 +469,7 @@ public class UdsGenerator : IIncrementalGenerator
     {
         var model = new UdsFieldModel
         {
-            PropertyName = property.Name, PropertyType = property.Type.ToDisplayString(), IsArray = true
+            PropertyName = property.Name, PropertyType = property.Type.ToDisplayString(), IsArray = true, FieldType = "UInt8"
         };
 
         foreach (var namedArg in arrayFieldAttr.NamedArguments)
@@ -532,7 +510,7 @@ public class UdsGenerator : IIncrementalGenerator
 
     private static UdsFieldModel ParseField(IPropertySymbol property, AttributeData fieldAttr)
     {
-        var model = new UdsFieldModel { PropertyName = property.Name, PropertyType = property.Type.ToDisplayString() };
+        var model = new UdsFieldModel { PropertyName = property.Name, PropertyType = property.Type.ToDisplayString(), FieldType = "UInt8" };
 
         foreach (var namedArg in fieldAttr.NamedArguments)
         {

@@ -22,6 +22,10 @@ Bring a transport: `ObdInsight.Transports.Ble` (Android/iOS), your own
 should consume telemetry through `ObdInsight.Telemetry` rather than this package's
 lower-level surface.
 
+Diagnostic decoding uses one strict ISO-TP parser; incomplete, mixed-responder, or
+malformed input cannot become a trusted single payload. Cell voltages preserve
+physical indexes as `IReadOnlyList<int?>`; statistics require a complete set.
+
 ```csharp
 var session = new ElmSession(new ElmFramer(transport), new LeafBmsWakeupStrategy());
 await session.InitializeAndLockAsync(ct);

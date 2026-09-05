@@ -6,7 +6,7 @@ namespace ObdInsight.Telemetry;
 /// </summary>
 public readonly record struct TelemetryValue(
     decimal? Scalar = null,
-    IReadOnlyList<decimal>? Vector = null,
+    IReadOnlyList<decimal?>? Vector = null,
     bool? Boolean = null)
 {
     public static readonly TelemetryValue Empty = new();

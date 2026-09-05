@@ -29,8 +29,8 @@ internal static class TelemetryValidator
 
     /// <summary>
     ///     Returns the value unchanged when plausible; <see cref="TelemetryValue.Empty" />
-    ///     otherwise. Vectors null wholesale when any element is implausible (a report
-    ///     must not silently mix trusted and untrusted cells).
+    ///     otherwise. Vector entries retain their physical index; invalid entries become
+    ///     null rather than being removed or presented as valid measurements.
     /// </summary>
     public static TelemetryValue Validate(TelemetrySignal signal, TelemetryValue value)
     {
@@ -46,13 +46,9 @@ internal static class TelemetryValidator
 
         if (value.Vector is { } vec)
         {
-            foreach (var element in vec)
-            {
-                if (element < range.Min || element > range.Max)
-                {
-                    return TelemetryValue.Empty;
-                }
-            }
+            var validated = vec.Select(element => element is { } v && v >= range.Min && v <= range.Max
+                ? element : null).ToArray();
+            return value with { Vector = Array.AsReadOnly(validated) };
         }
 
         return value;

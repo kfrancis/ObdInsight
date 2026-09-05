@@ -114,7 +114,7 @@ public sealed class CellVoltagesTelemetryProvider : ITelemetryProvider
 
             result[signal] = signal switch
             {
-                TelemetrySignal.CellVoltages when cells is { CellVoltagesMv.Length: > 0 } =>
+                TelemetrySignal.CellVoltages when cells is { CellVoltagesMv.Count: > 0 } =>
                     new TelemetryValue(Vector: cells.CellVoltagesMv.Select(mv => mv / 1000m).ToArray()),
                 TelemetrySignal.CellVoltageMin when cells is not null =>
                     new TelemetryValue(cells.MinVoltageMv / 1000m),
