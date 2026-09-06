@@ -37,12 +37,15 @@ internal sealed class HardwareSmokeRunner(TextWriter output)
 {
     private long _nonemptySamples;
     private string _stage = "open";
+    private readonly SmokeConnectionLogger _connectionLogger = new();
     private static TelemetrySessionOptions TelemetryOptions => new() { CacheReadTimeout = TimeSpan.FromSeconds(5) };
 
     private async Task WriteAsync(SmokeEvidence evidence)
     {
         try
         {
+            while (_connectionLogger.TryRead(out var diagnostic))
+                await output.WriteLineAsync(JsonSerializer.Serialize(diagnostic!, SmokeJsonContext.Default.SmokeEvidence));
             await output.WriteLineAsync(JsonSerializer.Serialize(evidence, SmokeJsonContext.Default.SmokeEvidence));
             await output.FlushAsync();
         }
@@ -103,7 +106,7 @@ internal sealed class HardwareSmokeRunner(TextWriter output)
 
     private async Task ElmAsync(SmokeOptions options, Func<IElmTransport> factory, CancellationToken ct)
     {
-        await using var owner = new VehicleConnection(factory, [new NissanLeaf()], telemetryOptions: TelemetryOptions);
+        await using var owner = new VehicleConnection(factory, [new NissanLeaf()], telemetryOptions: TelemetryOptions, logger: _connectionLogger);
         var generation = await owner.OpenAsync(ct);
         await ReadyAsync(generation);
         await SnapshotAsync(generation.Telemetry, "pre-snapshot", ct); // Never replay a failed snapshot.

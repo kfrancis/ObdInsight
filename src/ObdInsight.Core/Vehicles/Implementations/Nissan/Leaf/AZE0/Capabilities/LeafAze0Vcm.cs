@@ -13,7 +13,6 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
     internal sealed class LeafAze0Vcm : IVcm
     {
         private static readonly TimeSpan GearWarmupTimeout = TimeSpan.FromSeconds(4);
-        private static readonly TimeSpan StatusWarmupTimeout = TimeSpan.FromSeconds(4);
 
         /// <summary>
         ///     Gets comprehensive VCM status. Prefers frame 0x510 (power consumption, climate,
@@ -86,7 +85,7 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         public async ValueTask<VcmStatus> GetStatusAsync(CancellationToken ct = default)
         {
             await _monitor.StartAsync(ct);
-            await _monitor.WaitForCacheAsync(StatusWarmupTimeout, ct, 0x510);
+            ct.ThrowIfCancellationRequested();
 
             return BuildStatus();
         }

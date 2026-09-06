@@ -31,7 +31,7 @@ public class LeafAze0StreamingCommandSetTests
         commands.TryGet<IBatteryManagementSystem>(out var bms);
 
         // --- HVAC via the running monitor ---
-        var hvacTask = hvac.GetStatusAsync(token);
+        await commands.Monitor.StartAsync(token);
         // Enter clears residual buffer bytes — wait until monitoring is live, and re-enqueue
         // while polling so a rotation window transition cannot eat the frames.
         while (!transport.SentCommands.Contains("ATMA"))
@@ -51,7 +51,7 @@ public class LeafAze0StreamingCommandSetTests
             await Task.Delay(20, token);
         }
 
-        var hvacStatus = await hvacTask;
+        var hvacStatus = await hvac.GetStatusAsync(token);
         await Assert.That(hvacStatus.OutsideAmbientTempC).IsEqualTo(35.0);
         await Assert.That(hvacStatus.FanSpeed).IsEqualTo(3);
         await Assert.That(hvacStatus.AcPowerWatts).IsEqualTo(0);

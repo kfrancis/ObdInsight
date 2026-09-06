@@ -1,5 +1,12 @@
 # Streaming Monitor Design
 
+**2026-09-05 hardware correction:** Leaf ABS, HVAC, and VCM `GetStatusAsync` now
+start the shared monitor and immediately project its available cache, including partial
+or empty evidence. They no longer wait for unrelated absent frames on each poll.
+Use streams or explicit `WaitForCacheAsync` when waiting for acquisition is intended.
+This pre-1.0 behavior change preserves timestamps/quality and method signatures;
+it supersedes cold-cache wait descriptions for these three status methods below.
+
 **Status:** P1–P4 implemented. P1–P3: shared `CanMonitor`, typed layer, capability migration,
 `SuspendAsync` arbitration, filter rotation. P4: streaming members on the capability interfaces,
 typed per-signal telemetry streams, short-frame decoding (see the P4 row and §7).

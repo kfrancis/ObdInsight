@@ -32,6 +32,9 @@ public class HardwareSmokeTests
         await Assert.That(transport.Disposals).IsEqualTo(1);
         var text = output.ToString();
         await Assert.That(text).DoesNotContain(SimulatedLeafAze0Transport.SimulatedVin);
+        await Assert.That(text).Contains("transport-open");
+        await Assert.That(text).Contains("elm-initialize");
+        await Assert.That(text).Contains("vehicle-detect");
         var events = text.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
             .Select(line => JsonDocument.Parse(line)).ToArray();
         try
@@ -73,14 +76,15 @@ public class HardwareSmokeTests
     }
 
     [Test]
-    public async Task DeadlineDuringOpen_JoinsOwner(CancellationToken ct)
+    public async Task DeadlineDuringStartup_DisposesEveryCreatedTransport(CancellationToken ct)
     {
         var transport = new TrackedTransport { BlockOpen = true };
         var output = new StringWriter();
+        var created = 0;
         var code = await new HardwareSmokeRunner(output).RunAsync(
-            Options() with { Timeout = TimeSpan.FromMilliseconds(100) }, () => transport, ct);
+            Options() with { Timeout = TimeSpan.FromMilliseconds(100) }, () => { created++; return transport; }, ct);
         await Assert.That(code).IsEqualTo(1);
-        await Assert.That(transport.Disposals).IsEqualTo(1);
+        await Assert.That(transport.Disposals).IsEqualTo(created);
         await Assert.That(output.ToString()).Contains("deadline");
     }
 
@@ -180,9 +184,8 @@ public class HardwareSmokeTests
         var output = new StringWriter();
         try
         {
-            // Medium-tier cold caches can occupy the serialized scheduler for ~8 seconds.
-            // Allow a full tick rather than depending on which tier wins the initial race.
-            var code = await new HardwareSmokeRunner(output).RunAsync(Options("slcan") with { Duration = TimeSpan.FromSeconds(feedFrames ? 15 : 2) }, () => replay, ct);
+            // Even partial/empty caches must not impose warmup waits on every poll.
+            var code = await new HardwareSmokeRunner(output).RunAsync(Options("slcan") with { Duration = TimeSpan.FromSeconds(3) }, () => replay, ct);
             await Assert.That(code).IsEqualTo(feedFrames ? 0 : 2);
             await Assert.That(output.ToString()).Contains("post-snapshot");
             await Assert.That(output.ToString()).Contains("shutdown-complete");
@@ -202,7 +205,7 @@ public class HardwareSmokeTests
             while (!replay.SentCommands.Contains("L")) await Task.Delay(10, pumpCancellation.Token);
             while (feedFrames && replay.IsOpen)
             {
-                replay.EnqueueIncoming("malformed\rt13080000000000000000\rt2848000000000A0076FC\rt28580000000000000000\rt35480000000000000000\r");
+                replay.EnqueueIncoming("malformed\rt2848000000000A0076FC\r");
                 await Task.Delay(20, pumpCancellation.Token);
             }
         }

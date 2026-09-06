@@ -10,9 +10,6 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
     /// </summary>
     internal sealed class LeafAze0Hvac : IHvac
     {
-        /// <summary>How long a cold cache is given for the first frames to arrive.</summary>
-        private static readonly TimeSpan WarmupTimeout = TimeSpan.FromSeconds(4);
-
         /// <summary>The frames that feed <see cref="HvacStatus" />.</summary>
         private static readonly int[] StatusFrameIds = [0x54A, 0x54B, 0x54C, 0x54F];
 
@@ -27,17 +24,8 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
         {
             await _monitor.StartAsync(ct);
 
-            // Warm cache: instant. Cold: wait briefly for the broadcast frames to appear;
-            // partial data is acceptable (mirrors the previous per-call collection window).
-            var deadline = Environment.TickCount64 + (long)WarmupTimeout.TotalMilliseconds;
-            while (Environment.TickCount64 < deadline &&
-                   !(_monitor.TryGetLatest(0x54C, out _) &&
-                     _monitor.TryGetLatest(0x54B, out _) &&
-                     _monitor.TryGetLatest(0x54F, out _)))
-            {
-                await Task.Delay(10, ct);
-            }
-
+            ct.ThrowIfCancellationRequested();
+            // Missing HVAC frames must not delay unrelated telemetry signals.
             return BuildStatus();
         }
 

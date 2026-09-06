@@ -19,7 +19,7 @@ public class LeafAze0VcmRangeTests
         var (transport, commands) = Setup();
 
         commands.TryGet<IVcm>(out var vcm);
-        var statusTask = vcm.GetStatusAsync(token);
+        await commands.Monitor.StartAsync(token);
 
         // Hardware-locked 2026-07-18 capture: 179.2 km (dash ground truth ~179).
         // Re-enqueue while polling — a rotation window transition can eat frames.
@@ -31,7 +31,7 @@ public class LeafAze0VcmRangeTests
             await Task.Delay(20, token);
         }
 
-        var status = await statusTask;
+        var status = await vcm.GetStatusAsync(token);
         await Assert.That(status.RangeKm).IsNotNull();
         await Assert.That(status.RangeKm!.Value).IsEqualTo(179.2).Within(1e-9);
 
@@ -44,7 +44,7 @@ public class LeafAze0VcmRangeTests
         var (transport, commands) = Setup();
 
         commands.TryGet<IVcm>(out var vcm);
-        var statusTask = vcm.GetStatusAsync(token);
+        await commands.Monitor.StartAsync(token);
 
         // Raw 0xFFF (bits 15-26 set) = "charging" sentinel → RangeKm must be null.
         while (!(commands.Monitor.TryGetLatest(0x5A9, out _) &&
@@ -55,7 +55,7 @@ public class LeafAze0VcmRangeTests
             await Task.Delay(20, token);
         }
 
-        var status = await statusTask;
+        var status = await vcm.GetStatusAsync(token);
         await Assert.That(status.RangeKm).IsNull();
 
         await commands.Monitor.StopAsync(token);
@@ -67,7 +67,7 @@ public class LeafAze0VcmRangeTests
         var (transport, commands) = Setup();
 
         commands.TryGet<IVcm>(out var vcm);
-        var statusTask = vcm.GetStatusAsync(token);
+        await commands.Monitor.StartAsync(token);
 
         while (!commands.Monitor.TryGetLatest(0x510, out _))
         {
@@ -75,7 +75,7 @@ public class LeafAze0VcmRangeTests
             await Task.Delay(20, token);
         }
 
-        var status = await statusTask;
+        var status = await vcm.GetStatusAsync(token);
         await Assert.That(status.RangeKm).IsNull();
 
         await commands.Monitor.StopAsync(token);

@@ -10,7 +10,6 @@ namespace ObdInsight.Core.Vehicles.Implementations.Nissan.Leaf.AZE0.Capabilities
 /// </summary>
 internal sealed class LeafAze0Abs : IAntilockBrakingSystem
 {
-    private static readonly TimeSpan WarmupTimeout = TimeSpan.FromSeconds(4);
 
     /// <summary>The frames that feed <see cref="AbsStatus" />.</summary>
     private static readonly int[] StatusFrameIds = [0x130, 0x245, 0x284, 0x285, 0x292, 0x354];
@@ -25,8 +24,9 @@ internal sealed class LeafAze0Abs : IAntilockBrakingSystem
     public async ValueTask<AbsStatus> GetStatusAsync(CancellationToken ct = default)
     {
         await _monitor.StartAsync(ct);
-        await _monitor.WaitForCacheAsync(WarmupTimeout, ct, 0x130, 0x284, 0x285, 0x354);
+        ct.ThrowIfCancellationRequested();
 
+        // A status is a view of available evidence, not a wait for every optional frame.
         return BuildStatus();
     }
 

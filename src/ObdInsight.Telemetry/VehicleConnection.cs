@@ -149,6 +149,7 @@ public sealed class VehicleConnection : IAsyncDisposable, IConnectionStateSource
                 TelemetrySession? telemetry = null;
                 VehicleConnectionGeneration? generation = null;
                 Exception? loss = null;
+                var phase = "transport-open";
                 try
                 {
                     if (failures > 0) await Task.Delay(_options.RetryDelay, _lifetime.Token).ConfigureAwait(false);
@@ -158,6 +159,7 @@ public sealed class VehicleConnection : IAsyncDisposable, IConnectionStateSource
                         init.CancelAfter(_options.InitializationTimeout);
                         try
                         {
+                            _logger.LogDebug(new EventId(4100), "Opening transport");
                             await transport.OpenAsync(init.Token).ConfigureAwait(false);
                             _lifetime.Token.ThrowIfCancellationRequested();
                             init.Token.ThrowIfCancellationRequested();
@@ -170,8 +172,13 @@ public sealed class VehicleConnection : IAsyncDisposable, IConnectionStateSource
                             };
                             framer.Invalidated += framingLost;
                             var session = new ElmSession(framer, _wakeup, timeProvider: _clock);
+                            phase = "elm-initialize";
+                            _logger.LogDebug(new EventId(4101), "Initializing ELM session");
                             await session.InitializeAndLockAsync(init.Token).ConfigureAwait(false);
+                            phase = "vehicle-detect";
+                            _logger.LogDebug(new EventId(4102), "Detecting vehicle");
                             detection = await VehicleResolver.ResolveAsync(session, _profiles, init.Token).ConfigureAwait(false);
+                            _logger.LogDebug(new EventId(4103), "Vehicle detection outcome: {DetectionStatus}", detection.Status);
                             init.Token.ThrowIfCancellationRequested();
                             transport.ThrowIfEnded();
                         }
@@ -195,10 +202,14 @@ public sealed class VehicleConnection : IAsyncDisposable, IConnectionStateSource
                     }
                     SetState(ConnectionState.Connected); // initialized and detected, not merely BLE-connected
                     failures = 0;
+                    phase = "connected";
                     loss = await transport.Failure.WaitAsync(_lifetime.Token).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is IOException or TimeoutException)
-                { loss = ex; }
+                {
+                    loss = ex;
+                    _logger.LogWarning(new EventId(4104), ex, "Connection attempt failed during {Phase}", phase);
+                }
                 finally
                 {
                     if (framer is not null) framer.Invalidated -= framingLost;

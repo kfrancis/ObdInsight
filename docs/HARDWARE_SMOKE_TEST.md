@@ -41,6 +41,11 @@ A different bus/vehicle may produce raw coverage but no supported measurements.
 
 ## Lifetime and limits
 
+Leaf ABS, HVAC, and VCM status reads now return the available cache after monitor
+startup, without repeated waits for absent frames. Initial snapshots can be partial
+or empty; later polls/streams acquire arriving data. Explicit monitor waits remain
+available to expert callers. This is a pre-1.0 behavior change, not a signature change.
+
 Both paths take a pre-snapshot, start telemetry, record for the requested duration,
 stop telemetry, and take a post-snapshot. SLCAN monitoring stays open through both
 snapshots and is then stopped. All owned resources are disposed before a successful
@@ -62,6 +67,12 @@ generation cannot produce a successful post-snapshot. The owner has bounded reco
 wait for data/cancellation, not a false EOF after 250 ms.
 
 ## Evidence and interpretation
+
+ELM-owner initialization emits sanitized `connection-diagnostic` records: transport open,
+ELM initialization, detection outcome, and failed-attempt phase. Errors include type/HResult
+and a small allowlisted failure category, never exception messages. Records retain event
+time and are drained at the next normal smoke output (including terminal failure), so they
+are not a live progress feed. The pending diagnostic queue is bounded to 128 records.
 
 Each run creates a unique `.local/smoke/*.jsonl` file. Optional `--output=PATH` uses
 create-new semantics: an existing file is never overwritten. Unknown, contradictory,
